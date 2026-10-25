@@ -1,0 +1,4 @@
+# dd's vendored runtime, byte for byte; GitHub should not count it as this project's code
+/dd.ps1 -text whitespace=cr-at-eol linguist-vendored
+/.dd/** -text whitespace=cr-at-eol linguist-vendored
+/tests/data/** -text

@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "dependencies": {
+    "libjpeg-turbo": {
+      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+      "sha256": "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e",
+      "method": "application"
+    },
+    "nasm": {
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/nasm-3.02-win64.zip",
+      "sha256": "161d0bfaff53c2f9e9f3e69fd0672323ebabafd1268976a5cec11be92a19aee7",
+      "method": "application"
+    },
+    "zlib-ng": {
+      "url": "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/2.3.3.tar.gz",
+      "sha256": "f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1",
+      "method": "application"
+    },
+    "libpng": {
+      "url": "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.59.tar.gz",
+      "sha256": "2540302a1844ad2b2b501977abecfa850f265f97b78f065a712ab4074a89f5b5",
+      "method": "application"
+    },
+    "libwebp": {
+      "url": "https://github.com/webmproject/libwebp/archive/refs/tags/v1.6.0.tar.gz",
+      "sha256": "93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136",
+      "method": "application"
+    },
+    "giflib": {
+      "url": "https://deb.debian.org/debian/pool/main/g/giflib/giflib_5.2.2.orig.tar.gz",
+      "sha256": "be7ffbd057cadebe2aa144542fd90c6838c6a083b5e8a9048b8ee3b66b29d5fb",
+      "method": "application"
+    },
+    "libtiff": {
+      "url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.7.0/libtiff-v4.7.0.tar.gz",
+      "sha256": "e1d49a419f812cb81626a0c4b2bf0f13c10710fc329284dc9b6dad75b75764bc",
+      "method": "application"
+    },
+    "libde265": {
+      "url": "https://github.com/strukturag/libde265/releases/download/v1.1.3/libde265-1.1.3.tar.gz",
+      "sha256": "554228bd17788c99a7e63b37ab5634722190e6e2bf60c1dcb01cef328e133905",
+      "method": "application"
+    },
+    "dav1d": {
+      "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
+      "method": "application"
+    },
+    "libheif": {
+      "url": "https://github.com/strukturag/libheif/releases/download/v1.23.5/libheif-1.23.5.tar.gz",
+      "sha256": "fd9036064c4432f0550d15072ddf34956a248279ee9aeaff0fba3fa0f77d8f1a",
+      "method": "application"
+    },
+    "brotli": {
+      "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+      "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec",
+      "method": "application"
+    },
+    "highway": {
+      "url": "https://github.com/google/highway/archive/refs/tags/1.4.0.tar.gz",
+      "sha256": "e72241ac9524bb653ae52ced768b508045d4438726a303f10181a38f764a453c",
+      "method": "application"
+    },
+    "libjxl": {
+      "url": "https://github.com/libjxl/libjxl/archive/refs/tags/v0.12.0.tar.gz",
+      "sha256": "03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992",
+      "method": "application"
+    },
+    "skcms": {
+      "url": "https://skia.googlesource.com/skcms",
+      "commit": "7e572ada698a60ff50bd9038fd6e01e44f40868a",
+      "method": "application"
+    },
+    "libraw": {
+      "url": "https://github.com/LibRaw/LibRaw/archive/refs/tags/0.22.2.tar.gz",
+      "sha256": "627928088300ecde6ca91ffd202e189203f04ad61ad12f0fe9dc57b9a7a0fb3c",
+      "method": "application"
+    },
+    "dngsdk": {
+      "url": "https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2724_20260908.zip",
+      "sha256": "740fbe95c69e09e9cd17654a5e4fef2d7021254b06fd2b8c5557b79a1496b50c",
+      "method": "application"
+    }
+  }
+}

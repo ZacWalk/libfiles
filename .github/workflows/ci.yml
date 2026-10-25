@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Keep scratch files in the checkout
+        run: |
+          $scratch = Join-Path $PWD 'tmp'
+          New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+          "TEMP=$scratch", "TMP=$scratch", "TMPDIR=$scratch" | Add-Content $env:GITHUB_ENV
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++ cmake ninja-build nasm
+      - name: Validate pinned CMake dependency declarations
+        run: pwsh -NoProfile -File dd.ps1 dep install --non-interactive
+      - name: Check native toolchain
+        run: pwsh -NoProfile -File dd.ps1 doctor --non-interactive
+      - name: Build Release and Debug past dd's time limit
+        # dd 0.2.2 stops a build after 600 seconds, and building every codec from nothing takes a
+        # hosted runner about that long or longer. The trees are built here with dd's presets and,
+        # on Windows, dd's compiler environment; dd test then finds them current.
+        run: |
+          if ($IsWindows) {
+            $environment = (pwsh -NoProfile -File dd.ps1 env --json --non-interactive | ConvertFrom-Json).data.environment
+            foreach ($name in $environment.PSObject.Properties.Name) { Set-Item "env:$name" $environment.$name }
+          }
+          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
+          foreach ($config in 'release', 'debug') {
+            cmake --preset "$platform-$config"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            cmake --build --preset "$platform-$config" --parallel
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Build and test Release and Debug
+        run: pwsh -NoProfile -File dd.ps1 test --non-interactive
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libfiles-${{ runner.os }}-diagnostics
+          path: |
+            tmp/**/dd-logs/*.log
+            tmp/**/dd-ctest-*.xml
+            build/**/Testing/Temporary/*.log
+          if-no-files-found: warn
+          retention-days: 7
