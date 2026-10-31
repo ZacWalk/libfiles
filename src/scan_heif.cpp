@@ -9,6 +9,7 @@
 // primary item's size after its transforms, libheif's preferred decoding chroma, how it attaches
 // metadata items, thumbnails and auxiliary images, and the faults for which it refuses a whole file.
 
+#include "bmff_internal.h"
 #include "scan_internal.h"
 
 #include <algorithm>
@@ -26,13 +27,7 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint32_t fourcc(const char (&name)[5])
-		{
-			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[0])) << 24 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
-				static_cast<std::uint8_t>(name[3]);
-		}
+		using bmff::fourcc;
 
 		// libheif's security limits, which decide what it refuses.
 		constexpr std::uint64_t max_items = 1000;
@@ -177,17 +172,7 @@ namespace libfiles::detail
 			fourcc("thmb"), fourcc("base"), fourcc("cdsc"), fourcc("dimg"), fourcc("auxl"), fourcc("prem"),
 		};
 
-		std::string fourcc_text(const std::uint32_t code)
-		{
-			std::string text(4, ' ');
-
-			for (std::size_t i = 0; i < 4; ++i)
-			{
-				text[i] = static_cast<char>(static_cast<std::uint8_t>(code >> (24 - 8 * i)));
-			}
-
-			return text;
-		}
+		using bmff::fourcc_text;
 
 		// A four-character code as libheif hands it to C, which ends it at its first NUL.
 		std::string_view c_text(const std::string& text)
@@ -321,19 +306,13 @@ namespace libfiles::detail
 				if (!count && boxes.size() > max_children) throw format_error("a HEIF box holds too many boxes");
 
 				const auto left = data.size() - pos;
-				if (left < 8) throw format_error("a HEIF box is cut short");
+				bmff::box_header h;
+				if (bmff::read_header(data.subspan(pos), h) != bmff::header_status::box) throw format_error("a HEIF box is cut short");
 
 				child_box box;
-				std::uint64_t size = load_be32(data.data() + pos);
-				box.type = load_be32(data.data() + pos + 4);
-				std::size_t header = 8;
-
-				if (size == 1)
-				{
-					if (left < 16) throw format_error("a HEIF box is cut short");
-					size = static_cast<std::uint64_t>(load_be32(data.data() + pos + 8)) << 32 | load_be32(data.data() + pos + 12);
-					header = 16;
-				}
+				box.type = h.type;
+				const auto size = h.size;
+				std::size_t header = h.header;
 
 				if (box.type == box_uuid)
 				{
@@ -1544,15 +1523,12 @@ namespace libfiles::detail
 
 			if (f.file_size < top_box_window) throw format_error("the HEIF file is too small");
 
-			std::uint64_t ftyp_size = r.be32(0);
-			std::size_t ftyp_header = 8;
-			if (r.be32(4) != box_ftyp) throw format_error("the HEIF file does not start with a file type box");
+			bmff::box_header ftyp;
+			bmff::read_header(r, 0, f.file_size, ftyp);
+			if (ftyp.type != box_ftyp) throw format_error("the HEIF file does not start with a file type box");
 
-			if (ftyp_size == 1)
-			{
-				ftyp_size = r.be64(8);
-				ftyp_header = 16;
-			}
+			const auto ftyp_size = ftyp.size;
+			const std::size_t ftyp_header = ftyp.header;
 
 			if (ftyp_size == 0) throw format_error("the HEIF file type box is the only box");
 			if (ftyp_size > std::min(f.file_size, ftyp_window)) throw format_error("the HEIF file type box is too large");
@@ -1575,17 +1551,13 @@ namespace libfiles::detail
 					break;
 				}
 
-				const auto head = r.view(next, static_cast<std::size_t>(top_box_window));
-				std::uint64_t size = load_be32(head.data());
-				const auto type = load_be32(head.data() + 4);
-				std::uint64_t header = 8;
-
-				if (size == 1)
-				{
-					size = static_cast<std::uint64_t>(load_be32(head.data() + 8)) << 32 | load_be32(head.data() + 12);
-					header = 16;
-					if (size > max_large_box) throw format_error("a HEIF top-level box is too large");
-				}
+				// The window holds a whole header, in either form.
+				bmff::box_header h;
+				bmff::read_header(r.view(next, static_cast<std::size_t>(top_box_window)), h);
+				const auto size = h.size;
+				const auto type = h.type;
+				const std::uint64_t header = h.header;
+				if (h.large() && size > max_large_box) throw format_error("a HEIF top-level box is too large");
 
 				if (type == box_meta || type == box_moov || type == box_mini)
 				{
@@ -2256,6 +2228,8 @@ namespace libfiles::detail
 			chroma format = chroma::undefined;
 			// libheif leaves the chroma unset for an uncompressed profile it has no layout for.
 			bool format_unset = false;
+			// The luma's bits, where the coded image's configuration or frame header states them; else -1.
+			int bits = -1;
 		};
 
 		struct jpeg_frame
@@ -2438,6 +2412,41 @@ namespace libfiles::detail
 			return unci_components(*uncc, cmpd);
 		}
 
+		int unci_bits(const heif_model& m, const image& img, const bool luma)
+		{
+			const auto* const uncc = m.first(img, prop_uncc);
+			if (!uncc) return -1;
+			if (uncc->version == 1) return 8;
+
+			const auto* const cmpd = m.first(img, prop_cmpd);
+			if (!cmpd) return -1;
+
+			auto bits = 0;
+			auto alternate = 0;
+
+			for (const auto& c : uncc->components)
+			{
+				if (c.index >= cmpd->component_types.size()) return -1;
+
+				switch (cmpd->component_types[c.index])
+				{
+				case 0: case 4: case 5: case 6: case 11:
+					alternate = std::max(alternate, c.bits);
+					break;
+				case 1:
+					if (luma) bits = std::max(bits, c.bits);
+					break;
+				case 2: case 3:
+					if (!luma) bits = std::max(bits, c.bits);
+					break;
+				default:
+					break;
+				}
+			}
+
+			return bits > 0 ? bits : alternate > 0 ? alternate : 8;
+		}
+
 		// What a coded image's decoder reports, before libheif's correction for an identity matrix.
 		std::optional<coded_format> decoder_format(reader& r, const heif_model& m, const image& img)
 		{
@@ -2446,7 +2455,7 @@ namespace libfiles::detail
 				const auto* const config = m.first(img, type);
 				if (!config) return {};
 				const auto space = config->coded_chroma == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr;
-				return coded_format{space, config->coded_chroma};
+				return coded_format{space, config->coded_chroma, false, config->luma_bits};
 			};
 
 			if (img.error) return {};
@@ -2458,12 +2467,17 @@ namespace libfiles::detail
 			case codec::avc: return from_config(prop_avcc);
 			case codec::vvc: return from_config(prop_vvcc);
 			case codec::j2k: return coded_format{colourspace::ycbcr, chroma::c444};
-			case codec::unci: return unci_format(m, img);
+			case codec::unci:
+				{
+					auto format = unci_format(m, img);
+					if (format) format->bits = unci_bits(m, img, true);
+					return format;
+				}
 			case codec::jpeg:
 				{
 					const auto frame = jpeg_sof(r, m, img);
 					if (!frame) return {};
-					return coded_format{frame->format == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr, frame->format};
+					return coded_format{frame->format == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr, frame->format, false, frame->precision};
 				}
 			default: return {};
 			}
@@ -2496,7 +2510,12 @@ namespace libfiles::detail
 		coded_format corrected(coded_format format, const nclx_profile& nclx)
 		{
 			// libheif decodes a YCbCr image whose matrix is the identity as RGB.
-			if (format.space == colourspace::ycbcr && nclx.matrix == 0) format = {colourspace::rgb, chroma::c444};
+			if (format.space == colourspace::ycbcr && nclx.matrix == 0)
+			{
+				format.space = colourspace::rgb;
+				format.format = chroma::c444;
+			}
+
 			return format;
 		}
 
@@ -2537,41 +2556,6 @@ namespace libfiles::detail
 					return corrected(*format, img.nclx);
 				}
 			}
-		}
-
-		int unci_bits(const heif_model& m, const image& img, const bool luma)
-		{
-			const auto* const uncc = m.first(img, prop_uncc);
-			if (!uncc) return -1;
-			if (uncc->version == 1) return 8;
-
-			const auto* const cmpd = m.first(img, prop_cmpd);
-			if (!cmpd) return -1;
-
-			auto bits = 0;
-			auto alternate = 0;
-
-			for (const auto& c : uncc->components)
-			{
-				if (c.index >= cmpd->component_types.size()) return -1;
-
-				switch (cmpd->component_types[c.index])
-				{
-				case 0: case 4: case 5: case 6: case 11:
-					alternate = std::max(alternate, c.bits);
-					break;
-				case 1:
-					if (luma) bits = std::max(bits, c.bits);
-					break;
-				case 2: case 3:
-					if (!luma) bits = std::max(bits, c.bits);
-					break;
-				default:
-					break;
-				}
-			}
-
-			return bits > 0 ? bits : alternate > 0 ? alternate : 8;
 		}
 
 		// libheif's luma or chroma bits per pixel, as heif_image_handle_get_luma_bits_per_pixel reports.
@@ -2617,8 +2601,9 @@ namespace libfiles::detail
 			}
 		}
 
-		// libheif's HeifContext::has_alpha.
-		bool has_alpha(reader& r, const heif_model& m, const image& img)
+		// libheif's HeifContext::has_alpha, given what coded_image_format found the image coded as. It reads
+		// nothing: decoder_ready read a grid's record, and a grid that is no error names a tile for each cell.
+		bool has_alpha(const heif_model& m, const image& img, const std::optional<coded_format>& format)
 		{
 			if (img.alpha) return true;
 
@@ -2630,17 +2615,13 @@ namespace libfiles::detail
 				if (alpha) return true;
 			}
 
-			const auto format = coded_image_format(r, m, img);
 			if (!format) return false;
 			if (format->format == chroma::interleaved_rgba || format->format == chroma::interleaved_rrggbbaa) return true;
 
 			if (m.boxes.item_type(img.id) != item_grid || !m.boxes.references) return false;
 
-			const auto spec = parse_grid(r, m.boxes, img.id);
-			if (!spec) return false;
-
 			const auto tiles = m.boxes.references_from(img.id, ref_dimg);
-			if (tiles.size() != static_cast<std::size_t>(spec->rows) * spec->columns) return false;
+			if (tiles.size() != static_cast<std::size_t>(img.grid_rows) * img.grid_columns) return false;
 			if (!std::ranges::all_of(tiles, [&m](const std::uint32_t id) { return m.find(id) != nullptr; })) return false;
 
 			return std::ranges::any_of(tiles, [&m](const std::uint32_t id) { return m.find(id)->alpha.has_value(); });
@@ -2663,6 +2644,37 @@ namespace libfiles::detail
 			case chroma::interleaved_rrggbbaa: return "rgba64";
 			default: return {};
 			}
+		}
+
+		// The picture of what the decoder reports: its chroma as decoded - RGB for an identity matrix, and
+		// nothing for a sensor's filter array - the luma's depth, and alpha wherever has_alpha finds it.
+		picture_format picture_of(const coded_format& format, const bool alpha)
+		{
+			picture_format p;
+			if (format.format_unset) return p;
+
+			switch (format.format)
+			{
+			case chroma::monochrome: p.chroma = format.space == colourspace::undefined ? chroma_format::unknown : chroma_format::gray;
+				break;
+			case chroma::c420: p.chroma = chroma_format::yuv420;
+				break;
+			case chroma::c422: p.chroma = chroma_format::yuv422;
+				break;
+			case chroma::c444: p.chroma = format.space == colourspace::rgb ? chroma_format::rgb : chroma_format::yuv444;
+				break;
+			case chroma::interleaved_rgb:
+			case chroma::interleaved_rgba:
+			case chroma::interleaved_rrggbb:
+			case chroma::interleaved_rrggbbaa: p.chroma = chroma_format::rgb;
+				break;
+			case chroma::undefined:
+				break;
+			}
+
+			if (format.bits > 0 && format.bits <= 255) p.bit_depth = static_cast<std::uint8_t>(format.bits);
+			p.alpha = alpha;
+			return p;
 		}
 
 		// The metadata items Diffractor took from the primary image's: the first Exif, and the last
@@ -2755,7 +2767,7 @@ namespace libfiles::detail
 			if (luma > 0) add_structure_row(rows, "Luma depth", std::format("{} bits", luma));
 			if (chroma_depth > 0) add_structure_row(rows, "Chroma depth", std::format("{} bits", chroma_depth));
 
-			add_structure_row(rows, "Alpha channel", has_alpha(r, m, primary)
+			add_structure_row(rows, "Alpha channel", has_alpha(m, primary, coded_image_format(r, m, primary))
 				                                         ? primary.premultiplied ? "present, premultiplied" : "present"
 				                                         : "none");
 
@@ -2821,7 +2833,11 @@ namespace libfiles::detail
 		result.width = primary.width <= int_max ? primary.width : 0;
 		result.height = primary.height <= int_max ? primary.height : 0;
 
-		if (const auto format = coded_image_format(r, m, primary)) result.pixel_format = pixel_format_name(*format);
+		if (const auto format = coded_image_format(r, m, primary))
+		{
+			result.pixel_format = pixel_format_name(*format);
+			result.picture = picture_of(*format, has_alpha(m, primary, format));
+		}
 
 		result.container_transform = std::ranges::any_of(primary.properties, [&m](const std::uint32_t index)
 		{

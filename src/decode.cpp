@@ -11,26 +11,6 @@
 
 namespace libfiles
 {
-	bool can_decode(const image_format format) noexcept
-	{
-#ifdef LIBFILES_JPEG
-		if (format == image_format::jpeg) return true;
-#endif
-#ifdef LIBFILES_PNG
-		if (format == image_format::png) return true;
-#endif
-#ifdef LIBFILES_WEBP
-		if (format == image_format::webp) return true;
-#endif
-#ifdef LIBFILES_HEIF
-		if (format == image_format::heif) return true;
-#endif
-#ifdef LIBFILES_JXL
-		if (format == image_format::jxl) return true;
-#endif
-		return format == image_format::psd;
-	}
-
 	std::uint32_t scale_denominator_for(const std::uint32_t source_width, const std::uint32_t source_height,
 	                                    const std::uint32_t target_width, const std::uint32_t target_height) noexcept
 	{

@@ -12,9 +12,10 @@ libfiles is the shared file layer of [Diffractor](https://github.com/ZacWalk/dif
 and [ImageWalker](https://github.com/ZacWalk/imagewalker), so a fix to a format
 lands in both.
 
-- **Diffractor** scans and decodes its photos through it, and writes metadata
-  to photos, video and audio with it: the scans, XMP, EXIF and IPTC, the
-  decoders and encoders, camera raw and the Commodore 64 listings.
+- **Diffractor** scans and decodes its photos through it, scans its audio and
+  video, and writes metadata to photos, video and audio with it: the scans, XMP,
+  EXIF and IPTC, the decoders and encoders, camera raw and the Commodore 64
+  listings.
 - **ImageWalker**'s `libiw` takes its native readers (JPEG, PNG, GIF, TIFF,
   PCX, PSD, WPG and BMP), WebP display decoding, metadata and codecs from it,
   and keeps image storage, encoding and its Windows imaging adapters.
@@ -28,15 +29,20 @@ the caller stages.
 
 | Area | Formats | Header |
 |---|---|---|
-| Format detection and metadata scans | JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and AVIF, JPEG XL | [scan.h](include/libfiles/scan.h) |
+| Identifying a file, and what each operation can do with each format | Every format below | [identify.h](include/libfiles/identify.h) |
+| Metadata scans: size, picture format, orientation, metadata blocks and thumbnails | JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and AVIF, JPEG XL | [scan.h](include/libfiles/scan.h) |
+| Audio and video scans: streams, duration, tags, XMP and cover art, without decoding | MP4 and QuickTime, Matroska and WebM, AVI, WAV, AIFF, ASF, MP3, FLAC, Ogg, FLV, MPEG-TS, MPEG-PS | [media.h](include/libfiles/media.h) |
+| Properties an organizer files by - title, people, dates, rating, place - reconciled across every block holding them | Every format libfiles scans | [properties.h](include/libfiles/properties.h) |
+| The values every area shares: dates, ratings, places, picture formats, orientation, embedded images | - | [types.h](include/libfiles/types.h) |
 | XMP data model: parse, query, edit, iterate, serialize, as Adobe's XMP Toolkit does | XMP packets and sidecars | [xmp.h](include/libfiles/xmp.h) |
 | EXIF: read, write a fresh block, patch numbers in place, list every entry with maker notes | EXIF blocks from any container | [exif.h](include/libfiles/exif.h), [exif_listing.h](include/libfiles/exif_listing.h) |
 | IPTC-IIM: read the fields an organizer files, and list every dataset | IPTC blocks | [iptc.h](include/libfiles/iptc.h) |
+| ICC colour profiles: list the name, gamut, curve and white point, the header and every tag | Profiles from any container | [icc.h](include/libfiles/icc.h) |
 | Metadata updates: XMP, with EXIF, IPTC and container tags reconciled | JPEG, TIFF, PSD, PNG, GIF, WebP, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
 | Decoding into caller memory as BGRX, BGRA or NV12, reduced while decoding | JPEG, PNG, WebP, PSD, HEIF and AVIF, JPEG XL | [decode.h](include/libfiles/decode.h) |
 | Native documents: palettes, packed and grayscale storage, pages and frames | BMP, GIF, JPEG, PNG, TIFF, PCX, PSD, WPG | [document.h](include/libfiles/document.h) |
 | Encoding with metadata, and lossless JPEG rotation | JPEG, PNG, WebP | [encode.h](include/libfiles/encode.h) |
-| Camera raw: largest preview or developed raw data, scan and listing | Every format LibRaw and the DNG SDK read | [raw.h](include/libfiles/raw.h) |
+| Camera raw: largest preview or developed raw data, scan and listing, by path or through a stream | Every format LibRaw and the DNG SDK read | [raw.h](include/libfiles/raw.h) |
 | Commodore 64 media: list and draw in the C64's characters | D64, D71, D81, T64, CRT, P00, PRG | [commodore.h](include/libfiles/commodore.h) |
 
 ## Building
@@ -57,13 +63,13 @@ codec targets too, so an application has one copy of each:
 
 | Option | Builds | Targets |
 |---|---|---|
-| `LIBFILES_JPEG` | libjpeg-turbo 3.2.0 | `libfiles::jpeg` |
+| `LIBFILES_JPEG` | libjpeg-turbo 3.2.1 | `libfiles::jpeg` |
 | `LIBFILES_PNG` | libpng 1.6.59, zlib-ng 2.3.3 | `libfiles::png`, `libfiles::zlib` |
 | `LIBFILES_WEBP` | libwebp 1.6.0 | `libfiles::webp` |
-| `LIBFILES_HEIF` | libheif 1.23.5, libde265 1.1.3, dav1d 1.5.4 | `libfiles::heif`, `libfiles::de265`, `libfiles::dav1d` |
-| `LIBFILES_JXL` | libjxl 0.12.0, Highway 1.4.0, Brotli 1.2.0, skcms | `libfiles::jxl`, `libfiles::highway`, `libfiles::brotli`, `libfiles::skcms` |
-| `LIBFILES_RAW` | LibRaw 0.22.2, Adobe DNG SDK 1.7.1 | `libfiles::raw`, `libfiles::dng` |
-| `LIBFILES_GIF`, `LIBFILES_TIFF` | giflib 5.2.2, libtiff 4.7.0 | `libfiles::gif`, `libfiles::tiff` |
+| `LIBFILES_HEIF` | libheif 1.23.7, libde265 1.1.3, dav1d 1.5.4 | `libfiles::heif`, `libfiles::de265`, `libfiles::dav1d` |
+| `LIBFILES_JXL` | libjxl 0.12.0, Highway 1.4.0, Brotli 1.2.1, skcms | `libfiles::jxl`, `libfiles::highway`, `libfiles::brotli`, `libfiles::skcms` |
+| `LIBFILES_RAW` | LibRaw 0.22.3, Adobe DNG SDK 1.7.1 build 2768 | `libfiles::raw`, `libfiles::dng` |
+| `LIBFILES_GIF`, `LIBFILES_TIFF` | giflib 6.1.3, libtiff 4.7.2 | `libfiles::gif`, `libfiles::tiff` |
 
 NASM is found on the path, or fetched by SHA-256 on Windows; without it, and on
 ARM64, the codecs build their C paths. libheif's FFmpeg decoder is not built:
@@ -106,8 +112,19 @@ its own file handle, or straight from memory:
 
 libfiles::reader r(my_stream);                 // or libfiles::reader r(bytes);
 const auto info = libfiles::scan(r);           // never throws for malformed input
-// info.width, info.height, info.pixel_format, info.orientation, info.container_transform,
-// info.metadata.exif / xmp / iptc / icc / photoshop, and the thumbnails' locations
+// info.width, info.height, info.picture (chroma, bit depth, alpha; name() such as "yuv420 10bit"),
+// info.orientation, info.container_transform, info.metadata.exif / xmp / iptc / icc / photoshop,
+// and libfiles::thumbnails(info)
+```
+
+The properties an organizer files by read the same way from a photo or a
+recording - the XMP packet first, then EXIF and IPTC or the container's tags:
+
+```cpp
+#include "libfiles/properties.h"
+
+const auto p = libfiles::read_properties(r);   // empty for a file libfiles does not read
+// p.title, p.artist, p.keywords, p.rating, p.created, p.location, p.camera_model, ...
 ```
 
 An EXIF block - `info.metadata.exif`, or one found elsewhere - reads into what an
@@ -143,9 +160,9 @@ const auto decoded = decoder.decode(r, sink, {.target_width = 256, .target_heigh
 
 ## Documentation
 
-- [docs/design.md](docs/design.md) - how libfiles reads, writes and decodes,
-  and where it deliberately differs from the XMP Toolkit and the readers it
-  replaced.
+- [docs/design.md](docs/design.md) - how libfiles is layered, what each format
+  is read and written as, and where it deliberately differs from the XMP
+  Toolkit and the readers it replaced.
 - [docs/todo.md](docs/todo.md) - open work.
 - [AGENTS.md](AGENTS.md) - rules for contributors and coding agents.
 

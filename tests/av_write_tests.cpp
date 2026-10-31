@@ -12,6 +12,7 @@
 #include "interruptions.h"
 #include "legacy.h"
 #include "libfiles/write.h"
+#include "round_trip.h"
 
 #include <bit>
 #include <cstring>
@@ -475,7 +476,7 @@ TEST("an avi keeps its info before movi and its packet after")
 	CHECK(v.field("IGNR") == "Documentary");
 	CHECK(v.field("ISFT") == "Lavf");
 
-	// FFmpeg reads the first _PMX after movi.
+	// Readers take the first _PMX after movi.
 	const auto pmx = std::ranges::find(v.chunks, std::string("_PMX"), &std::pair<std::string, std::size_t>::first);
 	CHECK(pmx != v.chunks.end() && pmx->second > movi);
 	CHECK_EQ(rating_of(result.file), 4);
@@ -750,4 +751,12 @@ TEST("interrupted mp3 and flv patches read whole")
 	const auto flv = update(make_flv(true), {&first}).file;
 	const auto again = rated(2);
 	replay(flv, {&again}, 4, 2, [](const bytes& state) { return walk_flv(state).whole; });
+}
+
+TEST("wav and flv files read back the edits they keep outside the packet")
+{
+	// RIFF INFO keeps the title, artist, comment, copyright and genre, and the creation date, which is when a
+	// WAV was recorded. FLV keeps nothing outside the packet.
+	check_round_trip("wav", make_wav(), {"artist", "comment", "copyright", "genre", "recorded", "title", "year"});
+	check_round_trip("flv", make_flv(true), {});
 }

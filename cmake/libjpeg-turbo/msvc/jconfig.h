@@ -3,7 +3,7 @@
    does not satisfy, so the recipe puts this directory on the include path. */
 
 #define JPEG_LIB_VERSION 80
-#define LIBJPEG_TURBO_VERSION 3.2.0
+#define LIBJPEG_TURBO_VERSION 3.2.1
 #define C_ARITH_CODING_SUPPORTED 1
 #define D_ARITH_CODING_SUPPORTED 1
 #define MEM_SRCDST_SUPPORTED 1
@@ -39,7 +39,7 @@
 #undef NEON_INTRINSICS
 
 #define PACKAGE_NAME "TurboJpeg"
-#define VERSION "3.2.0"
+#define VERSION "3.2.1"
 #define BUILD __DATE__ 
 
 

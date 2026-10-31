@@ -7,10 +7,12 @@
 // image data, so they are found by stepping from chunk header to chunk header: the image data
 // itself is never read, where loading the whole file to hand to libwebp's mux read all of it.
 
+#include "riff_internal.h"
 #include "scan_internal.h"
 
 #include <cstring>
 #include <format>
+#include <string>
 
 namespace libfiles::detail
 {
@@ -247,6 +249,23 @@ namespace libfiles::detail
 			}
 		};
 
+		std::string_view chunk_description(const std::uint32_t id)
+		{
+			switch (id)
+			{
+			case riff::vp8_id: return "lossy image data";
+			case riff::vp8l_id: return "lossless image data";
+			case riff::vp8x_id: return "extended format header";
+			case riff::alph_id: return "alpha channel";
+			case riff::anim_id: return "animation parameters";
+			case riff::anmf_id: return "animation frame";
+			case riff::iccp_id: return "ICC colour profile";
+			case riff::exif_id: return "Exif metadata";
+			case riff::xmp_id: return "XMP metadata";
+			default: return {};
+			}
+		}
+
 		// A RIFF chunk inventory. WebP hides quite a lot behind its feature flags - alpha, animation,
 		// colour profile - and the chunk list is the plain statement of what the file holds.
 		std::vector<structure_row> webp_structure(reader& r)
@@ -260,45 +279,31 @@ namespace libfiles::detail
 
 			add_structure_section(kv, "Chunks", "webp.chunks");
 
-			std::uint64_t offset = 12;
 			std::string_view simple_format;
 
-			while (offset + 8u <= file_size)
+			riff::for_each_chunk(r, riff_header_size, file_size, nullptr, [&](const riff::chunk& c)
 			{
-				const auto h = r.view(offset, 8);
-				const std::string fourcc(reinterpret_cast<const char*>(h.data()), 4);
-				const auto chunk_size = load_le32(h.data() + 4);
+				if (!riff::fits(c, file_size)) return false;
 
-				if (chunk_size > file_size - offset - 8u) break;
+				const auto description = chunk_description(c.id);
 
-				std::string_view description;
-
-				if (fourcc == "VP8 ") description = "lossy image data";
-				else if (fourcc == "VP8L") description = "lossless image data";
-				else if (fourcc == "VP8X") description = "extended format header";
-				else if (fourcc == "ALPH") description = "alpha channel";
-				else if (fourcc == "ANIM") description = "animation parameters";
-				else if (fourcc == "ANMF") description = "animation frame";
-				else if (fourcc == "ICCP") description = "ICC colour profile";
-				else if (fourcc == "EXIF") description = "Exif metadata";
-				else if (fourcc == "XMP ") description = "XMP metadata";
-
-				if (simple_format.empty() && (fourcc == "VP8 " || fourcc == "VP8L"))
+				if (simple_format.empty() && (c.id == riff::vp8_id || c.id == riff::vp8l_id))
 				{
-					simple_format = fourcc == "VP8L" ? "lossless (VP8L)" : "lossy (VP8)";
+					simple_format = c.id == riff::vp8l_id ? "lossless (VP8L)" : "lossy (VP8)";
 				}
 
-				auto value = std::format("offset {}, {} bytes", offset, chunk_size);
+				auto value = std::format("offset {}, {} bytes", c.start, c.size);
 				if (!description.empty()) value = std::format("{}, {}", description, value);
 
 				// A FourCC is four bytes, and a NUL among them ends the name as the C string it was.
-				auto& row = add_row(kv, fourcc.substr(0, fourcc.find('\0')), std::move(value));
+				const std::string name{
+					static_cast<char>(c.id), static_cast<char>(c.id >> 8), static_cast<char>(c.id >> 16), static_cast<char>(c.id >> 24)
+				};
+				auto& row = add_row(kv, name.substr(0, name.find('\0')), std::move(value));
 				row.depth = 1;
-				row.id = std::format("webp.chunk.{}", offset);
-
-				// Chunks are padded to an even length.
-				offset += 8u + chunk_size + (chunk_size & 1u);
-			}
+				row.id = std::format("webp.chunk.{}", c.start);
+				return true;
+			});
 
 			if (!simple_format.empty())
 			{
@@ -343,32 +348,29 @@ namespace libfiles::detail
 			result.pixel_format = lossless
 				                      ? (features.has_alpha ? "rgba" : "rgb")
 				                      : (features.has_alpha ? "yuva420" : "yuv420");
+			result.picture = {lossless ? chroma_format::rgb : chroma_format::yuv420, 8, features.has_alpha};
 
 			// The metadata chunks, by their headers. A writer may emit a chunk the VP8X flags do not
 			// declare; it is read all the same, where libwebp's mux refused the whole file.
 			const auto riff_end = std::min<std::uint64_t>(r.size(), static_cast<std::uint64_t>(r.le32(4)) + 8u);
-			std::uint64_t offset = riff_header_size;
 			auto found_icc = false;
 			auto found_exif = false;
 			auto found_xmp = false;
 
-			while (offset + chunk_header_size <= riff_end)
+			riff::for_each_chunk(r, riff_header_size, riff_end, nullptr, [&](const riff::chunk& c)
 			{
-				const auto h = r.view(offset, chunk_header_size);
-				const auto chunk_size = load_le32(h.data() + tag_size);
+				if (!riff::fits(c, riff_end)) return false;
 
-				if (chunk_size > riff_end - offset - chunk_header_size) break;
+				const auto size = static_cast<std::size_t>(c.size);
 
-				const auto data_offset = offset + chunk_header_size;
-
-				if (!found_icc && is_tag(h, "ICCP"))
+				if (!found_icc && c.id == riff::iccp_id)
 				{
-					result.metadata.icc = r.read(data_offset, chunk_size);
+					result.metadata.icc = r.read(c.payload(), size);
 					found_icc = true;
 				}
-				else if (!found_exif && is_tag(h, "EXIF"))
+				else if (!found_exif && c.id == riff::exif_id)
 				{
-					auto exif = r.read(data_offset, chunk_size);
+					auto exif = r.read(c.payload(), size);
 
 					// Some writers keep the JPEG "Exif\0\0" signature; only that leading signature is
 					// trimmed.
@@ -377,17 +379,17 @@ namespace libfiles::detail
 					result.metadata.exif = std::move(exif);
 					found_exif = true;
 				}
-				else if (!found_xmp && is_tag(h, "XMP "))
+				else if (!found_xmp && c.id == riff::xmp_id)
 				{
-					result.metadata.xmp = r.read(data_offset, chunk_size);
+					result.metadata.xmp = r.read(c.payload(), size);
 					found_xmp = true;
 				}
 
-				offset = data_offset + chunk_size + (chunk_size & 1u);
-			}
+				return true;
+			});
 		}
 
-		if (intent == scan_intent::inspect && r.size() >= 12u && r.le32(0) == 0x46464952 && r.le32(8) == 0x50424557)
+		if (intent == scan_intent::inspect && r.size() >= 12u && r.le32(0) == riff::riff_id && r.le32(8) == riff::webp_type)
 		{
 			result.structure = webp_structure(r);
 		}

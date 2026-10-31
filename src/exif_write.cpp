@@ -24,9 +24,6 @@ namespace libfiles
 
 	namespace
 	{
-		constexpr std::uint16_t tag_exif_ifd = 0x8769;
-		constexpr std::uint16_t tag_interop_ifd = 0xa005;
-
 		constexpr std::uint16_t type_slong = 9;
 
 		// libexif writes no entry whose count passes this; it stops halfway through the entry instead.
@@ -118,8 +115,6 @@ namespace libfiles
 		// A sub-second exposure is conventionally recorded as 1/n.
 		void add_exposure_time(new_directory& d, const double seconds)
 		{
-			constexpr std::uint16_t tag_exposure_time = 0x829a;
-
 			if (seconds <= 0.0) return;
 
 			if (seconds < 1.0)

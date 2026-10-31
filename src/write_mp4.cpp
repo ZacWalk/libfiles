@@ -14,47 +14,21 @@
 // offsets never change, and no update copies the media.
 //
 // Readers take the first movie box and the last XMP uuid box, as FFmpeg does; an interrupted update
-// can leave more of either, and the next update frees them.
+// can leave more of either, and the next update frees them. The boxes are read through
+// mp4_internal.h, which the media scan reads them through too.
 
 #include "legacy.h"
+#include "mp4_internal.h"
+#include "vocabulary_internal.h"
 
 #include <algorithm>
-#include <array>
 #include <utility>
 
 namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint32_t box_type(const char (&name)[5])
-		{
-			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[0])) << 24 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
-				static_cast<std::uint8_t>(name[3]);
-		}
-
-		constexpr auto ftyp = box_type("ftyp");
-		constexpr auto moov = box_type("moov");
-		constexpr auto mdat = box_type("mdat");
-		constexpr auto free_ = box_type("free");
-		constexpr auto skip = box_type("skip");
-		constexpr auto wide = box_type("wide");
-		constexpr auto pnot = box_type("pnot");
-		constexpr auto uuid = box_type("uuid");
-		constexpr auto udta = box_type("udta");
-		constexpr auto mvhd = box_type("mvhd");
-		constexpr auto xmp_ = box_type("XMP_");
-		constexpr auto xtra = box_type("Xtra");
-		constexpr auto cprt = box_type("cprt");
-		constexpr auto qt__ = box_type("qt  ");
-
-		constexpr std::array<std::uint8_t, 16> xmp_uuid = {
-			0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC
-		};
-
-		// The largest movie box an update reads into memory.
-		constexpr std::uint64_t max_moov = 256ull * 1024 * 1024;
+		using namespace mp4;
 
 		// The free space a movie's user data is given when the movie box moves, for later edits to grow
 		// into: room for the packet to take its padding again, and for tags.
@@ -64,70 +38,6 @@ namespace libfiles::detail
 		// the file, then what makes them the ones read and frees the boxes they replace.
 		constexpr std::uint8_t reveal = 0;
 		constexpr std::uint8_t commit = 1;
-
-		struct top_box
-		{
-			std::uint64_t start = 0;
-			std::uint64_t size = 0;
-			std::uint32_t type = 0;
-			std::uint32_t header = 8;
-			bool to_end = false; // a size field of zero: the box runs to the end of the file
-
-			std::uint64_t end() const { return start + size; }
-		};
-
-		// The top-level boxes. Fewer than eight bytes after the last are left out.
-		std::vector<top_box> walk(reader& r)
-		{
-			std::vector<top_box> boxes;
-			const auto size = r.size();
-			std::uint64_t pos = 0;
-
-			while (size - pos >= 8)
-			{
-				top_box b;
-				b.start = pos;
-				const auto size32 = r.be32(pos);
-				b.type = r.be32(pos + 4);
-
-				if (size32 == 1)
-				{
-					if (size - pos < 16) throw format_error("an MP4 box header runs past the end of the file");
-					b.size = r.be64(pos + 8);
-					b.header = 16;
-				}
-				else if (size32 == 0)
-				{
-					b.size = size - pos;
-					b.to_end = true;
-				}
-				else
-				{
-					b.size = size32;
-				}
-
-				if (b.size < b.header || b.size > size - pos) throw format_error("an MP4 box runs past the end of the file");
-
-				boxes.push_back(b);
-				pos += b.size;
-			}
-
-			return boxes;
-		}
-
-		bool is_xmp_uuid(reader& r, const top_box& b)
-		{
-			if (b.type != uuid || b.size < b.header + 16u) return false;
-			const auto id = r.view(b.start + b.header, 16);
-			return std::equal(xmp_uuid.begin(), xmp_uuid.end(), id.begin());
-		}
-
-		bool is_quicktime(reader& r, const std::vector<top_box>& boxes)
-		{
-			const auto f = std::ranges::find(boxes, ftyp, &top_box::type);
-			if (f == boxes.end() || f->size < f->header + 4u) return true;
-			return r.be32(f->start + f->header) == qt__;
-		}
 
 		// A box with an eight-byte header, or with the sixteen-byte one when asked for or needed.
 		bytes make_box(const std::uint32_t type, const std::span<const std::uint8_t> payload, const std::size_t header = 8)
@@ -169,43 +79,17 @@ namespace libfiles::detail
 		// The children of a box's payload. QuickTime may end a list of them with four zero bytes.
 		std::vector<raw_box> parse_children(const std::span<const std::uint8_t> payload, bool& terminator)
 		{
+			reader r(payload);
+			const auto list = list_boxes(r, 0, payload.size());
+			if (list.damaged) throw format_error("an MP4 box holds a damaged child");
+
 			std::vector<raw_box> out;
-			std::size_t pos = 0;
-			terminator = false;
+			terminator = list.terminator;
 
-			while (pos < payload.size())
+			for (const auto& b : list.boxes)
 			{
-				const auto left = payload.size() - pos;
-
-				if (left < 8)
-				{
-					if (left == 4 && load_be32(payload.data() + pos) == 0)
-					{
-						terminator = true;
-						break;
-					}
-
-					throw format_error("an MP4 box holds a damaged child");
-				}
-
-				const auto size32 = load_be32(payload.data() + pos);
-				std::uint64_t size = size32;
-
-				if (size32 == 1)
-				{
-					if (left < 16) throw format_error("an MP4 box holds a damaged child");
-					size = static_cast<std::uint64_t>(load_be32(payload.data() + pos + 8)) << 32 | load_be32(payload.data() + pos + 12);
-				}
-				else if (size32 == 0)
-				{
-					size = left;
-				}
-
-				if (size < 8 || size > left) throw format_error("an MP4 box holds a damaged child");
-
-				out.push_back({load_be32(payload.data() + pos + 4), bytes(payload.begin() + static_cast<std::ptrdiff_t>(pos),
-				                                                          payload.begin() + static_cast<std::ptrdiff_t>(pos + size))});
-				pos += static_cast<std::size_t>(size);
+				out.push_back({b.type, bytes(payload.begin() + static_cast<std::ptrdiff_t>(b.start),
+				                             payload.begin() + static_cast<std::ptrdiff_t>(b.end()))});
 			}
 
 			return out;
@@ -400,24 +284,14 @@ namespace libfiles::detail
 			if (existing)
 			{
 				old_content.assign(existing->raw.begin() + static_cast<std::ptrdiff_t>(existing->header()), existing->raw.end());
-				std::size_t pos = 0;
 
-				while (old_content.size() - pos >= 12)
+				for_each_xtra_entry(old_content, [&](const xtra_entry& entry)
 				{
-					const auto size = load_be32(old_content.data() + pos);
-					const auto name_length = load_be32(old_content.data() + pos + 4);
-					if (size < 12 || size > old_content.size() - pos) break;
+					if (entry.name.empty()) return;
 
-					if (name_length > 0 && name_length <= size - 12)
-					{
-						const std::string_view name(reinterpret_cast<const char*>(old_content.data() + pos + 8), name_length);
-						const auto owned = (owns_category && name == "WM/Category") || (owns_rating && name == "WM/SharedUserRating");
-						if (!owned) content.insert(content.end(), old_content.begin() + static_cast<std::ptrdiff_t>(pos),
-						                           old_content.begin() + static_cast<std::ptrdiff_t>(pos + size));
-					}
-
-					pos += size;
-				}
+					const auto owned = (owns_category && entry.name == vocabulary::wm_category) || (owns_rating && entry.name == vocabulary::wm_shared_user_rating);
+					if (!owned) content.insert(content.end(), entry.bytes.begin(), entry.bytes.end());
+				});
 			}
 
 			if (owns_category)
@@ -437,17 +311,16 @@ namespace libfiles::detail
 					++count;
 				}
 
-				if (count > 0) append_xtra_entry(content, "WM/Category", count, values);
+				if (count > 0) append_xtra_entry(content, vocabulary::wm_category, count, values);
 			}
 
 			if (owns_rating && *e.rating > 0)
 			{
-				static constexpr std::uint64_t star_to_percent[6] = {0, 1, 25, 50, 75, 99};
 				bytes value;
 				append_be32(value, 14);
 				append_be16(value, 19); // VT_UI8
-				append_le64(value, star_to_percent[std::min(*e.rating, 5)]);
-				append_xtra_entry(content, "WM/SharedUserRating", 1, value);
+				append_le64(value, static_cast<std::uint64_t>(percent_from_stars(*e.rating)));
+				append_xtra_entry(content, vocabulary::wm_shared_user_rating, 1, value);
 			}
 
 			return content;
@@ -466,21 +339,21 @@ namespace libfiles::detail
 
 		struct layout
 		{
-			std::vector<top_box> boxes;
+			std::vector<box> boxes;
 			bool quicktime = false;
 			std::size_t moov_at = 0;
 			// Movie boxes after the first, which no reader takes.
 			std::vector<std::size_t> later_moovs;
 			std::vector<std::size_t> xmp_uuids;
 
-			const top_box& moov_box() const { return boxes[moov_at]; }
-			const top_box* xmp_box() const { return xmp_uuids.empty() ? nullptr : &boxes[xmp_uuids.back()]; }
+			const box& moov_box() const { return boxes[moov_at]; }
+			const box* xmp_box() const { return xmp_uuids.empty() ? nullptr : &boxes[xmp_uuids.back()]; }
 		};
 
 		layout read_layout(reader& r)
 		{
 			layout l;
-			l.boxes = walk(r);
+			l.boxes = top_level_boxes(r);
 			l.quicktime = is_quicktime(r, l.boxes);
 			auto found_moov = false;
 
@@ -502,12 +375,6 @@ namespace libfiles::detail
 			if (l.moov_box().size > max_moov) throw format_error("the MP4's movie box is too large to update");
 			return l;
 		}
-
-		std::string uuid_packet(reader& r, const top_box& b)
-		{
-			const auto bytes_ = r.read(b.start + b.header + 16, static_cast<std::size_t>(b.size - b.header - 16));
-			return {bytes_.begin(), bytes_.end()};
-		}
 	}
 
 	bool is_iso_media(const std::span<const std::uint8_t> head) noexcept
@@ -516,7 +383,7 @@ namespace libfiles::detail
 
 		// Canon's CR3 raw is ISO base media too, but a photo, and libfiles does not write raw files.
 		const auto type = load_be32(head.data() + 4);
-		if (type == ftyp && head.size() >= 12 && load_be32(head.data() + 8) == box_type("crx ")) return false;
+		if (type == ftyp && head.size() >= 12 && load_be32(head.data() + 8) == fourcc("crx ")) return false;
 
 		return type == ftyp || type == moov || type == mdat || type == free_ || type == skip || type == wide || type == pnot;
 	}
@@ -525,27 +392,12 @@ namespace libfiles::detail
 	{
 		const auto l = read_layout(r);
 		const auto& mb = l.moov_box();
-		const auto moov_bytes = r.read(mb.start, static_cast<std::size_t>(mb.size));
-		movie m;
-		m.open(moov_bytes, mb.header);
+		const auto in_movie = movie_xmp(r, list_boxes(r, mb.payload(), mb.end()));
 
-		const auto* const in_udta = m.find_udta(xmp_);
-		const auto* const in_uuid = l.xmp_box();
-		const auto udta_packet = [in_udta]
+		if (const auto place = packet_place(l.quicktime, in_movie, l.xmp_box()))
 		{
-			return std::string(in_udta->raw.begin() + static_cast<std::ptrdiff_t>(in_udta->header()), in_udta->raw.end());
-		};
-
-		// Each kind of file has the place it prefers; the other is read when it is all there is.
-		if (l.quicktime)
-		{
-			if (in_udta) out.packet = udta_packet();
-			else if (in_uuid) out.packet = uuid_packet(r, *in_uuid);
-		}
-		else
-		{
-			if (in_uuid) out.packet = uuid_packet(r, *in_uuid);
-			else if (in_udta) out.packet = udta_packet();
+			const auto packet = r.read(place->offset, static_cast<std::size_t>(place->size));
+			out.packet.assign(packet.begin(), packet.end());
 		}
 
 		out.readable = true;

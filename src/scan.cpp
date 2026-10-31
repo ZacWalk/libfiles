@@ -161,6 +161,33 @@ namespace libfiles
 
 		return result;
 	}
+
+	std::vector<embedded_image> thumbnails(const scan_result& result)
+	{
+		std::vector<embedded_image> images;
+
+		const auto add = [&images](std::string description) -> embedded_image&
+		{
+			auto& image = images.emplace_back();
+			image.mime_type = "image/jpeg";
+			image.type = 0;
+			image.description = std::move(description);
+			return image;
+		};
+
+		const auto& exif = result.metadata.exif;
+		const auto& in_exif = result.exif_thumbnail;
+
+		if (!in_exif.empty() && in_exif.offset <= exif.size() && in_exif.size <= exif.size() - in_exif.offset)
+		{
+			const auto first = exif.begin() + static_cast<std::ptrdiff_t>(in_exif.offset);
+			add("EXIF thumbnail").data.assign(first, first + static_cast<std::ptrdiff_t>(in_exif.size));
+		}
+
+		if (!result.tiff_thumbnail.empty()) add("TIFF thumbnail").location = result.tiff_thumbnail;
+		if (!result.jfif_thumbnail.empty()) add("JFIF thumbnail").location = result.jfif_thumbnail;
+		return images;
+	}
 }
 
 namespace libfiles::detail

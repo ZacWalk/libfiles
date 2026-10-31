@@ -12,6 +12,7 @@
 #include "libfiles/reader.h"
 #include "libfiles/scan.h"
 #include "libfiles/stream.h"
+#include "libfiles/types.h"
 #include "libfiles/xmp.h"
 
 #include <cstdint>
@@ -78,7 +79,10 @@ namespace libfiles
 		std::optional<std::string> copyright;
 		std::optional<std::vector<std::string>> creators;
 		std::optional<std::vector<std::string>> keywords;
-		// Stars from 0 to 5, and the percent scale Windows reads beside them.
+		// Stars from 0 to 5, and the percent scale Windows reads beside them. Without a percent, a format that
+		// keeps one takes the stars' own, percent_from_stars: always in ASF and MP4, which every rating writes,
+		// and in EXIF where the block already holds a RatingPercent, which a reader would otherwise take over
+		// the new stars.
 		std::optional<int> rating;
 		std::optional<int> rating_percent;
 		// As XMP writes dates: "YYYY-MM-DDThh:mm:ss".
@@ -124,40 +128,22 @@ namespace libfiles
 		legacy_edits legacy;
 	};
 
-	// The formats libfiles can update, told apart by their first bytes.
-	enum class file_format : std::uint8_t
-	{
-		unknown,
-		jpeg,
-		png,
-		gif,
-		webp,
-		tiff,
-		psd,
-		// ISO base media - MP4, M4A, M4V, 3GP - and QuickTime.
-		mp4,
-		// ASF: WMV, WMA and ASF.
-		asf,
-		// RIFF: WAV and AVI.
-		riff,
-		// MPEG audio, MP3 and MP2, with or without an ID3v2 tag.
-		mp3,
-		flv,
-	};
-
-	// Sixteen bytes are enough; fewer match less.
+	// Sixteen bytes are enough; fewer match less. An ID3v2 tag reads as MPEG audio whatever follows it:
+	// plan_update and read_packet go by identify(reader&), which looks past it.
 	file_format detect_file_format(std::span<const std::uint8_t> head) noexcept;
 
 	bool can_update(file_format format) noexcept;
 
-	// The XMP packet a file holds, found where the update would write it. readable is false when the
-	// file's structure cannot be read, so its packet is unknown rather than absent.
+	// The XMP packet a file holds, found where the update would write it and where scan() and scan_media()
+	// find it. readable is false when the file's structure cannot be read, so its packet is unknown rather
+	// than absent. The file is identified as identify(reader&) identifies it.
 	//
-	// HEIF and JPEG XL files, which libfiles reads but does not update, have their packets read too:
-	// a HEIF's from the XMP item - of type 'mime' and content type application/rdf+xml, or of the
-	// older type 'XMP' - attached to its primary image, as scan() finds it; a JPEG XL container's from
-	// its last 'xml ' box. When that box is Brotli-compressed ('brob') the packet is not read and
-	// readable is false: there is a packet, but read_packet cannot say what it holds. A bare JPEG XL
+	// Some formats libfiles reads but does not update have their packets read too: a HEIF's from the XMP
+	// item - of type 'mime' and content type application/rdf+xml, or of the older type 'XMP' - attached to
+	// its primary image, as scan() finds it; a JPEG XL container's from its last 'xml ' box; an AIFF's from
+	// its last APPL chunk signed "XMP "; and a FLAC's from the ID3v2 tag some taggers put before it, by the
+	// rule an MP3's is read by. When a JPEG XL's box is Brotli-compressed ('brob') the packet is not read
+	// and readable is false: there is a packet, but read_packet cannot say what it holds. A bare JPEG XL
 	// codestream has no packet.
 	struct packet_reading
 	{

@@ -14,9 +14,12 @@
 #include "libfiles/raw.h"
 #include "raw_internal.h"
 
+#include <algorithm>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -246,6 +249,119 @@ TEST("Should take LibRaw's flip as the orientation it describes, numbered as EXI
 	for (auto flip = 0; flip < 8; ++flip) CHECK_EQ(libfiles::detail::orientation_of_flip(flip), expected[flip]);
 	CHECK_EQ(libfiles::detail::orientation_of_flip(8), std::uint16_t{1});
 	CHECK_EQ(libfiles::detail::orientation_of_flip(-1), std::uint16_t{1});
+}
+
+namespace
+{
+	bytes file_bytes(const std::filesystem::path& path)
+	{
+		std::ifstream in(path, std::ios::binary);
+		return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+	}
+
+	// A stream over memory that counts the reads it is asked for, as a network share charges for them.
+	class counting_stream final : public libfiles::stream
+	{
+	public:
+		explicit counting_stream(bytes data) : _data(std::move(data))
+		{
+		}
+
+		std::uint64_t size() override { return _data.size(); }
+
+		std::size_t read(const std::uint64_t offset, void* data, const std::size_t size) override
+		{
+			++reads;
+			if (offset >= _data.size()) return 0;
+			const auto n = std::min<std::size_t>(size, _data.size() - static_cast<std::size_t>(offset));
+			std::memcpy(data, _data.data() + offset, n);
+			return n;
+		}
+
+		int reads = 0;
+
+	private:
+		bytes _data;
+	};
+
+	// A stream that says it holds the whole file but supplies only its start, as a share that drops does.
+	class failing_stream final : public libfiles::stream
+	{
+	public:
+		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from)
+		{
+		}
+
+		std::uint64_t size() override { return _data.size(); }
+
+		std::size_t read(const std::uint64_t offset, void* data, const std::size_t size) override
+		{
+			if (offset >= _fails_from) return 0;
+			const auto n = static_cast<std::size_t>(std::min<std::uint64_t>(size, _fails_from - offset));
+			std::memcpy(data, _data.data() + offset, n);
+			return n;
+		}
+
+	private:
+		const bytes& _data;
+		std::uint64_t _fails_from = 0;
+	};
+}
+
+TEST("Should scan a raw file read through a reader as it scans the file by its path")
+{
+	for (const auto* const name : {"12_ImageStats_WeightedAverage.dng", "01_jxl_linear_raw_integer.dng", "04_PGTM2_per_profile.dng"})
+	{
+		const auto path = sample(name);
+		const auto file = file_bytes(path);
+		CHECK(file.size() > 1024);
+
+		thumbnail_sink by_path_sink;
+		thumbnail_sink by_reader_sink;
+		const auto by_path = libfiles::scan_raw(path, libfiles::scan_intent::inspect, &by_path_sink);
+		libfiles::reader memory(file);
+		const auto by_reader = libfiles::scan_raw(memory, libfiles::scan_intent::inspect, &by_reader_sink, path);
+
+		CHECK(by_path.success && by_reader.success);
+		CHECK_EQ(by_reader.width, by_path.width);
+		CHECK_EQ(by_reader.height, by_path.height);
+		CHECK_EQ(by_reader.orientation, by_path.orientation);
+		CHECK(by_reader.xmp == by_path.xmp);
+		CHECK(by_reader.created.has_value() == by_path.created.has_value());
+		CHECK_STR(by_reader.pixel_format, by_path.pixel_format);
+		CHECK_STR(by_reader.camera_make, by_path.camera_make);
+		CHECK_STR(by_reader.camera_model, by_path.camera_model);
+		CHECK_EQ(by_reader.iso_speed, by_path.iso_speed);
+		CHECK(by_reader.exposure_time == by_path.exposure_time && by_reader.f_number == by_path.f_number);
+		CHECK_EQ(by_reader.listing.size(), by_path.listing.size());
+		CHECK(by_reader.thumbnail_jpeg == by_path.thumbnail_jpeg);
+		CHECK(by_reader_sink.memory == by_path_sink.memory);
+
+		for (std::size_t i = 0; i < std::min(by_reader.listing.size(), by_path.listing.size()); ++i)
+		{
+			CHECK_STR(by_reader.listing[i].key + "=" + by_reader.listing[i].value, by_path.listing[i].key + "=" + by_path.listing[i].value);
+		}
+
+		// Over a stream, LibRaw's reads go through the reader's window: a read of the stream for each block
+		// they touch, not for each of LibRaw's own.
+		counting_stream counted(file);
+		libfiles::reader streamed(counted);
+		const auto through_stream = libfiles::scan_raw(streamed, libfiles::scan_intent::index, nullptr);
+		CHECK(through_stream.success);
+		CHECK_EQ(through_stream.width, by_path.width);
+		CHECK(counted.reads <= static_cast<int>(file.size() / libfiles::reader::default_block_size) + 8);
+	}
+
+	// A file cut short scans as nothing, and so does one whose stream fails: neither throws.
+	const auto file = file_bytes(sample("12_ImageStats_WeightedAverage.dng"));
+	const bytes cut(file.begin(), file.begin() + 512);
+	libfiles::reader short_file(cut);
+	CHECK(!libfiles::scan_raw(short_file, libfiles::scan_intent::index, nullptr).success);
+
+	failing_stream failing(file, 512);
+	libfiles::reader dropped(failing);
+	const auto through_failure = libfiles::scan_raw(dropped, libfiles::scan_intent::inspect, nullptr);
+	CHECK(!through_failure.success && through_failure.width == 0 && through_failure.listing.empty());
 }
 
 #endif

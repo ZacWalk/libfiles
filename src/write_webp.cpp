@@ -9,6 +9,7 @@
 // bytes.
 
 #include "legacy.h"
+#include "riff_internal.h"
 
 #include <optional>
 
@@ -16,25 +17,8 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint32_t RIFF = 0x46464952;
-		constexpr std::uint32_t WEBP = 0x50424557;
-		constexpr std::uint32_t VP8X = 0x58385056;
-		constexpr std::uint32_t VP8_ = 0x20385056;
-		constexpr std::uint32_t VP8L = 0x4C385056;
-		constexpr std::uint32_t ANMF = 0x464D4E41;
-		constexpr std::uint32_t XMP_ = 0x20504D58;
-		constexpr std::uint32_t EXIF = 0x46495845;
-
 		constexpr std::uint32_t xmp_flag = 0x04;
 		constexpr std::uint32_t alpha_flag = 0x10;
-
-		struct chunk
-		{
-			std::uint64_t start = 0;
-			std::uint32_t length = 0;
-
-			std::uint64_t size() const { return 8ull + length + (length & 1u); }
-		};
 
 		void append_le24(std::vector<std::uint8_t>& to, const std::uint32_t v)
 		{
@@ -48,42 +32,40 @@ namespace libfiles::detail
 	{
 		if (!update.xmp) return;
 
-		if (r.le32(0) != RIFF || r.le32(8) != WEBP) throw format_error("not a WebP file");
+		if (r.le32(0) != riff::riff_id || r.le32(8) != riff::webp_type) throw format_error("not a WebP file");
 
 		const std::uint64_t riff_size = r.le32(4);
 		if (riff_size < 4 || riff_size > r.size() - 8) throw format_error("the WebP is cut short");
 
 		const auto riff_end = riff_size + 8;
-		std::optional<chunk> vp8x;
-		std::optional<chunk> xmp;
-		std::optional<chunk> exif;
+		std::optional<riff::chunk> vp8x;
+		std::optional<riff::chunk> xmp;
+		std::optional<riff::chunk> exif;
 		auto has_image = false;
-		std::uint64_t pos = 12;
+		std::uint64_t walked = 12;
 
-		while (pos < riff_end)
+		// Every byte of the form belongs to a whole chunk, pad byte and all.
+		riff::for_each_chunk(r, walked, riff_end, nullptr, [&](const riff::chunk& c)
 		{
-			if (riff_end - pos < 8) throw format_error("the WebP is cut short");
+			if (c.padded_size() > riff_end - c.start) throw format_error("a WebP chunk runs past the end of the file");
 
-			const chunk c{pos, r.le32(pos + 4)};
-			const auto tag = r.le32(pos);
+			if (c.id == riff::vp8x_id && !vp8x) vp8x = c;
+			else if (c.id == riff::xmp_id && !xmp) xmp = c;
+			else if (c.id == riff::exif_id && !exif) exif = c;
+			else if (c.id == riff::vp8_id || c.id == riff::vp8l_id || c.id == riff::anmf_id) has_image = true;
 
-			if (c.size() > riff_end - pos) throw format_error("a WebP chunk runs past the end of the file");
+			walked = c.end();
+			return true;
+		});
 
-			if (tag == VP8X && !vp8x) vp8x = c;
-			else if (tag == XMP_ && !xmp) xmp = c;
-			else if (tag == EXIF && !exif) exif = c;
-			else if (tag == VP8_ || tag == VP8L || tag == ANMF) has_image = true;
-
-			pos += c.size();
-		}
-
+		if (walked != riff_end) throw format_error("the WebP is cut short");
 		if (!has_image) throw format_error("the WebP holds no image");
 
-		const auto packet = serialize_packet(*update.xmp, xmp ? xmp->length : 0);
+		const auto packet = serialize_packet(*update.xmp, xmp ? xmp->size : 0);
 		if (packet.size() > 0xFFFFFFF0u) throw format_error("the XMP packet is too large for a WebP chunk");
 
 		std::vector<std::uint8_t> xmp_chunk;
-		append_le32(xmp_chunk, XMP_);
+		append_le32(xmp_chunk, riff::xmp_id);
 		append_le32(xmp_chunk, static_cast<std::uint32_t>(packet.size()));
 		append(xmp_chunk, packet);
 		if (packet.size() & 1u) xmp_chunk.push_back(0);
@@ -112,7 +94,7 @@ namespace libfiles::detail
 			if (!webp_canvas(r, width, height, has_alpha)) throw format_error("the WebP image header cannot be read");
 
 			std::vector<std::uint8_t> bytes;
-			append_le32(bytes, VP8X);
+			append_le32(bytes, riff::vp8x_id);
 			append_le32(bytes, 10);
 			append_le32(bytes, xmp_flag | (has_alpha ? alpha_flag : 0u));
 			append_le24(bytes, width - 1);
@@ -120,14 +102,14 @@ namespace libfiles::detail
 			changes.push_back({12, 0, std::move(bytes)});
 		}
 
-		if (xmp) changes.emplace_back(xmp->start, xmp->size(), std::move(xmp_chunk));
+		if (xmp) changes.emplace_back(xmp->start, xmp->padded_size(), std::move(xmp_chunk));
 		else changes.emplace_back(riff_end, 0, std::move(xmp_chunk));
 
 		// The EXIF a WebP already holds takes the edit too, as the toolkit wrote it; a WebP without one
 		// does not gain one. Some writers keep the JPEG signature at its start, and it is kept.
 		if (exif && touches_exif(update.legacy))
 		{
-			const auto payload = r.read(exif->start + 8, exif->length);
+			const auto payload = r.read(exif->payload(), static_cast<std::size_t>(exif->size));
 			const auto prefix = starts_with(payload, {"Exif\0\0", 6}) ? std::size_t{6} : std::size_t{0};
 			const bytes block(payload.begin() + static_cast<std::ptrdiff_t>(prefix), payload.end());
 
@@ -144,11 +126,11 @@ namespace libfiles::detail
 				data.insert(data.end(), edited.begin(), edited.end());
 
 				std::vector<std::uint8_t> exif_chunk;
-				append_le32(exif_chunk, EXIF);
+				append_le32(exif_chunk, riff::exif_id);
 				append_le32(exif_chunk, static_cast<std::uint32_t>(data.size()));
 				exif_chunk.insert(exif_chunk.end(), data.begin(), data.end());
 				if (data.size() & 1u) exif_chunk.push_back(0);
-				changes.push_back({exif->start, exif->size(), std::move(exif_chunk)});
+				changes.push_back({exif->start, exif->padded_size(), std::move(exif_chunk)});
 			}
 		}
 

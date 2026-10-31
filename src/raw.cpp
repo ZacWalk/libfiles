@@ -4,9 +4,8 @@
 
 // Purpose: Camera raw files, with LibRaw and Adobe's DNG SDK: their largest decodable embedded preview, or
 // their raw data developed into the caller's memory, and their scan - the metadata LibRaw parses, and a
-// thumbnail. Moved from Diffractor's loader and scan unchanged: the preview chosen and turned as it chose
-// and turned them, and the development's auto-brightness, which replicates dcraw_make_mem_image's while
-// writing straight into the caller's rows.
+// thumbnail. Previews retain Diffractor's selection and orientation rules; development uses LibRaw's
+// auto-brightness conversions while writing straight into the caller's rows.
 
 #include "libfiles/raw.h"
 
@@ -27,9 +26,13 @@ static_assert(dngVersion_Current >= dngVersion_1_7_0_0, "the DNG SDK predates JP
 
 #include <algorithm>
 #include <bit>
+#include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -38,6 +41,14 @@ static_assert(dngVersion_Current >= dngVersion_1_7_0_0, "the DNG SDK predates JP
 
 namespace libfiles
 {
+	int detail::raw_output_integer(const float value)
+	{
+		if (!std::isnormal(value)) return 0;
+		return static_cast<int>(std::clamp(static_cast<double>(value),
+			static_cast<double>(std::numeric_limits<int>::min()),
+			static_cast<double>(std::numeric_limits<int>::max())));
+	}
+
 	std::uint16_t detail::orientation_of_flip(const int flip)
 	{
 		constexpr std::uint16_t orientations[] = {1, 2, 4, 3, 5, 8, 6, 7};
@@ -315,8 +326,8 @@ namespace libfiles
 			{
 				int val, total, t_white = 0x2000, c;
 				// The 99th percentile white level.
-				auto perc = round_float(static_cast<float>(static_cast<double>(S.width) * static_cast<double>(S.height) *
-					O.auto_bright_thr));
+				const auto pixel_count = static_cast<std::uint64_t>(S.width) * static_cast<std::uint64_t>(S.height);
+				auto perc = detail::raw_output_integer(static_cast<float>(pixel_count) * O.auto_bright_thr);
 
 				if (IO.fuji_width) perc /= 2;
 
@@ -333,7 +344,7 @@ namespace libfiles
 					}
 				}
 
-				processor.gamma_curve(O.gamm[0], O.gamm[1], 2, round_float((t_white << 3) / O.bright));
+				processor.gamma_curve(O.gamm[0], O.gamm[1], 2, detail::raw_output_integer((t_white << 3) / O.bright));
 			}
 
 			frame_info frame = declared;
@@ -428,6 +439,152 @@ namespace libfiles
 			return std::string(s.substr(start, s.find_last_not_of(whitespace) - start + 1));
 		}
 
+		// LibRaw reading through a libfiles reader: a raw file the caller opened, over its own stream - a network
+		// share's, or memory - read through the reader's window, so LibRaw's many small reads cost the stream a
+		// read for each block they touch. The file's path, when given, is how LibRaw finds the companion file a
+		// few formats keep beside it. A read the stream fails ends the file where the read began, so LibRaw's own
+		// decoders stop there as they stop in a file cut short; the DNG SDK, to which LibRaw hands some files, does
+		// not ask what a read got, so the scan or load that read fails is failed afterwards. Nothing is thrown
+		// through LibRaw.
+		class reader_datastream final : public LibRaw_abstract_datastream
+		{
+		public:
+			reader_datastream(reader& source, std::filesystem::path name) : _source(source), _size(source.size()), _end(_size), _name(std::move(name))
+			{
+				const auto utf8 = _name.u8string();
+				_utf8_name.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+			}
+
+			int valid() override { return 1; }
+
+			int read(void* const data, const size_t size, const size_t count) override
+			{
+				if (size == 0 || count == 0 || _pos >= _end) return 0;
+
+				const auto wanted = count > std::numeric_limits<size_t>::max() / size ? std::numeric_limits<size_t>::max() : size * count;
+				const auto n = static_cast<size_t>(std::min<std::uint64_t>(wanted, _end - _pos));
+				if (!copy(data, n)) return 0;
+				return static_cast<int>(n / size);
+			}
+
+			int seek(const INT64 offset, const int whence) override
+			{
+				INT64 base = 0;
+
+				switch (whence)
+				{
+				case SEEK_SET: break;
+				case SEEK_CUR: base = static_cast<INT64>(_pos);
+					break;
+				case SEEK_END: base = static_cast<INT64>(_size);
+					break;
+				default: return -1;
+				}
+
+				// As fseek: before the start is refused, and past the end is where reads find nothing.
+				if (offset < -base || offset > std::numeric_limits<INT64>::max() - base) return -1;
+				_pos = static_cast<std::uint64_t>(base + offset);
+				return 0;
+			}
+
+			INT64 tell() override { return static_cast<INT64>(_pos); }
+			INT64 size() override { return static_cast<INT64>(_size); }
+			int eof() override { return _pos >= _end ? 1 : 0; }
+
+			int get_char() override
+			{
+				unsigned char c = 0;
+				return read(&c, 1, 1) == 1 ? c : -1;
+			}
+
+			// As fgets: up to size - 1 characters, the line's end among them.
+			char* gets(char* const text, const int size) override
+			{
+				if (size <= 0 || _pos >= _end) return nullptr;
+
+				auto n = 0;
+
+				while (n < size - 1)
+				{
+					const auto c = get_char();
+					if (c < 0) break;
+					text[n++] = static_cast<char>(c);
+					if (c == '\n') break;
+				}
+
+				if (n == 0) return nullptr;
+				text[n] = 0;
+				return text;
+			}
+
+			// LibRaw asks for "%d" or "%f" alone, as its own file stream assumes: a number after any spaces, read
+			// as an istream reads one, up to the first character that is not its own.
+			int scanf_one(const char* const format, void* const value) override
+			{
+				auto c = get_char();
+				while (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v') c = get_char();
+				if (c < 0) return -1;
+
+				const auto start = _pos - 1;
+				char token[32] = {static_cast<char>(c)};
+				auto length = 1 + read(token + 1, 1, sizeof(token) - 2);
+				token[length] = 0;
+
+				const auto* first = token;
+				if (*first == '+') ++first;
+				const auto* const last = token + length;
+
+				std::from_chars_result parsed{};
+
+				if (std::string_view(format) == "%d") parsed = std::from_chars(first, last, *static_cast<int*>(value));
+				else parsed = std::from_chars(first, last, *static_cast<float*>(value));
+
+				if (parsed.ec != std::errc{})
+				{
+					_pos = start;
+					return -1;
+				}
+
+				_pos = start + static_cast<std::uint64_t>(parsed.ptr - token);
+				return 1;
+			}
+
+			const char* fname() override { return _utf8_name.empty() ? nullptr : _utf8_name.c_str(); }
+#ifdef LIBRAW_WIN32_UNICODEPATHS
+			const wchar_t* wfname() override { return _name.empty() ? nullptr : _name.c_str(); }
+#endif
+
+			// A read the stream failed: what LibRaw made of the file is not the file's.
+			bool failed() const { return _failed; }
+
+		private:
+			bool copy(void* const data, const size_t n)
+			{
+				try
+				{
+					_source.read(_pos, data, n);
+				}
+				catch (const read_error&)
+				{
+					_failed = true;
+					_end = std::min(_end, _pos);
+					return false;
+				}
+
+				_pos += n;
+				return true;
+			}
+
+			reader& _source;
+			// What the stream says it holds, which LibRaw is told; and where reading ends, there or where a read failed.
+			std::uint64_t _size = 0;
+			std::uint64_t _end = 0;
+			std::uint64_t _pos = 0;
+			bool _failed = false;
+			std::filesystem::path _name;
+			std::string _utf8_name;
+		};
+
 		// What an index takes from LibRaw's parse.
 		void read_index(const libraw_data_t& data, raw_scan_result& result)
 		{
@@ -498,80 +655,116 @@ namespace libfiles
 				write_bitmap(thumbnail, image_data, sink, result.thumbnail);
 			}
 		}
+
+		// A scan of the file open() gives LibRaw: its path, or a stream the caller opened.
+		template <typename Open>
+		raw_scan_result scan_opened(const Open& open, const scan_intent intent, image_sink* const thumbnail_sink)
+		{
+			raw_scan_result result;
+
+			try
+			{
+				const scan_lease processor;
+
+				if (open(*processor) == LIBRAW_SUCCESS)
+				{
+					if (processor->adjust_sizes_info_only() == LIBRAW_SUCCESS)
+					{
+						read_index(processor->imgdata, result);
+						if (intent == scan_intent::inspect) result.listing = detail::list_raw(processor->imgdata);
+						result.success = true;
+					}
+
+					if (thumbnail_sink) read_thumbnail(*processor, *thumbnail_sink, result);
+				}
+			}
+			catch (const std::bad_alloc&)
+			{
+				result = {};
+			}
+
+			return result;
+		}
+
+		template <typename Open>
+		raw_load_result load_opened(const Open& open, image_sink& sink, const bool prefer_preview)
+		{
+			raw_load_result result;
+
+			try
+			{
+				const auto rp = create_decode_processor();
+				if (open(*rp.processor) != LIBRAW_SUCCESS)
+				{
+					result.decoded.error = "LibRaw could not open the file";
+					return result;
+				}
+
+				const auto& image_data = rp.processor->imgdata;
+
+				// The preview is often large enough, and costs a fraction of a development.
+				if (prefer_preview && unpack_decodable_thumb(*rp.processor))
+				{
+					const auto& thumbnail = image_data.thumbnail;
+
+					if (thumbnail.tlength > 0)
+					{
+						if (LIBRAW_THUMBNAIL_JPEG == thumbnail.tformat)
+							result.preview = take_jpeg_preview(thumbnail, image_data, result);
+						else if (LIBRAW_THUMBNAIL_BITMAP == thumbnail.tformat)
+							result.preview = take_bitmap_preview(thumbnail, image_data, sink, result);
+					}
+
+					if (result.preview)
+					{
+						result.success = true;
+						return result;
+					}
+
+					result.decoded = {};
+				}
+
+				develop(*rp.processor, sink, result);
+				result.success = result.decoded.success;
+			}
+			catch (const std::bad_alloc&)
+			{
+				result = {};
+				result.decoded.error = "out of memory";
+			}
+
+			return result;
+		}
 	}
 
 	raw_scan_result scan_raw(const std::filesystem::path& path, const scan_intent intent, image_sink* const thumbnail_sink)
 	{
-		raw_scan_result result;
+		return scan_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, intent, thumbnail_sink);
+	}
 
-		try
-		{
-			const scan_lease processor;
-
-			if (processor->open_file(path.c_str()) == LIBRAW_SUCCESS)
-			{
-				if (processor->adjust_sizes_info_only() == LIBRAW_SUCCESS)
-				{
-					read_index(processor->imgdata, result);
-					if (intent == scan_intent::inspect) result.listing = detail::list_raw(processor->imgdata);
-					result.success = true;
-				}
-
-				if (thumbnail_sink) read_thumbnail(*processor, *thumbnail_sink, result);
-			}
-		}
-		catch (const std::bad_alloc&)
-		{
-			result = {};
-		}
-
+	raw_scan_result scan_raw(reader& source, const scan_intent intent, image_sink* const thumbnail_sink, const std::filesystem::path& name)
+	{
+		// Declared before the scan, so it outlives the LibRaw instance that reads it.
+		reader_datastream stream(source, name);
+		auto result = scan_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, intent, thumbnail_sink);
+		if (stream.failed()) result = {};
 		return result;
 	}
 
 	raw_load_result load_raw(const std::filesystem::path& path, image_sink& sink, const bool prefer_preview)
 	{
-		raw_load_result result;
+		return load_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, sink, prefer_preview);
+	}
 
-		try
-		{
-			const auto rp = create_decode_processor();
-			if (rp.processor->open_file(path.c_str()) != LIBRAW_SUCCESS)
-			{
-				result.decoded.error = "LibRaw could not open the file";
-				return result;
-			}
+	raw_load_result load_raw(reader& source, image_sink& sink, const bool prefer_preview, const std::filesystem::path& name)
+	{
+		reader_datastream stream(source, name);
+		auto result = load_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, sink, prefer_preview);
 
-			const auto& image_data = rp.processor->imgdata;
-
-			// The preview is often large enough, and costs a fraction of a development.
-			if (prefer_preview && unpack_decodable_thumb(*rp.processor))
-			{
-				const auto& thumbnail = image_data.thumbnail;
-
-				if (thumbnail.tlength > 0)
-				{
-					if (LIBRAW_THUMBNAIL_JPEG == thumbnail.tformat)
-						result.preview = take_jpeg_preview(thumbnail, image_data, result);
-					else if (LIBRAW_THUMBNAIL_BITMAP == thumbnail.tformat)
-						result.preview = take_bitmap_preview(thumbnail, image_data, sink, result);
-				}
-
-				if (result.preview)
-				{
-					result.success = true;
-					return result;
-				}
-
-				result.decoded = {};
-			}
-
-			develop(*rp.processor, sink, result);
-			result.success = result.decoded.success;
-		}
-		catch (const std::bad_alloc&)
+		if (stream.failed())
 		{
 			result = {};
-			result.decoded.error = "out of memory";
+			result.decoded.error = "the file could not be read";
 		}
 
 		return result;

@@ -16,8 +16,6 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint16_t tag_exif_ifd = 0x8769;
-
 		std::uint64_t type_size(const std::uint16_t type)
 		{
 			switch (type)

@@ -41,6 +41,31 @@ of this list; record lasting behaviour in [design.md](design.md).
 - [ ] **Animated WebP.** `decode` refuses animated WebP. Add frame decoding
       when a consumer shows animation (ImageWalker 3.0 plans animated GIF and
       WebP), with canvas size, frame offsets, blending and delays tested.
+- [ ] **TrueHD headers.** A TrueHD stream - Blu-ray, Matroska - has no sample
+      rate or channels, so its file's scan is not complete and Diffractor asks
+      FFmpeg. Done when a TrueHD major sync header gives both, as FFmpeg reports
+      them over Blu-ray and Matroska samples.
+- [ ] **The ID3v2 tag in an ASF "ID3" descriptor.** FFmpeg reads its frames;
+      libfiles describes it. Done when its frames are tags as an MP3's are,
+      without its PRIV XMP replacing the packet `read_packet` finds.
+- [ ] **AVCHD daylight saving.** The camcorder date adds an hour when the
+      camera's daylight-saving flag is set; ExifTool and MediaInfo do not. Done
+      when a summer recording from a Sony camera confirms or changes the rule.
+- [ ] **One wording for binary tag values.** The ASF scanner repeats
+      `media_tags.cpp`'s descriptions of binary values ("N bytes") and its
+      picture types. Done when both take them from `media_internal.h`.
+- [ ] **A raw file's date and EXIF's place in the shared types.** `scan_raw`
+      keeps its own `raw_date`, and `exif_metadata` its own latitude and
+      longitude beside an altitude that cannot tell sea level from none. Done
+      when both use `types.h`'s `date` and `gps_position`, with an optional
+      altitude, and Diffractor and ImageWalker read them.
+
+## Writing
+
+- [ ] **MP4's iTunes atoms.** An edit writes an MP4's copyright, keywords,
+      rating and creation date, but none of the `ilst` atoms players and
+      Windows read the title, artist, album, genre, comment, track and disc
+      from. Done when it writes them, and the round trip's MP4 row holds them.
 
 ## Listing
 

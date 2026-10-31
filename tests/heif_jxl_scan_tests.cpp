@@ -10,8 +10,10 @@
 #include "test.h"
 
 #include "builders.h"
+#include "libfiles/media.h"
 #include "libfiles/scan.h"
 #include "libfiles/write.h"
+#include "media_internal.h"
 
 #include <algorithm>
 #include <cstring>
@@ -21,6 +23,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -164,6 +167,26 @@ namespace
 	bytes auxc(const std::string_view urn)
 	{
 		return iso_full_box("auxC", 0, 0, builder().raw(urn).u8(0).b);
+	}
+
+	// An uncompressed image's layout, version 0: components of 8 bits each, the i-th the i-th of cmpd, unsampled
+	// and interleaved by pixel, in one tile.
+	bytes uncc(const unsigned components)
+	{
+		builder b;
+		b.be32(0).be32(components);
+		for (unsigned i = 0; i < components; ++i) b.be16(i).u8(7).u8(0).u8(0);
+		b.u8(0).u8(1).u8(0).u8(0).be32(0).be32(0).be32(0).be32(0).be32(0);
+		return iso_full_box("uncC", 0, 0, b.b);
+	}
+
+	// What each component is: 4, 5, 6 and 7 are red, green, blue and alpha.
+	bytes cmpd(const std::vector<unsigned>& types)
+	{
+		builder b;
+		b.be32(static_cast<std::uint32_t>(types.size()));
+		for (const auto type : types) b.be16(type);
+		return iso_box("cmpd", b.b);
 	}
 
 	struct heif_item
@@ -572,6 +595,8 @@ TEST("heif auxiliary images: alpha with premultiplication, depth, and thumbnails
 
 	CHECK(result.success);
 	CHECK_STR(result.pixel_format, "yuv420");
+	// The alpha image goes with the picture's samples, as the legacy name never said.
+	CHECK_STR(result.picture.name(), "yuva420");
 	CHECK_STR(row_value(result.structure, "Alpha channel"), "present, premultiplied");
 	CHECK_STR(row_value(result.structure, "Pixel aspect ratio"), "4:3");
 	CHECK_STR(row_value(result.structure, "Thumbnails"), "2");
@@ -586,6 +611,49 @@ TEST("heif auxiliary images: alpha with premultiplication, depth, and thumbnails
 	auto unnamed = s;
 	unnamed.items[1].properties.pop_back();
 	CHECK(!scan_bytes(make_heif(unnamed)).error.empty());
+}
+
+TEST("heif picture has the alpha libheif finds: an uncompressed image's own, and a grid's tiles'")
+{
+	// Red, green, blue and alpha, uncompressed: the alpha is a component, not an image.
+	heif_spec unci;
+	unci.properties = {ispe(64, 32), uncc(4), cmpd({4, 5, 6, 7})};
+	unci.items.push_back(image_item(1, "unci", {{1, false}, {2, true}, {3, true}}));
+
+	const auto uncompressed = scan_bytes(make_heif(unci), libfiles::scan_intent::inspect);
+	CHECK(uncompressed.success);
+	CHECK_STR(row_value(uncompressed.structure, "Alpha channel"), "present");
+	CHECK_STR(uncompressed.picture.name(), "rgba");
+
+	// A grid with no alpha image of its own, whose tiles each have one.
+	heif_spec s;
+	s.primary = 10;
+	s.properties = {ispe(512, 256), hvcc(2, 10, 10), ispe(1024, 256), auxc("urn:mpeg:hevc:2015:auxid:1"), hvcc(0)};
+
+	for (std::uint32_t tile = 1; tile <= 2; ++tile)
+	{
+		auto item = image_item(tile, "hvc1", {{1, false}, {2, true}});
+		item.hidden = true;
+		s.items.push_back(item);
+		s.items.push_back(image_item(tile + 2, "hvc1", {{1, false}, {5, true}, {4, false}}));
+		s.references.push_back({"auxl", tile + 2, {tile}});
+	}
+
+	heif_item grid;
+	grid.id = 10;
+	grid.type = "grid";
+	grid.data = builder().u8(0).u8(0).u8(0).u8(1).be16(1024).be16(256).b;
+	grid.in_idat = true;
+	grid.properties = {{3, false}};
+	s.items.push_back(grid);
+	s.references.push_back({"dimg", 10, {1, 2}});
+
+	const auto file = make_heif(s);
+	const auto tiled = scan_bytes(file, libfiles::scan_intent::inspect);
+	CHECK(tiled.success);
+	CHECK_STR(row_value(tiled.structure, "Alpha channel"), "present");
+	CHECK_STR(tiled.picture.name(), "yuva422 10bit");
+	CHECK(scan_bytes(file).picture == tiled.picture);
 }
 
 TEST("avif scan reads the AV1 configuration's chroma and depth")
@@ -603,14 +671,67 @@ TEST("avif scan reads the AV1 configuration's chroma and depth")
 	const auto mono = scan_bytes(avif(av1c(true, 1, 1, 8)), libfiles::scan_intent::inspect);
 	CHECK_STR(mono.pixel_format, "grayscale");
 	CHECK_STR(row_value(mono.structure, "Luma depth"), "8 bits");
+	CHECK(mono.picture == (libfiles::picture_format{libfiles::chroma_format::gray, 8}));
 
 	CHECK_STR(scan_bytes(avif(av1c(false, 1, 1, 10))).pixel_format, "yuv420");
 	CHECK_STR(scan_bytes(avif(av1c(false, 1, 0, 8))).pixel_format, "yuv422");
 	CHECK_STR(scan_bytes(avif(av1c(false, 0, 0, 12))).pixel_format, "yuv444");
 	CHECK_STR(row_value(scan_bytes(avif(av1c(false, 0, 0, 12)), libfiles::scan_intent::inspect).structure, "Luma depth"), "12 bits");
 
-	// Subsampled vertically alone is no chroma format libheif knows, which Diffractor named RGB.
+	// The picture names the depth the configuration states, as a video stream's does.
+	CHECK_STR(scan_bytes(avif(av1c(false, 1, 1, 10))).picture.name(), "yuv420 10bit");
+	CHECK_STR(scan_bytes(avif(av1c(false, 1, 0, 8))).picture.name(), "yuv422");
+	CHECK_STR(scan_bytes(avif(av1c(false, 0, 0, 12))).picture.name(), "yuv444 12bit");
+
+	// Subsampled vertically alone is no chroma format libheif knows, which Diffractor named RGB; the
+	// picture's chroma is unknown, for that is what it is.
 	CHECK_STR(scan_bytes(avif(av1c(false, 0, 1, 8))).pixel_format, "rgb");
+	CHECK(scan_bytes(avif(av1c(false, 0, 1, 8))).picture.chroma == libfiles::chroma_format::unknown);
+}
+
+TEST("a HEIF still and a video read the same hvcC and av1C records as the same picture")
+{
+	// libheif and FFmpeg part ways only over records that are malformed: a well-formed one reads as the
+	// same chroma and depth in each, so the two readers share this test rather than their code.
+	const auto still = [](const bytes& config, const std::string_view item_type)
+	{
+		heif_spec s;
+
+		if (item_type == "av01")
+		{
+			s.major = "avif";
+			s.brands = {"avif", "mif1", "miaf"};
+		}
+
+		s.properties = {ispe(300, 200), config};
+		s.items.push_back(image_item(1, item_type, {{1, false}, {2, true}}));
+		return scan_bytes(make_heif(s)).picture;
+	};
+
+	const auto video = [](const auto parse, const bytes& config)
+	{
+		libfiles::detail::video_header h;
+		CHECK(parse(std::span(config).subspan(8), h));
+		libfiles::video_format v;
+		libfiles::detail::apply_video_header(h, v);
+		return v.picture();
+	};
+
+	for (const auto& [chroma, bits] : std::vector<std::pair<unsigned, unsigned>>{{0, 8}, {1, 8}, {1, 10}, {2, 10}, {3, 12}})
+	{
+		const auto config = hvcc(chroma, bits, bits);
+		CHECK(still(config, "hvc1").chroma != libfiles::chroma_format::unknown);
+		CHECK(still(config, "hvc1") == video(libfiles::detail::parse_hevc_config, config));
+	}
+
+	for (const auto& [monochrome, x, y, bits] : std::vector<std::tuple<bool, unsigned, unsigned, unsigned>>{
+		     {true, 1, 1, 8}, {false, 1, 1, 10}, {false, 1, 0, 8}, {false, 0, 0, 12},
+	     })
+	{
+		const auto config = av1c(monochrome, x, y, bits);
+		CHECK(still(config, "av01").chroma != libfiles::chroma_format::unknown);
+		CHECK(still(config, "av01") == video(libfiles::detail::parse_av1_config, config));
+	}
 }
 
 TEST("heif files libheif refuses are refused")
@@ -949,6 +1070,12 @@ TEST("jxl bare codestream gives its size, orientation and channels")
 	CHECK_STR(scan_bytes(codestream({.grey = true, .alpha = true})).pixel_format, "grayscale");
 	CHECK_STR(scan_bytes(codestream({.alpha = true})).pixel_format, "rgba");
 	CHECK_STR(scan_bytes(codestream({.alpha = true, .premultiplied = true})).pixel_format, "rgba");
+
+	// The picture keeps the alpha a gray image's legacy name drops.
+	CHECK(rgb.picture == (libfiles::picture_format{libfiles::chroma_format::rgb, 8}));
+	CHECK_STR(scan_bytes(codestream({.grey = true})).picture.name(), "gray");
+	CHECK_STR(scan_bytes(codestream({.grey = true, .alpha = true})).picture.name(), "graya");
+	CHECK_STR(scan_bytes(codestream({.alpha = true})).picture.name(), "rgba");
 
 	const auto small = scan_bytes(codestream({.width = 256, .height = 128, .small = true}));
 	CHECK_EQ(small.width, 256u);

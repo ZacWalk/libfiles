@@ -12,6 +12,7 @@
 #include "legacy.h"
 #include "libfiles/iptc.h"
 #include "libfiles/write.h"
+#include "round_trip.h"
 
 #include <cstring>
 #include <format>
@@ -550,6 +551,36 @@ TEST("an interrupted jpeg patch reads whole, each field old or new")
 	}
 }
 
+TEST("a rating edit brings the percent the block holds with it")
+{
+	// Rating and RatingPercent both at one star; a reader takes the later, the percent.
+	builder t;
+	t.raw("II").le16(42).le32(8).le16(2);
+	t.le16(0x4746).le16(3).le32(1).le16(1).le16(0);
+	t.le16(0x4749).le16(3).le32(1).le16(1).le16(0);
+	t.le32(0);
+
+	builder j;
+	j.u8(0xFF).u8(0xD8);
+	jpeg_segment(j, 0xE0, builder().raw(std::string_view("JFIF\0", 5)).zeros(9).b);
+	jpeg_segment(j, 0xE1, builder().raw(std::string_view("Exif\0\0", 6)).raw(t.b).b);
+	jpeg_segment(j, 0xC0, builder().u8(8).be16(20).be16(30).u8(1).u8(1).u8(0x11).u8(0).b);
+	jpeg_segment(j, 0xDA, builder().u8(1).zeros(5).b);
+	j.zeros(16).u8(0xFF).u8(0xD9);
+
+	libfiles::metadata_update u;
+	u.legacy.rating = 5;
+	libfiles::write_plan plan;
+	const auto scanned = scan_bytes(update(j.b, u, &plan));
+	CHECK(scanned.success);
+	CHECK(plan.in_place());
+
+	const auto exif = libfiles::read_exif(scanned.metadata.exif);
+	CHECK(exif.rating && *exif.rating == 5);
+	const auto percent = tiff_value(scanned.metadata.exif, 0x4749);
+	CHECK(percent && le16(*percent, 0) == 99);
+}
+
 TEST("an interrupted tiff update reads whole, each value old or new")
 {
 	// First the packet and the IPTC the file lacks are appended with a new IFD0 while the description
@@ -639,4 +670,23 @@ TEST("an interrupted psd packet patch reads whole")
 		const auto packet = to_string(scanned.metadata.xmp);
 		CHECK(packet == packet_of(original) || packet == packet_of(rewritten));
 	}
+}
+
+TEST("every photo format reads back the edits it keeps outside its packet")
+{
+	// EXIF and IPTC between them keep every property of a photo; the title and the place IPTC alone.
+	const std::set<std::string_view> exif_and_iptc = {
+		"city", "copyright", "country", "creators", "credit", "description", "digitized", "keywords", "location", "orientation",
+		"rating", "source", "state", "taken", "title", "year",
+	};
+
+	check_round_trip("jpeg", make_jpeg(false), exif_and_iptc);
+	check_round_trip("jpeg with exif", make_jpeg(true), exif_and_iptc);
+	check_round_trip("tiff", make_tiff_file(), exif_and_iptc);
+
+	builder psd;
+	psd.raw("8BPS").be16(1).zeros(6).be16(3).be32(4).be32(4).be16(8).be16(3);
+	psd.be32(0).be32(0);
+	psd.be32(0).be16(0).zeros(48);
+	check_round_trip("psd", psd.b, exif_and_iptc);
 }

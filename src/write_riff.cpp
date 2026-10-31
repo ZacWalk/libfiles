@@ -12,11 +12,16 @@
 // the form, which the form's size then takes in, and only then does the old chunk become JUNK. Wherever
 // the update is interrupted, the file reads whole.
 //
-// FFmpeg reads an AVI's INFO only before `movi`, and its `_PMX` only after `movi`, in the first form;
-// what is written keeps to those places, and an AVI whose first form cannot grow - one that continues in
-// AVIX forms - takes only what fits.
+// The scan reads an AVI's packet from the first `_PMX` after `movi` in its first form, so that is where it
+// is written. It reads every INFO list in the first form and, where two give the same field, takes the one
+// before `movi`; so the list edited is the last before `movi`, else the last there is, and one that has to
+// move takes room before `movi` where there is some. An AVI whose first form cannot grow - one that
+// continues in AVIX forms - takes only what fits. The forms and chunks are read by riff_internal.h, as the
+// media scan reads them, and only from a file that stands whole.
 
 #include "legacy.h"
+#include "riff_internal.h"
+#include "vocabulary_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -24,29 +29,10 @@
 
 namespace libfiles::detail
 {
+	using namespace riff;
+
 	namespace
 	{
-		constexpr std::uint32_t fourcc(const char (&s)[5])
-		{
-			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
-		}
-
-		constexpr auto riff_id = fourcc("RIFF");
-		constexpr auto list_id = fourcc("LIST");
-		constexpr auto junk_id = fourcc("JUNK");
-		constexpr auto pmx_id = fourcc("_PMX");
-		constexpr auto disp_id = fourcc("DISP");
-		constexpr auto idit_id = fourcc("IDIT");
-		constexpr auto wave_type = fourcc("WAVE");
-		constexpr auto avi_type = fourcc("AVI ");
-		constexpr auto avix_type = fourcc("AVIX");
-		constexpr auto info_type = fourcc("INFO");
-		constexpr auto hdrl_type = fourcc("hdrl");
-		constexpr auto movi_type = fourcc("movi");
-
 		// The IDIT chunk's payload: "Www Mmm DD HH:MM:SS YYYY\n" and a NUL.
 		constexpr std::uint32_t idit_size = 26;
 
@@ -54,126 +40,6 @@ namespace libfiles::detail
 		// then what makes it the chunk read and frees what it replaces.
 		constexpr std::uint8_t reveal = 0;
 		constexpr std::uint8_t commit = 1;
-
-		struct chunk
-		{
-			std::uint64_t start = 0;
-			std::uint32_t id = 0;
-			std::uint32_t size = 0;
-			// A LIST's or RIFF's type.
-			std::uint32_t type = 0;
-
-			std::uint64_t payload() const { return start + 8; }
-			std::uint64_t padded_size() const { return 8ull + size + (size & 1); }
-			std::uint64_t end() const { return start + padded_size(); }
-		};
-
-		struct form
-		{
-			chunk header;
-			std::vector<chunk> children;
-
-			std::uint64_t data_end() const { return header.start + 8 + header.size; }
-		};
-
-		struct layout
-		{
-			std::vector<form> forms;
-			bool avi = false;
-			// Where the first form's movie data ends, or 0.
-			std::uint64_t movi_end = 0;
-
-			const form& first() const { return forms.front(); }
-		};
-
-		std::vector<chunk> parse_children(reader& r, std::uint64_t pos, const std::uint64_t end)
-		{
-			std::vector<chunk> out;
-
-			while (end > pos && end - pos >= 8)
-			{
-				chunk c;
-				c.start = pos;
-				c.id = r.le32(pos);
-				c.size = r.le32(pos + 4);
-				if (c.size > end - pos - 8) throw format_error("a RIFF chunk runs past the end of its form");
-				if ((c.id == list_id || c.id == riff_id) && c.size >= 4) c.type = r.le32(pos + 8);
-				out.push_back(c);
-				pos = c.end();
-			}
-
-			return out;
-		}
-
-		layout read_layout(reader& r)
-		{
-			layout l;
-			const auto size = r.size();
-			std::uint64_t pos = 0;
-
-			while (size - pos >= 12 && r.le32(pos) == riff_id)
-			{
-				form f;
-				f.header.start = pos;
-				f.header.id = riff_id;
-				f.header.size = r.le32(pos + 4);
-				f.header.type = r.le32(pos + 8);
-
-				if (l.forms.empty())
-				{
-					if (f.header.type != wave_type && f.header.type != avi_type) throw format_error("the RIFF file is neither WAV nor AVI");
-					l.avi = f.header.type == avi_type;
-				}
-				else if (!l.avi || f.header.type != avix_type)
-				{
-					break;
-				}
-
-				if (f.header.size < 4 || f.header.size > size - pos - 8) throw format_error("a RIFF form runs past the end of the file");
-
-				f.children = parse_children(r, pos + 12, f.data_end());
-				pos = f.data_end() + (f.header.size & 1);
-				l.forms.push_back(std::move(f));
-			}
-
-			if (l.forms.empty()) throw format_error("the file is not a RIFF file");
-
-			for (const auto& c : l.first().children)
-			{
-				if (c.id == list_id && c.type == movi_type)
-				{
-					l.movi_end = c.end();
-					break;
-				}
-			}
-
-			if (l.avi && l.movi_end == 0) throw format_error("the AVI has no movie data");
-			return l;
-		}
-
-		// The packet chunk readers take. FFmpeg reads a WAV's last and an AVI's first after `movi` in the first
-		// form; any other is read only when there is no such chunk, the last as the toolkit reads it.
-		const chunk* current_packet(const layout& l)
-		{
-			const chunk* last = nullptr;
-
-			for (const auto& c : l.first().children)
-			{
-				if (c.id != pmx_id) continue;
-				if (l.avi && c.start >= l.movi_end) return &c;
-				last = &c;
-			}
-
-			if (l.avi)
-			{
-				for (std::size_t i = 1; i < l.forms.size(); ++i)
-				{
-					for (const auto& c : l.forms[i].children) if (c.id == pmx_id) last = &c;
-				}
-			}
-
-			return last;
-		}
 
 		bytes make_chunk(const std::uint32_t id, const std::span<const std::uint8_t> payload)
 		{
@@ -197,13 +63,13 @@ namespace libfiles::detail
 		{
 			std::vector<std::pair<std::uint32_t, std::string>> fields;
 
-			if (e.title) fields.emplace_back(fourcc("INAM"), *e.title);
-			if (e.artist) fields.emplace_back(fourcc("IART"), *e.artist);
-			if (e.comment) fields.emplace_back(fourcc("ICMT"), *e.comment);
-			if (e.copyright) fields.emplace_back(fourcc("ICOP"), *e.copyright);
-			if (e.genre) fields.emplace_back(fourcc("IGNR"), *e.genre);
-			if (e.date_digitized) fields.emplace_back(fourcc("ICRD"), *e.date_digitized);
-			else if (e.year) fields.emplace_back(fourcc("ICRD"), std::to_string(*e.year));
+			if (e.title) fields.emplace_back(fourcc(vocabulary::info_title), *e.title);
+			if (e.artist) fields.emplace_back(fourcc(vocabulary::info_artist), *e.artist);
+			if (e.comment) fields.emplace_back(fourcc(vocabulary::info_comment), *e.comment);
+			if (e.copyright) fields.emplace_back(fourcc(vocabulary::info_copyright), *e.copyright);
+			if (e.genre) fields.emplace_back(fourcc(vocabulary::info_genre), *e.genre);
+			if (e.date_digitized) fields.emplace_back(fourcc(vocabulary::info_created), *e.date_digitized);
+			else if (e.year) fields.emplace_back(fourcc(vocabulary::info_created), std::to_string(*e.year));
 
 			if (fields.empty()) return {};
 
@@ -250,7 +116,7 @@ namespace libfiles::detail
 
 			auto day_only = *d;
 			day_only.hour = day_only.minute = day_only.second = 0;
-			day_only.has_zone = false;
+			day_only.zone = libfiles::date::time_zone::unstated;
 			const auto since_1970 = seconds_since(1970, day_only) / 86400;
 			const auto weekday = static_cast<std::size_t>(((since_1970 % 7) + 7) % 7);
 
@@ -278,15 +144,8 @@ namespace libfiles::detail
 
 	void read_riff_packet(reader& r, packet_reading& out)
 	{
-		const auto l = read_layout(r);
-
-		if (const auto* const c = current_packet(l))
-		{
-			const auto packet = r.read(c->payload(), c->size);
-			out.packet.assign(packet.begin(), packet.end());
-			while (!out.packet.empty() && out.packet.back() == '\0') out.packet.pop_back();
-		}
-
+		const auto packet = read_current_packet(r, read_layout(r));
+		out.packet.assign(packet.begin(), packet.end());
 		out.readable = true;
 	}
 
@@ -390,7 +249,7 @@ namespace libfiles::detail
 		};
 
 		const auto anywhere = [](const chunk&) { return true; };
-		// Where FFmpeg reads an AVI's packet: after `movi`, in the first form.
+		// Where the scan reads an AVI's packet, and so where it is written: after `movi`, in the first form.
 		const auto after_movi = [&l, &first](const chunk& c) { return !l.avi || (c.start >= l.movi_end && c.start < first.data_end()); };
 		const auto before_movi = [&l](const chunk& c) { return !l.avi || c.start < l.movi_end; };
 
@@ -420,7 +279,8 @@ namespace libfiles::detail
 			}
 		}
 
-		// LIST INFO. Readers take the last, and FFmpeg reads an AVI's only before `movi`.
+		// LIST INFO: the list whose fields the scan reads over any other's - an AVI's last before `movi`, else the
+		// last in the form.
 		{
 			const chunk* info = nullptr;
 
@@ -438,7 +298,8 @@ namespace libfiles::detail
 				}
 				else if (!info || !same_bytes(*info, *updated))
 				{
-					// An INFO list that has to move goes before an AVI's `movi`, where FFmpeg reads it.
+					// An INFO list that has to move takes a JUNK chunk before an AVI's `movi` where one has room,
+					// where its fields go on winning over a list after `movi`; else it goes to the end of the form.
 					put(info, *updated, anywhere, before_movi);
 				}
 			}

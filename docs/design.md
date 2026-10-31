@@ -19,13 +19,140 @@ Three rules shape everything here:
   ordered to survive interruption; anything larger is a one-pass rewrite to a
   destination the caller has staged.
 
+## The layers
+
+Each concept has one owner, in one of six layers, so that a photo, a raw file
+and a recording describe the same thing the same way, and a reader and a
+writer of the same field agree:
+
+- **Identification.** `identify()` names a file from its first bytes, once, for
+  every operation: `scan_media`, `read_packet` and `plan_update` dispatch on it.
+  It looks past an ID3v2 tag, which says nothing of what follows it.
+  `file_types()` is the one table of what each operation does with each format.
+- **Structure.** One reader decodes each family of containers, for the scanners
+  and the writers alike: ISO base media box headers (`bmff_internal.h`) for MP4,
+  HEIF and the JPEG XL container; RIFF chunks (`riff_internal.h`) for WAV, AVI
+  and WebP; ID3v2 tags (`id3.cpp`) for MPEG audio and the ID3 a WAV, AIFF or
+  FLAC carries; TIFF directories (`tiff_internal.h`) for EXIF and TIFF. What a
+  damaged structure means stays each reader's rule, since each follows its own
+  reference - FFmpeg, libheif, libjxl, libwebp, the XMP Toolkit. Where two
+  references read one record differently, as libheif and FFmpeg read `av1C`,
+  their readers share a test rather than code: a still and a video read a
+  well-formed record as the same picture.
+- **Values.** `types.h` holds what every area shares - dates, ratings, places,
+  picture formats, orientation, embedded images and the scans' own types - and
+  each conversion has one rule, which readers and writers both use: Windows'
+  rating percent; the reader's date rule (`parse_media_date`) and the
+  writer's (`parse_xmp_date`); XMP's GPS text (`gps.cpp`); text decoding
+  (`text.cpp`). Tags are named once: TIFF's and EXIF's numbers in
+  `tiff_internal.h`, ID3's, RIFF INFO's and ASF's names in
+  `vocabulary_internal.h`.
+- **Scans.** `scan` reads a still, `scan_media` a recording and `scan_raw` a
+  camera raw file, each in its format's own terms, with the shared values
+  beside them: `picture` beside the `pixel_format` each scanner always
+  reported, a video's `orientation()` beside its rotation and mirror, and
+  `thumbnails()` beside the thumbnails' byte ranges.
+- **Properties.** `properties.h` reads what an organizer files a file by from
+  each block by one table - `properties_from_exif`, `properties_from_iptc`,
+  `properties_from_xmp`, and a recording's container tags in `scan_media` -
+  and reconciles the blocks by one rule: the packet first, then what the file
+  keeps outside it (`read_properties`).
+- **Writers.** `plan_update` writes the packet, and each legacy field where the
+  format keeps it, by the tables the readers read; every writable format is
+  held to reading back what it wrote.
+
+### What each format is read and written as
+
+`file_types()`, in the default build; a codec option that is off removes its
+format's decoding:
+
+| Format | MIME | scan | scan_media | decode | decode_document | read_packet | update | encode |
+|---|---|---|---|---|---|---|---|---|
+| JPEG | `image/jpeg` | yes |  | yes | yes | yes | yes | yes |
+| PNG | `image/png` | yes |  | yes | yes | yes | yes | yes |
+| WebP | `image/webp` | yes |  | yes |  | yes | yes | yes |
+| GIF | `image/gif` | yes |  |  | yes | yes | yes |  |
+| Photoshop | `image/vnd.adobe.photoshop` | yes |  | yes | yes | yes | yes |  |
+| BMP | `image/bmp` | yes |  |  | yes |  |  |  |
+| TIFF | `image/tiff` | yes |  |  | yes | yes | yes |  |
+| HEIF and AVIF | `image/heif` | yes |  | yes |  | yes |  |  |
+| JPEG XL | `image/jxl` | yes |  | yes |  | yes |  |  |
+| PCX | `image/vnd.zbrush.pcx` |  |  |  | yes |  |  |  |
+| WordPerfect Graphics | `image/x-wpg` |  |  |  | yes |  |  |  |
+| MP4 and QuickTime | `video/mp4` |  | yes |  |  | yes | yes |  |
+| Matroska and WebM | `video/x-matroska` |  | yes |  |  |  |  |  |
+| AVI | `video/x-msvideo` |  | yes |  |  | yes | yes |  |
+| WAV | `audio/wav` |  | yes |  |  | yes | yes |  |
+| AIFF | `audio/aiff` |  | yes |  |  | yes |  |  |
+| ASF | `video/x-ms-asf` |  | yes |  |  | yes | yes |  |
+| MPEG audio | `audio/mpeg` |  | yes |  |  | yes | yes |  |
+| FLAC | `audio/flac` |  | yes |  |  | yes |  |  |
+| Ogg | `audio/ogg` |  | yes |  |  |  |  |  |
+| FLV | `video/x-flv` |  | yes |  |  | yes | yes |  |
+| MPEG transport stream | `video/mp2t` |  | yes |  |  |  |  |  |
+| MPEG program stream | `video/mpeg` |  | yes |  |  |  |  |  |
+
+Camera raw files have no signature to identify them by: a caller knows one by
+its name and hands it to `scan_raw` and `load_raw`, by its path or through a
+reader.
+
+### Properties
+
+Each property is read from the places below, the packet's first. A recording's
+container tags fill the properties FFmpeg's demuxers file them under (see
+[How it reads](#how-it-reads)). A packet's property in another form than its
+schema gives - a simple value where the schema has an array, a struct where it
+has text - reads as none, where the toolkit's accessors would refuse it, and a
+block that cannot be read costs the others nothing.
+
+| Property | XMP | EXIF | IPTC |
+|---|---|---|---|
+| title | `dc:title` | XPTitle | Object Name |
+| description | `dc:description` | ImageDescription, else XPSubject | Caption |
+| artist | `xmpDM:artist`, else `dc:creator`, joined with "; " | Artist, else XPAuthor | By-line, joined |
+| copyright | `dc:rights` | Copyright | Copyright Notice |
+| keywords | `dc:subject` | XPKeywords, split at ";" | Keywords |
+| rating | `xmp:Rating` | Rating, or RatingPercent by Windows' rule | |
+| created - when taken or recorded | `photoshop:DateCreated`, `exif:DateTimeOriginal`, else `xmp:CreateDate` | DateTimeOriginal and its offset | Date and Time Created |
+| digitized | `xmp:CreateDate`, `exif:DateTimeDigitized` | DateTimeDigitized | Digital Creation Date and Time |
+| modified | `xmp:ModifyDate`, `tiff:DateTime` | DateTime | |
+| location, altitude | `exif:GPSLatitude`, `GPSLongitude`, `GPSAltitude` | the GPS directory | |
+| camera, lens, exposure, orientation | `tiff:Make`, `Model`, `Orientation`; `exifEX:LensModel`; `exif:FNumber` and the rest | their tags | |
+| city, state, country, credit, source | `photoshop:` of each name | | each dataset |
+| album, album artist, composer, genre, track, disc | `xmpDM:` of each name | | |
+| comment | `xmpDM:logComment`, else `exif:UserComment` | UserComment, else XPComment | |
+
+### What each writable format keeps outside its packet
+
+An update writes each legacy field the edit sets where the format keeps it.
+The round-trip tests (`tests/round_trip.h`) write every field to each format,
+patched and rewritten, and require its own blocks to read back exactly these:
+
+| Format | Read back from its own blocks |
+|---|---|
+| JPEG, TIFF, PSD | title, description, creators, copyright, keywords, rating, the dates taken and digitized, the place, credit and source, location and orientation |
+| WebP holding EXIF | as JPEG, but for the title and the place, which only IPTC keeps |
+| PNG, GIF, FLV, a WebP without EXIF | nothing: only the packet |
+| MPEG audio | title, artist, album, album artist, genre, comment, copyright, track, disc, rating and year; and the date, to the minute in ID3v2.3, which keeps no seconds |
+| WAV | title, artist, comment, copyright, genre and the creation date, which is when it was recorded |
+| AVI | as WAV, with IDIT's date taken, which its scan reads over the creation date |
+| MP4 and QuickTime | copyright, keywords, rating and the creation date. The iTunes atoms are not written |
+| ASF | title, the artist as its author, or the creators where the edit names no artist, the comment as its description, copyright, keywords, rating and the creation date |
+
+One gap is known and kept. A Broadcast WAV's `bext` origination date is the
+recording date its scan reads, over INFO's, and an edit leaves it, as the
+toolkit does: the edited date reads from the packet.
+
 ## Codecs
 
 Codecs are optional, and fetched rather than vendored: each is pinned to its
 release archive's SHA-256 in [cmake/dd-dependencies.json](../cmake/dd-dependencies.json) -
 skcms, which makes no releases, to its commit - and built from the untouched
-source by libfiles' own recipe. With
-`LIBFILES_JPEG` on, the default, libfiles builds libjpeg-turbo 3.2.0 - at 8 bits
+source by libfiles' own recipe.
+Archives take their extraction time, as dd extracts them, not upstream file times, so
+changing a pin invalidates every dependent object instead of mixing incompatible revisions.
+With
+`LIBFILES_JPEG` on, the default, libfiles builds libjpeg-turbo 3.2.1 - at 8 bits
 with its NASM SIMD on x64 and x86, and its 12- and 16-bit libraries - and a
 consumer links it as `libfiles::jpeg`. NASM is found on the path, or on Windows
 fetched by SHA-256; a consumer that has enabled `ASM_NASM` lends its own.
@@ -47,7 +174,7 @@ rest. libwebp picks its SIMD from what the compiler announces and dispatches at
 run time: SSE2, SSE4.1 and AVX2 with MSVC on x64 and x86, NEON on ARM64, and
 the baseline SSE2 with GCC on x86-64.
 
-With `LIBFILES_HEIF` on, also the default, libfiles builds libheif 1.23.5 with its
+With `LIBFILES_HEIF` on, also the default, libfiles builds libheif 1.23.7 with its
 JPEG, libde265, dav1d and uncompressed decoders, and libde265 1.1.3 and dav1d
 1.5.4 beside it, as `libfiles::heif`, `libfiles::de265` and `libfiles::dav1d`.
 dav1d's x86 assembly is built where NASM is, with the configuration in
@@ -61,7 +188,7 @@ that has FFmpeg builds `plugins/decoder_ffmpeg.cc` from the fetched libheif
 
 With `LIBFILES_JXL` on, also the default, libfiles builds libjxl 0.12.0 - its
 decoder, encoder, colour management and thread runners, without the extras its
-tools use - with Highway 1.4.0, Brotli 1.2.0 and skcms beside it, as
+tools use - with Highway 1.4.0, Brotli 1.2.1 and skcms beside it, as
 `libfiles::jxl`, `libfiles::highway`, `libfiles::brotli` and `libfiles::skcms`.
 skcms is cloned at its pinned commit: Skia's generated archives differ from one
 download to the next, so no archive's SHA-256 can pin it. The headers libjxl's
@@ -70,8 +197,8 @@ own build would generate - `jxl/version.h` and its export headers - are kept in
 miscompile that once decoded a JPEG XL to an empty image does not occur with
 these versions and MSVC 14.51.
 
-With `LIBFILES_RAW` on, also the default, libfiles builds LibRaw 0.22.2 with
-Adobe's DNG SDK 1.7.1 beside it, as `libfiles::raw` and `libfiles::dng`: given a
+With `LIBFILES_RAW` on, also the default, libfiles builds LibRaw 0.22.3 with
+Adobe's DNG SDK 1.7.1 build 2768 beside it, as `libfiles::raw` and `libfiles::dng`: given a
 `dng_host`, LibRaw hands a DNG it cannot read alone - lossy, or JPEG XL - to the
 SDK. The SDK's own XMP backend is written over the XMP Toolkit, so libfiles
 builds its own in its place, [src/dng_xmp_sdk.cpp](../src/dng_xmp_sdk.cpp), over
@@ -80,7 +207,7 @@ application, is in `cmake/dng/`. Adobe's archive is 80 MB, its copies of
 libjpeg, libjxl and the toolkit not built.
 
 With `LIBFILES_GIF` and `LIBFILES_TIFF` on, also the defaults, libfiles builds
-giflib 5.2.2 and libtiff 4.7.0 from their pinned archives, with ImageWalker's
+giflib 6.1.3 and libtiff 4.7.2 from their pinned archives, with ImageWalker's
 codec settings. TIFF uses the same zlib-ng; JPEG-compressed TIFF and its
 optional external codecs are disabled. Consumers that do not use native
 GIF/TIFF documents can turn these options off.
@@ -157,6 +284,19 @@ lengths and stops at a header it cannot trust; text is UTF-8 where it is valid
 and Windows-1252 where it is not, as the XMP parser reads 8-bit text. The
 dataset table is libiptcdata's.
 
+An ICC colour profile - the bytes a scan finds in `metadata_blocks::icc` - is
+listed by `list_icc` for an inspector: a summary a person reads, with the
+profile's name, its colour space, the colorant set it is recognised as - sRGB,
+Adobe RGB (1998), Display P3, Rec. 2020 or ProPhoto RGB - its red tone curve,
+its white point's illuminant and its rendering intent; then the header whole;
+then every tag by signature with its type, size and first 4,096 bytes, and the
+tags it cannot read with the reason. Tags that share a region share its bytes,
+and the regions charged may not add up to more than the profile. The listing is
+Diffractor's, moved with its reader, and was compared with Diffractor's - whole,
+cut short and corrupted - over a corpus built in code, Diffractor's fixtures'
+profiles and Windows' own, with no difference; `tests/icc_tests.cpp` keeps the
+corpus' record.
+
 Photoshop's image resources - a PSD's resource section, a JPEG's APP13 - are
 read by one rule in the scans, the writers and the JPEG encoder: a resource's
 data lies inside the block, and the pad byte after the last one's may be
@@ -186,11 +326,74 @@ The scanners replace Diffractor's, and report the same for every file. Diffracto
 proves it with a test that runs both over its fixtures and a wider local corpus,
 whole, cut short and with bytes corrupted. PNG keeps the rules of the libpng
 1.6.59 header read and the chunk walk it replaced, which libfiles now does in one
-pass. HEIF and JPEG XL follow libheif 1.23.5 and libjxl as Diffractor builds
+pass. HEIF and JPEG XL follow libheif 1.23.7 and libjxl as Diffractor builds
 them, down to which damaged files they refuse; a local harness compared the two
 field by field, the structure report included, over Diffractor's fixtures, about
 250 public conformance and sample files, files written with libjxl's encoder and
 the suite's own files, each whole, cut short and with bytes corrupted.
+
+Audio and video are read by `scan_media`, which describes a file without
+decoding it: each stream's codec, its size, rates, depth and colour or its
+sample rate, channels and sample format; the duration; the container's tags
+under their own names and the properties they fill; the XMP packet; the cover
+pictures, located rather than read; and, for an inspector, the structure. It
+reads the container's headers, a stream's first frames only where its
+configuration is not in them, and the end of the file where the duration or the
+tags are there. Most files cost one to three reads; a transport stream whose
+first audio packet lies deep in the file costs up to ten. `complete` says that
+every audio and video stream was described. Diffractor opens FFmpeg to decode,
+and to describe only a file that is not complete.
+
+The model is Diffractor's, as FFmpeg described streams in it. Codecs have
+FFmpeg's short names - `h264`, `aac`, `mp3`, and `pcm` with its sample format
+beside it rather than in the name. A pixel format is its chroma and depth
+(`yuv420`, `yuv422 10bit`, `rgb`), and a sample format is stated only where the
+codec stores one, for PCM and lossless audio. Streams are numbered as FFmpeg's
+demuxers number them - an MP4 track ID, an AVI stream index, a transport stream
+PID - so a player finds a stream FFmpeg opened by libfiles' description of it.
+A language FFmpeg would give as `und` is empty. Tags keep the names the
+container gives them, and fill the properties FFmpeg's demuxers file them
+under, so a recording files where it did when Diffractor read FFmpeg's
+metadata. A date keeps the zone the file states: a UTC instant, a local time
+with its offset, or a local time with none; a date alone is a day, not midnight
+in UTC.
+
+Each container's structure is read by one parser, which its scan and its writer
+share - `mp4_internal.h`, `riff_internal.h`, `asf_internal.h`,
+`flv_internal.h`, and `id3_internal.h` for MP3's ID3v2 tag - so a scan finds the
+packet `read_packet` finds and an edit reads back as it was written. Each codec
+header - an H.264 or HEVC SPS, an AV1 sequence header, an `esds`, a
+`WAVEFORMATEX` - has one reader, which every container shares.
+
+An MPEG transport stream - TS, or the 192-byte packets of M2TS and MTS - is read
+from its program association table to the first program's map; a recording that
+kept the whole table but carries one other program is read for the program whose
+map comes round again. Each stream is named by its type and descriptors, numbered
+by its PID, and its own header - an H.264 or HEVC SPS, an MPEG video sequence
+header, a VC-1 sequence header and entry point, an audio frame header, an LPCM
+header - is read from its first PES
+packets; the scan stops as soon as every audio and video stream is known, and
+reads no further than 8 MiB. An MPEG program stream - MPG, VOB, MOD - is read
+pack by pack, its streams numbered by their stream ids, and private stream 1's
+by their substream ids, as FFmpeg's demuxer numbers them. No table need list
+them - a system header need not: a VCD has one for each stream - so its start is
+read until the streams found are known and a second of the stream has passed, or
+until each stream a program stream map lists has been seen. Both are timed as
+FFmpeg times them: each stream from its first PTS to its last plus a frame, the
+last found by reading backwards from the end in steps from 256 KiB to 8 MiB,
+across the 33-bit wrap; the file from the earliest start to the latest end. A
+transport stream whose payloads are scrambled is timed by its PCR, a program
+stream without timestamps by its packs' SCR. An AVCHD camcorder keeps the
+recording date, its maker and its model in the SEI of the H.264 stream's first
+access unit, where the scan reads them.
+
+The scans were compared with FFmpeg - the build Diffractor ships, and PyAV's -
+over Diffractor's fixtures and files FFmpeg's own muxers wrote for each
+container and codec, each whole, cut short and with bytes corrupted; Diffractor's
+*Should read media with libfiles* test keeps the comparison. When the writers
+moved onto the shared parsers, the packets they read and the plans they made
+were recorded over 53 files, whole, cut short and corrupted - about 98,000 cases
+- before and after, with no difference.
 
 ## How it writes
 
@@ -242,16 +445,19 @@ changes: a rating in a packet that keeps its length is a byte or two.
   same container, is not an MP4 to libfiles.
   Of several XMP `uuid` boxes the last is read, as FFmpeg reads it, and of
   several movie boxes the first; an update frees the others, which only an
-  interrupted update leaves.
+  interrupted update leaves. A box whose 64-bit size is too small to hold its
+  own header is refused, as the media scan refuses it.
 - **ASF** (WMV, WMA): the packet in a top-level XMP object after the data;
-  title, author, copyright and description in the header's Content
-  Description, tags and rating in the WM/Category and WM/SharedUserRating
-  descriptors, a created date in the File Properties, whose file size is kept
+  title, the artist as author, copyright and the comment as description in the
+  header's Content Description, where Windows and FFmpeg read them; tags and
+  rating in the WM/Category and WM/SharedUserRating descriptors; and a created
+  date in the File Properties, whose file size is kept
   true. A packet that outgrows its object is appended and the old object
   becomes padding. The header is rewritten where it lies, in one write, when
   its padding - in the header or its extension - takes the change; otherwise
   the file is rewritten in one pass with 2 KB of padding in its header for the
-  next edit. The first XMP object after the data is read, as FFmpeg reads it.
+  next edit. The first XMP object after the data is read; upstream FFmpeg reads
+  none.
 - **RIFF** (WAV, AVI): the packet in a `_PMX` chunk at the top of the RIFF
   form; title, artist, comment, copyright, date and genre in LIST INFO, a WAV's
   title also in an existing DISP chunk, and an AVI's original date in an
@@ -259,10 +465,11 @@ changes: a rating in a packet that keeps its length is a byte or two.
   true. A chunk that fits is patched; one that grows takes the JUNK chunk after
   it - written inside the JUNK, then made the chunk read by one 8-byte header
   write - or a free JUNK chunk, or is appended at the end of the form, which
-  the form's size then takes in before the old chunk becomes JUNK. FFmpeg reads
-  an AVI's INFO only before `movi` and its packet only after, so they are kept
-  there; an AVI that continues in AVIX forms cannot grow its first form, and
-  takes only what fits.
+  the form's size then takes in before the old chunk becomes JUNK. libfiles
+  reads an AVI's packet after `movi` in its first form, and of two INFO lists
+  that give a field takes the one before `movi`, so they are written there;
+  an AVI that continues in AVIX forms cannot grow its first form, and takes
+  only what fits.
 - **MPEG audio** (MP3, MP2, MPA): the packet in an ID3v2 `PRIV` frame owned by
   `XMP`; title, artist, album, album artist, genre, comment, track, disc,
   copyright, its URL and the date in their text frames, and the rating in the
@@ -326,18 +533,31 @@ Where libfiles writes differently from the toolkit, on purpose:
   since neither FFmpeg nor Windows reads them. A packet's `asf:NativeDigest` is
   left as it is: a toolkit that finds it stale imports the header's fields,
   which libfiles wrote from the same edit.
+- An ASF's Content Description takes the artist as its Author and the comment
+  as its Description, where Windows Explorer - whose Comments it is - FFmpeg
+  and the taggers that write WMA read them, as an MP3's TPE1 and COMM are read;
+  the creators stand in for an artist the edit does not name. The toolkit wrote
+  the creators and the description there, so an edit read back as neither, and
+  a description now stays in the packet.
 - A RIFF or ID3 field the packet lacks is left as it is. The toolkit exported
   every field it maps from the packet, deleting each one the packet did not
   hold, and wrote a new DISP chunk and ID3v1 tag where the file had none;
   libfiles writes only the fields the edit sets, and leaves ID3v1 alone.
-- An AVI's packet stays in its first form, after `movi`, where FFmpeg reads it.
-  The toolkit moved it to the end of the last form, which in a file that
-  continues in AVIX forms no FFmpeg reader saw, and could move `movi` itself.
+- An AVI's packet stays in its first form, after `movi`, where libfiles reads
+  it. The toolkit moved it to the end of the last form, which in a file that
+  continues in AVIX forms is past every one of them, and could move `movi`
+  itself.
 - ID3 text is written without a terminator, and a genre as its name rather than
   a numbered ID3v1 code. A rating of no stars removes Windows Media Player's
   `POPM` frame rather than writing a zero.
 - MP2 and MPA files take an ID3v2 tag, as MP3 files do. The toolkit wrote their
   packet to a sidecar `.xmp` file instead.
+- An ID3v2.4 tag whose frames iTunes sized as plain integers is read for an
+  edit with those sizes, as a scan reads it, so every frame is kept. The writer
+  read it by syncsafe sizes, and lost the frames after the first such size.
+- A rating edit writes an EXIF block's RatingPercent from the stars by
+  Windows' scale when the block already holds one, so the two never disagree; a
+  block without one gains one only when the edit gives a percent.
 - A rewritten FLV's `onMetaData` keyframe index and file size follow the media.
   The toolkit left them pointing where the media had been.
 
@@ -442,7 +662,8 @@ for each.
   B8G8R8X8, left unturned. A preview keeps its own orientation where, turned by
   it, it is the raw image's shape as the raw data turns that; otherwise - a
   preview stored as the sensor saw it - it takes the raw data's
-  (`raw_preview_orientation`). Moved from Diffractor's loader unchanged.
+  (`raw_preview_orientation`). Brightness intermediates truncate as LibRaw's
+  output conversion does.
 - **Commodore 64 images**, which hold no picture of their own: `list_c64_media`
   lists a D64, D71 or D81 disk's directory, a T64 tape's, a CRT cartridge by its
   name, or a P00 or PRG program, as the C64 prints a directory - at most 512
@@ -513,6 +734,14 @@ a packet must not change when the toolkit is replaced:
 
 Where libfiles differs on purpose:
 
+- HEIF and AVIF decoding follows libheif 1.23.7's damaged-input recovery:
+  some images previously discarded by 1.23.5 recover pixels, and some
+  undecodable images still report their source dimensions. Complete-file
+  pixels, orientation and dimensions retain the previous decoder's outcomes.
+- Developed raw pixels use LibRaw's truncation for the histogram percentile and
+  gamma white point. Diffractor's former loader rounded those intermediates,
+  which can change a pixel at a fractional brightness boundary. ISO metadata
+  keeps its existing rounding rule.
 - Native PSD rejects incomplete planes, unsupported sample layouts and invalid
   PackBits rows rather than exposing partially initialized pixels. Bitmap
   pixels are initialized and their black/white palette is explicit.
@@ -525,7 +754,30 @@ Where libfiles differs on purpose:
   Invalid metadata does not discard otherwise decodable pixels.
 - A TIFF scan includes the camera, exposure and dates in its own directories,
   rather than only its orientation, thumbnail and GPS. Consumers can use these
-  dates in the same resolution rules as an embedded EXIF block.
+  dates in the same resolution rules as an embedded EXIF block. It reports the
+  IPTC block in tag 33723, where the writer keeps it, as `metadata.iptc`.
+- A rating Windows keeps as a percent - EXIF's RatingPercent, a Rating above 5,
+  and the `WM/SharedUserRating` of ASF and an MP4's `Xtra` box - reads by
+  Windows' one rule: 1 to 12 is one star, 13 to 37 two, 38 to 62 three, 63 to
+  87 four, and 88 and above five. Diffractor's EXIF parser took the percent's
+  fifths, rounded up, so that 40% was two stars from EXIF and three from ASF;
+  and it read a negative RatingPercent as one star, where it reads as rejected.
+- An ID3v2 tag before a FLAC stream does not make the file MPEG audio: every
+  operation identifies it as FLAC. `read_packet` reads the tag's packet, by the
+  rule an MP3's is read by, and an update is refused, where it was written as
+  an MP3's. `read_packet` reads an AIFF's packet too.
+- An ID3v2 tag that is damaged - an unknown version, a size past the file, a
+  damaged extended header, a frame that overruns it - has no packet in a scan,
+  as it has none in `read_packet`; an unsynchronised tag's packet is read by
+  both.
+- A compressed ID3 frame and a Matroska track's compressed codec header inflate
+  within `scan_limits::media_inflated_bytes`, 32 MiB in all and 16 MiB of one;
+  past it a frame is described rather than read. An Ogg file's capture patterns
+  are checked against a bound of twice what the scan reads of the file's ends,
+  so a file of patterns that are not pages cannot cost a CRC for every seven
+  bytes.
+- An MP4's user data box is found however many boxes come before it in the
+  movie box, where only the first 4,096 were looked among.
 - A two-digit hexadecimal reference such as `&#xA9;` is read as its character.
   The toolkit turns any such reference into a space, while meaning only to remove
   escaped control characters.
@@ -572,4 +824,69 @@ Where libfiles differs on purpose:
   of the largest size together. Its boxes stop at the first compressed box that
   would take it past that, as at a box too large to keep. Diffractor let libjxl
   decompress every box, each to 16 MiB.
-
+- An audio or video stream is described from what its container and codec
+  headers state, where FFmpeg also decodes frames. A stream's bit rate is the
+  one the file states: an MP4 or AVI stream that states none has none, where
+  FFmpeg works one out from the sample sizes or the index, and AAC in an MPEG
+  stream has none, where FFmpeg estimates one from the frames it decoded. A
+  stream's duration is its container's - an MP4 track's `mdhd`, not trimmed to
+  its edit list. An ASF stream without extended stream properties has no frame
+  rate, where FFmpeg estimates one from the packets. A pixel format comes from the
+  codec configuration, so it is known for a file whose first video frame lies
+  past FFmpeg's analysis window; FFV1, ProRes and uncompressed video in Matroska
+  have none.
+- An MP4's duration is its movie header's (`mvhd`), as QuickTime and Windows
+  show it; FFmpeg's is the longest of its streams' after their edit lists, a few
+  hundredths of a second shorter. An AVI's is its longest video stream's;
+  FFmpeg's is its longest stream's.
+- Cover pictures - an MP4's `covr`, a FLAC `PICTURE`, an ID3 `APIC`, a Matroska
+  attachment that is an image - are listed in `pictures` and located; FFmpeg
+  makes each an attached-picture video stream. A Matroska attachment that is not
+  an image is not a picture.
+- An Opus stream's duration leaves out its pre-skip (RFC 7845), and one whose
+  first page starts late is timed from that start. A FLAC stream with no sample
+  count is timed by its last frame, found in its last 64 KiB; FFmpeg gives it no
+  duration. A chained Ogg file is described by its first link and given no
+  duration, so Diffractor asks FFmpeg for it.
+- APE, Lyrics3 and ID3v1 tags at the end of an MP3 are not counted as audio, and
+  an Info header found past junk before the first frame is used; FFmpeg counts
+  the tags and misses the header. Mono HE-AAC has one channel; FFmpeg reports
+  the two its decoder makes.
+- A Vorbis comment field that repeats gives one tag, its values joined with
+  "; " as ID3v2.4's and APE's multiple values are; FFmpeg joins them with ";". A
+  property that holds one value - a date, a track number - takes the first. An
+  ID3 genre refined in the "(4)Eurodisco" form reads as "Eurodisco", where FFmpeg
+  reads "Disco". Keywords split at commas and semicolons only. A tag that only
+  describes binary data - "7 bytes", a picture's caption - fills no property.
+- An ASF file's `WM/Category` descriptors are each a tag and a keyword; FFmpeg
+  keeps the last. An ASF stream's language is the file's RFC 1766 tag (`en-us`),
+  where FFmpeg gives ISO 639-2; for a stream the Language List gives none, both
+  take the stream's own `WM/Language` record, if it is text. An ASF file's
+  duration is kept when the file size its header states is wrong, where FFmpeg
+  drops it. An ID3v2 tag kept in an ASF "ID3" descriptor is described, not read.
+- An AVI's INFO lists are read before and after `movi`. Where both give a field,
+  the one before wins, since that is the list the writer edits; FFmpeg reads the
+  one after last.
+- Every top-level `onMetaData` value of an FLV is a tag; FFmpeg keeps only the
+  encoder.
+- A Matroska TITLE tag with a TagLanguage is still the title, and the DURATION
+  and BPS statistics tags give a track's duration and bit rate.
+- An MPEG-4 Part 2 stream without a fixed frame rate has none, where FFmpeg
+  reports its time resolution. HEVC whose profile says its source is interlaced
+  is interlaced, as well as one with `field_seq_flag`. The SPS in an `hvcC` or
+  `av1C` record wins over the record's own fields. A stated 1:1 pixel aspect is
+  kept.
+- An MPEG transport stream's first program is read; FFmpeg lists every
+  program's streams. A DVD's navigation packets, in private stream 2, are not a
+  stream of a program stream's; FFmpeg lists them as a data stream.
+- An MPEG stream's video ends a frame after its last timestamp, at the frame
+  rate its codec header states. FFmpeg adds one period of the rate it guesses,
+  which for interlaced H.264 and for MPEG-1 video is the field rate, half a
+  frame. E-AC-3's last frame is counted too, where FFmpeg counts none.
+- An AVCHD recording's date, maker and model are read from its H.264 stream,
+  which FFmpeg does not read. Daylight saving adds its hour to the zone the
+  camera states. A zone byte of all zeros states none: it cannot be told from a
+  camera that keeps no zone, and Panasonic-made cameras write it in summer too.
+- MPEG audio whose frames a scan does not find is named `mp2`, the layer
+  broadcasts and discs carry; FFmpeg's transport stream demuxer names it `mp3`
+  until its parser reads a frame.

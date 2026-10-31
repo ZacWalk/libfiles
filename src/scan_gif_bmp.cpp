@@ -183,6 +183,11 @@ namespace libfiles::detail
 		const auto table_size = (fields & 0x80) ? (1u << ((fields & 0x07) + 1)) * 3u : 0u;
 		const auto offset = gif_header_len + 7u + table_size;
 
+		// An index into the global table has its size's bits; frames with tables of their own may differ.
+		result.picture.chroma = chroma_format::rgb;
+		result.picture.palette = true;
+		if (fields & 0x80) result.picture.bit_depth = static_cast<std::uint8_t>((fields & 0x07) + 1);
+
 		try
 		{
 			scan_gif_blocks(r, result, offset);
@@ -225,6 +230,12 @@ namespace libfiles::detail
 		result.width = static_cast<std::uint32_t>(width);
 		result.height = static_cast<std::uint32_t>(height);
 		result.pixel_format = std::format("RGB{}", bit_count);
+
+		// A pixel of up to 8 bits is a palette index; one of 16 packs 5 or 6 bits a sample, as its masks say.
+		if (bit_count >= 1 && bit_count <= 8) result.picture = {chroma_format::rgb, static_cast<std::uint8_t>(bit_count), false, true};
+		else if (bit_count == 24 || bit_count == 32) result.picture = {chroma_format::rgb, 8};
+		else if (bit_count == 16) result.picture.chroma = chroma_format::rgb;
+
 		result.success = true;
 		return result;
 	}

@@ -175,15 +175,14 @@ namespace libfiles::detail
 			return std::clamp(round_quality(quality), 1, 100);
 		}
 
-		// Named the way HEIF, WebP and video name their pixel formats, so one search for a sampling
-		// mode reaches every format that uses it.
-		const char* ycbcr_pixel_format(const int luma_h, const int luma_v)
+		// The sampling of a YCbCr frame, from its luma's factors.
+		chroma_format ycbcr_chroma(const int luma_h, const int luma_v)
 		{
-			if (luma_h == 1 && luma_v == 1) return "yuv444";
-			if (luma_h == 2 && luma_v == 1) return "yuv422";
-			if (luma_h == 2 && luma_v == 2) return "yuv420";
-			if (luma_h == 1 && luma_v == 2) return "yuv440";
-			return "YCbCr";
+			if (luma_h == 1 && luma_v == 1) return chroma_format::yuv444;
+			if (luma_h == 2 && luma_v == 1) return chroma_format::yuv422;
+			if (luma_h == 2 && luma_v == 2) return chroma_format::yuv420;
+			if (luma_h == 1 && luma_v == 2) return chroma_format::yuv440;
+			return chroma_format::unknown;
 		}
 
 		// A Multi-Picture APP2 segment indexes further whole JPEGs stored in the same file: the second
@@ -734,20 +733,34 @@ namespace libfiles::detail
 			if (!app13.photoshop.empty()) result.metadata.photoshop = std::move(app13.photoshop);
 		}
 
+		result.picture.bit_depth = static_cast<std::uint8_t>(sof_precision);
+
 		switch (channels)
 		{
 		case 1:
 			result.pixel_format = "gray8";
+			result.picture.chroma = chroma_format::gray;
 			break;
 
 		case 3:
-			result.pixel_format = has_jfif_marker || !has_adobe_marker || adobe_transform != 0
-				                      ? ycbcr_pixel_format(luma_h, luma_v)
-				                      : "rgb24";
+			if (has_jfif_marker || !has_adobe_marker || adobe_transform != 0)
+			{
+				// Named as HEIF, WebP and video name their sampling, so one search for it reaches them all.
+				result.picture.chroma = ycbcr_chroma(luma_h, luma_v);
+				result.pixel_format = result.picture.chroma == chroma_format::unknown
+					                      ? "YCbCr"
+					                      : picture_format{result.picture.chroma}.name();
+			}
+			else
+			{
+				result.pixel_format = "rgb24";
+				result.picture.chroma = chroma_format::rgb;
+			}
 			break;
 
 		case 4:
 			result.pixel_format = has_adobe_marker && adobe_transform != 0 ? "ycck" : "cmyk";
+			result.picture.chroma = has_adobe_marker && adobe_transform != 0 ? chroma_format::ycck : chroma_format::cmyk;
 			break;
 
 		default:

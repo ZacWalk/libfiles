@@ -48,24 +48,6 @@ namespace libfiles
 		return static_cast<std::size_t>(size);
 	}
 
-	bool can_decode_document(const image_format format) noexcept
-	{
-#ifdef LIBFILES_JPEG
-		if (format == image_format::jpeg) return true;
-#endif
-#ifdef LIBFILES_PNG
-		if (format == image_format::png) return true;
-#endif
-#ifdef LIBFILES_GIF
-		if (format == image_format::gif) return true;
-#endif
-#ifdef LIBFILES_TIFF
-		if (format == image_format::tiff) return true;
-#endif
-		return format == image_format::pcx || format == image_format::bmp ||
-			format == image_format::wpg || format == image_format::psd;
-	}
-
 	document_result decode_document(reader& input, const image_format format, document_sink& output,
 	                                const document_options& options)
 	{

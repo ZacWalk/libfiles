@@ -6,7 +6,8 @@
 // embedded preview a decoder can read, or its raw data developed - and what a scan reads of it without
 // developing it: its metadata, an inspector's listing and a thumbnail. A raw format has no signature to
 // dispatch on - a caller knows one by its name - so these take the file's path, and LibRaw opens it
-// itself, as it would any raw file, a companion file a format keeps beside it included.
+// itself, as it would any raw file, a companion file a format keeps beside it included; or a reader over
+// a stream the caller opened, with the path to find a companion file by.
 
 #pragma once
 
@@ -110,4 +111,12 @@ namespace libfiles
 	// thread scans with an instance of LibRaw it keeps, as constructing one costs half a megabyte of
 	// zeros. Never throws for a malformed file.
 	raw_scan_result scan_raw(const std::filesystem::path& path, scan_intent intent, image_sink* thumbnail_sink);
+
+	// The same, read through a reader: a raw file the caller opened - over a network share, held in memory -
+	// read as every other format is, through the reader's window. name is the file's path, by which LibRaw
+	// finds the companion file a few formats keep beside the raw one; empty when there is none to find. A read
+	// the stream fails fails the scan or the load, as it fails a scan of any other format. Never throws for a
+	// malformed file.
+	raw_scan_result scan_raw(reader& source, scan_intent intent, image_sink* thumbnail_sink, const std::filesystem::path& name = {});
+	raw_load_result load_raw(reader& source, image_sink& sink, bool prefer_preview, const std::filesystem::path& name = {});
 }

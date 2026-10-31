@@ -11,6 +11,7 @@
 #include "interruptions.h"
 #include "legacy.h"
 #include "libfiles/write.h"
+#include "round_trip.h"
 
 #include <algorithm>
 #include <cstring>
@@ -439,4 +440,13 @@ TEST("an mp4 rating that keeps the Xtra box's size is a small patch")
 	std::uint64_t written = 0;
 	for (const auto& r : twice.plan.replacements) written += r.data.size();
 	CHECK(written < 3000);
+}
+
+TEST("mp4 and quicktime read back the edits they keep outside the packet")
+{
+	// The copyright in the user data's cprt, Windows' keywords and rating in its Xtra box, and the creation
+	// date in the movie header. The iTunes atoms are not written.
+	const std::set<std::string_view> kept = {"copyright", "keywords", "rating", "recorded", "year"};
+	check_round_trip("mp4", make_movie({}), kept);
+	check_round_trip("quicktime", make_movie({.brand = "qt  "}), kept);
 }

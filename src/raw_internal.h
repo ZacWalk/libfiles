@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 // Purpose: LibRaw as libfiles' raw code includes it, and what that code shares: the listing of what LibRaw
-// parsed, and the rule a GPS position it parsed must meet.
+// parsed, output brightness conversion, and the rule a GPS position it parsed must meet.
 
 #pragma once
 
@@ -34,6 +34,9 @@
 
 namespace libfiles::detail
 {
+	// LibRaw truncates output brightness fractions; non-normal values remain zero and casts are bounded.
+	int raw_output_integer(float value);
+
 	// LibRaw's flip, 0 to 7, as the orientation it describes, numbered as EXIF numbers them; 1 for any
 	// other.
 	std::uint16_t orientation_of_flip(int flip);

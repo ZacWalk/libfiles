@@ -1,4 +1,4 @@
-# giflib's portable library, from the same pinned archive ImageWalker used.
+# giflib's portable library, from its pinned upstream release archive.
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/../.dd/dependencies.cmake")
 enable_language(C)

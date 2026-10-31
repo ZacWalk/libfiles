@@ -8,30 +8,22 @@
 // the next edit. A rewrite moves the media, so the file positions onMetaData keeps for seeking - its
 // keyframe index and file size - are moved with it, which the toolkit did not do.
 
+#include "flv_internal.h"
 #include "legacy.h"
 
 #include <bit>
 #include <cmath>
-#include <functional>
 
 namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint8_t script_tag = 18;
-		constexpr std::uint64_t tag_header = 11;
+		using flv::script_tag;
+		using flv::tag_header;
+		using flv_tag = flv::tag;
+
 		// How many tags at time zero are looked through for onMetaData and onXMPData.
 		constexpr int max_scan_tags = 64;
-
-		struct flv_tag
-		{
-			std::uint64_t start = 0;
-			std::uint32_t data_size = 0;
-
-			std::uint64_t data() const { return start + tag_header; }
-			// The tag and the size field that follows it.
-			std::uint64_t end() const { return start + tag_header + data_size + 4; }
-		};
 
 		struct layout
 		{
@@ -43,170 +35,21 @@ namespace libfiles::detail
 			std::uint64_t xml_length = 0;
 		};
 
-		// AMF0 values, walked to find the strings and numbers given under a key.
-		class amf
-		{
-		public:
-			amf(reader& r, const std::uint64_t end) : _r(r), _end(end)
-			{
-			}
-
-			std::function<void(std::string_view key, std::uint64_t at)> on_number;
-			std::function<void(std::string_view key, std::uint64_t at, std::uint64_t length)> on_string;
-
-			// Where the value at pos ends, or nothing when it cannot be followed.
-			std::optional<std::uint64_t> value(std::uint64_t pos, const std::string_view key, const int depth = 0)
-			{
-				if (depth > 16 || pos >= _end) return {};
-
-				const auto type = _r.view(pos++, 1)[0];
-
-				switch (type)
-				{
-				case 0: // number
-					if (_end - pos < 8) return {};
-					if (on_number) on_number(key, pos);
-					return pos + 8;
-				case 1: // boolean
-					return skip(pos, 1);
-				case 2: // string
-				case 12: // long string
-				case 15: // XML document
-					{
-						const auto wide = type != 2;
-						if (_end - pos < (wide ? 4u : 2u)) return {};
-						const std::uint64_t length = wide ? _r.be32(pos) : _r.be16(pos);
-						pos += wide ? 4 : 2;
-						if (_end - pos < length) return {};
-						if (type != 15 && on_string) on_string(key, pos, length);
-						return pos + length;
-					}
-				case 3: // object
-					return properties(pos, depth);
-				case 5: // null
-				case 6: // undefined
-					return pos;
-				case 7: // reference
-					return skip(pos, 2);
-				case 8: // ECMA array: a count, then named values
-					if (_end - pos < 4) return {};
-					return properties(pos + 4, depth);
-				case 10: // strict array: a count, then values under the array's key
-					{
-						if (_end - pos < 4) return {};
-						const auto count = _r.be32(pos);
-						pos += 4;
-
-						for (std::uint32_t i = 0; i < count; ++i)
-						{
-							const auto next = value(pos, key, depth + 1);
-							if (!next) return {};
-							pos = *next;
-						}
-
-						return pos;
-					}
-				case 11: // date
-					return skip(pos, 10);
-				case 16: // typed object: a class name, then named values
-					{
-						if (_end - pos < 2) return {};
-						const auto length = _r.be16(pos);
-						if (_end - pos - 2 < length) return {};
-						return properties(pos + 2 + length, depth);
-					}
-				default:
-					return {};
-				}
-			}
-
-		private:
-			std::optional<std::uint64_t> skip(const std::uint64_t pos, const std::uint64_t n) const
-			{
-				if (_end - pos < n) return {};
-				return pos + n;
-			}
-
-			// Named values until an empty name and the end marker. Some writers end the outermost array at
-			// the end of the data without one.
-			std::optional<std::uint64_t> properties(std::uint64_t pos, const int depth)
-			{
-				while (_end - pos >= 2)
-				{
-					const auto length = _r.be16(pos);
-					pos += 2;
-
-					if (length == 0)
-					{
-						if (pos < _end && _r.view(pos, 1)[0] == 9) return pos + 1;
-						return {};
-					}
-
-					if (_end - pos < length) return {};
-					const auto name = _r.read(pos, length);
-					pos += length;
-
-					const auto next = value(pos, std::string_view(reinterpret_cast<const char*>(name.data()), name.size()), depth + 1);
-					if (!next) return {};
-					pos = *next;
-				}
-
-				if (pos == _end) return pos;
-				return {};
-			}
-
-			reader& _r;
-			std::uint64_t _end;
-		};
-
-		// The name a script tag's data starts with.
-		std::string script_name(reader& r, const flv_tag& t, std::uint64_t& after)
-		{
-			amf a(r, t.data() + t.data_size);
-			std::string name;
-
-			a.on_string = [&](std::string_view, const std::uint64_t at, const std::uint64_t length)
-			{
-				const auto text = r.read(at, static_cast<std::size_t>(length));
-				name.assign(text.begin(), text.end());
-			};
-
-			const auto end = a.value(t.data(), {});
-			if (!end) return {};
-
-			after = *end;
-			while (!name.empty() && name.back() == '\0') name.pop_back();
-			return name;
-		}
-
 		layout read_layout(reader& r)
 		{
 			layout l;
-			const auto size = r.size();
-			if (size < 13) throw format_error("the FLV is cut short");
-
-			const auto header = r.read(0, 9);
-			const auto data_offset = load_be32(header.data() + 5);
-			if (data_offset < 9 || data_offset > size - 4) throw format_error("the FLV header is damaged");
-
-			l.first_tag = data_offset + 4ull;
+			l.first_tag = flv::first_tag(r);
 			auto pos = l.first_tag;
 
-			for (auto n = 0; n < max_scan_tags && size - pos >= tag_header + 4; ++n)
+			for (auto n = 0; n < max_scan_tags; ++n)
 			{
-				const auto h = r.read(pos, tag_header);
-				flv_tag t;
-				t.start = pos;
-				t.data_size = static_cast<std::uint32_t>(h[1]) << 16 | static_cast<std::uint32_t>(h[2]) << 8 | h[3];
-				const auto timestamp = static_cast<std::uint32_t>(h[7]) << 24 | static_cast<std::uint32_t>(h[4]) << 16 |
-					static_cast<std::uint32_t>(h[5]) << 8 | h[6];
+				const auto t = flv::read_tag(r, pos);
+				if (!t || t->timestamp != 0) break;
 
-				if (t.end() > size || timestamp != 0) break;
-
-				if ((h[0] & 0x1F) == script_tag)
+				if (t->type == script_tag)
 				{
 					std::uint64_t after = 0;
-					const auto name = script_name(r, t, after);
+					const auto name = flv::script_name(r, *t, after);
 
 					if (name == "onMetaData" && !l.meta)
 					{
@@ -215,20 +58,22 @@ namespace libfiles::detail
 					else if (name == "onXMPData" && !l.xmp)
 					{
 						l.xmp = t;
-						amf a(r, t.data() + t.data_size);
-						a.on_string = [&l](const std::string_view key, const std::uint64_t at, const std::uint64_t length)
+						flv::amf a(r, t->data() + t->data_size);
+						a.on_value = [&l](const flv::amf_value& v)
 						{
-							if (key == "liveXML" && l.xml_length == 0)
+							const auto text = v.type == flv::amf_string || v.type == flv::amf_long_string;
+
+							if (text && v.key == "liveXML" && l.xml_length == 0)
 							{
-								l.xml_at = at;
-								l.xml_length = length;
+								l.xml_at = v.at;
+								l.xml_length = v.length;
 							}
 						};
-						a.value(after, {});
+						a.value(after);
 					}
 				}
 
-				pos = t.end();
+				pos = t->end();
 			}
 
 			return l;
@@ -346,22 +191,24 @@ namespace libfiles::detail
 		const auto old_size = r.size();
 		const auto new_size = old_size + added - removed;
 
-		amf a(r, l.meta->data() + l.meta->data_size);
-		a.on_number = [&](const std::string_view key, const std::uint64_t at)
+		flv::amf a(r, l.meta->data() + l.meta->data_size);
+		a.on_value = [&](const flv::amf_value& v)
 		{
-			const auto value = std::bit_cast<double>(r.be64(at));
+			if (v.type != flv::amf_number) return;
+
+			const auto value = std::bit_cast<double>(r.be64(v.at));
 			if (!std::isfinite(value) || value < 0 || value != std::floor(value) || value > static_cast<double>(old_size)) return;
 
 			const auto position = static_cast<std::uint64_t>(value);
 			auto updated = position;
 
-			if ((key == "filepositions" || key == "lastkeyframelocation") && position < old_size) updated = moved(position);
-			else if (key == "filesize" && position == old_size) updated = new_size;
+			if ((v.key == "filepositions" || v.key == "lastkeyframelocation") && position < old_size) updated = moved(position);
+			else if (v.key == "filesize" && position == old_size) updated = new_size;
 
-			if (updated != position) plan.replacements.push_back({at, 8, be_double(static_cast<double>(updated))});
+			if (updated != position) plan.replacements.push_back({v.at, 8, be_double(static_cast<double>(updated))});
 		};
 
 		std::uint64_t after = 0;
-		if (!script_name(r, *l.meta, after).empty()) a.value(after, {});
+		if (!flv::script_name(r, *l.meta, after).empty()) a.value(after);
 	}
 }

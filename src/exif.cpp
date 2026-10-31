@@ -10,6 +10,7 @@
 // scanner and the JPEG decoder share.
 
 #include "libfiles/exif.h"
+#include "libfiles/types.h"
 #include "text_internal.h"
 #include "tiff_internal.h"
 
@@ -28,53 +29,7 @@ namespace libfiles
 
 	namespace
 	{
-		constexpr std::uint16_t tag_image_description = 0x010e;
-		constexpr std::uint16_t tag_make = 0x010f;
-		constexpr std::uint16_t tag_model = 0x0110;
-		constexpr std::uint16_t tag_software = 0x0131;
-		constexpr std::uint16_t tag_date_time = 0x0132;
-		constexpr std::uint16_t tag_artist = 0x013b;
-		constexpr std::uint16_t tag_rating = 0x4746;
-		constexpr std::uint16_t tag_rating_percent = 0x4749;
-		constexpr std::uint16_t tag_copyright = 0x8298;
-		constexpr std::uint16_t tag_exposure_time = 0x829a;
-		constexpr std::uint16_t tag_f_number = 0x829d;
-		constexpr std::uint16_t tag_exif_ifd = 0x8769;
-		constexpr std::uint16_t tag_iso_speed = 0x8827;
-		constexpr std::uint16_t tag_date_time_original = 0x9003;
-		constexpr std::uint16_t tag_date_time_digitized = 0x9004;
-		constexpr std::uint16_t tag_offset_time = 0x9010;
-		constexpr std::uint16_t tag_offset_time_original = 0x9011;
-		constexpr std::uint16_t tag_offset_time_digitized = 0x9012;
-		constexpr std::uint16_t tag_shutter_speed = 0x9201;
-		constexpr std::uint16_t tag_aperture = 0x9202;
-		constexpr std::uint16_t tag_max_aperture = 0x9205;
-		constexpr std::uint16_t tag_focal_length = 0x920a;
-		constexpr std::uint16_t tag_maker_note = 0x927c;
-		constexpr std::uint16_t tag_user_comment = 0x9286;
-		constexpr std::uint16_t tag_sub_sec_time = 0x9290;
-		constexpr std::uint16_t tag_sub_sec_time_original = 0x9291;
-		constexpr std::uint16_t tag_sub_sec_time_digitized = 0x9292;
-		constexpr std::uint16_t tag_xp_title = 0x9c9b;
-		constexpr std::uint16_t tag_xp_comment = 0x9c9c;
-		constexpr std::uint16_t tag_xp_author = 0x9c9d;
-		constexpr std::uint16_t tag_xp_keywords = 0x9c9e;
-		constexpr std::uint16_t tag_xp_subject = 0x9c9f;
-		constexpr std::uint16_t tag_interop_ifd = 0xa005;
-		constexpr std::uint16_t tag_focal_length_35mm = 0xa405;
-		constexpr std::uint16_t tag_lens_model = 0xa434;
-
-		constexpr std::uint16_t tag_gps_latitude_ref = 0x0001;
-		constexpr std::uint16_t tag_gps_latitude = 0x0002;
-		constexpr std::uint16_t tag_gps_longitude_ref = 0x0003;
-		constexpr std::uint16_t tag_gps_longitude = 0x0004;
-		constexpr std::uint16_t tag_gps_altitude_ref = 0x0005;
-		constexpr std::uint16_t tag_gps_altitude = 0x0006;
-		constexpr std::uint16_t tag_gps_time_stamp = 0x0007;
-		constexpr std::uint16_t tag_gps_speed_ref = 0x000c;
-		constexpr std::uint16_t tag_gps_speed = 0x000d;
-		constexpr std::uint16_t tag_gps_date_stamp = 0x001d;
-
+		// A Canon maker note's settings and lens, beside the tags tiff_internal.h names.
 		constexpr std::uint16_t tag_canon_settings = 0x0001;
 		constexpr std::uint16_t tag_canon_lens = 0x0095;
 
@@ -181,62 +136,9 @@ namespace libfiles
 			return result;
 		}
 
-		// A lone surrogate becomes U+FFFD.
-		std::string utf16_to_utf8(const std::u16string_view s)
-		{
-			std::string result;
-			result.reserve(s.size() * 3);
-
-			for (std::size_t i = 0; i < s.size();)
-			{
-				std::uint32_t cp = s[i++];
-
-				if (cp >= 0xd800 && cp <= 0xdbff)
-				{
-					if (i < s.size() && s[i] >= 0xdc00 && s[i] <= 0xdfff)
-					{
-						cp = (cp << 10) + s[i++] + 0xfca02400u;
-					}
-					else
-					{
-						cp = 0xfffd;
-					}
-				}
-				else if (cp >= 0xdc00 && cp <= 0xdfff)
-				{
-					cp = 0xfffd;
-				}
-
-				if (cp < 0x80)
-				{
-					result += static_cast<char>(cp);
-				}
-				else if (cp < 0x800)
-				{
-					result += static_cast<char>(0xc0 | cp >> 6);
-					result += static_cast<char>(0x80 | (cp & 0x3f));
-				}
-				else if (cp < 0x10000)
-				{
-					result += static_cast<char>(0xe0 | cp >> 12);
-					result += static_cast<char>(0x80 | ((cp >> 6) & 0x3f));
-					result += static_cast<char>(0x80 | (cp & 0x3f));
-				}
-				else
-				{
-					result += static_cast<char>(cp >> 18 | 0xf0);
-					result += static_cast<char>(((cp >> 12) & 0x3f) | 0x80);
-					result += static_cast<char>(((cp >> 6) & 0x3f) | 0x80);
-					result += static_cast<char>((cp & 0x3f) | 0x80);
-				}
-			}
-
-			return result;
-		}
-
 		std::string trimmed_utf8(const std::u16string_view text)
 		{
-			const auto utf8 = utf16_to_utf8(text);
+			const auto utf8 = utf8_from_utf16(text);
 			return std::string(trim(utf8));
 		}
 
@@ -259,17 +161,12 @@ namespace libfiles
 			return std::fabs(x) <= std::numeric_limits<float>::epsilon();
 		}
 
-		int round_up(const int i, const int d)
-		{
-			return i % d ? i / d + 1 : i / d;
-		}
-
-		// A rating of -1 is "rejected"; above 5 it is a percentage.
-		int safe_rating(int r)
+		// A rating of -1 is "rejected"; above 5 it is Windows' percent, read as every scale libfiles reads is.
+		int safe_rating(const int r)
 		{
 			if (r < 0) return -1;
-			if (r > 5) r = round_up(r, 20);
-			return std::clamp(r, 0, 5);
+			if (r > 5) return stars_from_percent(r);
+			return r;
 		}
 
 		double aperture_to_f_number(const double apex)
@@ -775,7 +672,7 @@ namespace libfiles
 					_m.rating = static_cast<std::int16_t>(safe_rating(e.field_s16()));
 					break;
 				case tag_rating_percent:
-					_m.rating = static_cast<std::int16_t>(safe_rating(round_up(e.field_s16(), 20)));
+					_m.rating = static_cast<std::int16_t>(e.field_s16() < 0 ? -1 : stars_from_percent(e.field_s16()));
 					break;
 				case tag_date_time:
 					_m.modified.text = e.ascii();

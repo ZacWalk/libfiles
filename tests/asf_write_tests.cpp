@@ -191,7 +191,7 @@ namespace
 		return names;
 	}
 
-	// The rating in the first packet after the data, the one FFmpeg reads.
+	// The rating in the first packet after the data, the one readers take.
 	int ffmpeg_rating(const bytes& file)
 	{
 		std::size_t pos = 0;
@@ -317,7 +317,9 @@ namespace
 		u.legacy.title = "New title";
 		u.legacy.creators = std::vector<std::string>{"Ann", "Bob"};
 		u.legacy.copyright = "(c) someone";
+		// The description stays in the packet; the comment is the Content Description's Description.
 		u.legacy.description = "A description";
+		u.legacy.comment = "A comment";
 		u.legacy.keywords = std::vector<std::string>{"beach", "Zürich"};
 		u.legacy.rating = 4;
 		u.legacy.date_digitized = "1601-01-02T00:00:01Z";
@@ -389,7 +391,7 @@ TEST("an asf header takes an edit's fields into its padding")
 		CHECK(header.description_fields[0] == utf16z("New title"));
 		CHECK(header.description_fields[1] == utf16z("Ann; Bob"));
 		CHECK(header.description_fields[2] == utf16z("(c) someone"));
-		CHECK(header.description_fields[3] == utf16z("A description"));
+		CHECK(header.description_fields[3] == utf16z("A comment"));
 		CHECK(header.description_fields[4] == utf16z("PG"));
 	}
 

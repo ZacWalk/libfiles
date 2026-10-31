@@ -9,6 +9,7 @@
 // caller that subscribes to its box events, as Diffractor did: a box counts once the decoder moves on
 // past it, so a fault anywhere ends the boxes there, and the last of each kind wins.
 
+#include "bmff_internal.h"
 #include "scan_internal.h"
 
 #include <algorithm>
@@ -26,13 +27,7 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint32_t fourcc(const char (&name)[5])
-		{
-			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[0])) << 24 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
-				static_cast<std::uint8_t>(name[3]);
-		}
+		using bmff::fourcc;
 
 		constexpr auto box_signature = fourcc("JXL ");
 		constexpr auto box_ftyp = fourcc("ftyp");
@@ -69,17 +64,7 @@ namespace libfiles::detail
 		// The ICC profile libjxl will decode.
 		constexpr std::uint64_t max_icc_size = 268435456;
 
-		std::string fourcc_text(const std::uint32_t code)
-		{
-			std::string text(4, ' ');
-
-			for (std::size_t i = 0; i < 4; ++i)
-			{
-				text[i] = static_cast<char>(static_cast<std::uint8_t>(code >> (24 - 8 * i)));
-			}
-
-			return text;
-		}
+		using bmff::fourcc_text;
 
 		// libjxl's header bits read least significant first. A read past the end yields zero bits and
 		// is remembered, which is how a header too short to read tells itself from one that is wrong.
@@ -857,18 +842,11 @@ namespace libfiles::detail
 					return out;
 				}
 
-				if (remaining < 8) return out;
-
-				std::uint64_t box_size = r.be32(pos);
-				const auto type = r.be32(pos + 4);
-				std::uint64_t header = 8;
-
-				if (box_size == 1)
-				{
-					if (remaining < 16) return out;
-					box_size = r.be64(pos + 8);
-					header = 16;
-				}
+				bmff::box_header head;
+				if (bmff::read_header(r, pos, remaining, head) != bmff::header_status::box) return out;
+				const auto box_size = head.size;
+				const auto type = head.type;
+				const std::uint64_t header = head.header;
 
 				if (box_size > 0 && box_size < header) return out;
 				if (box_size > std::numeric_limits<std::uint64_t>::max() - pos) return out;
@@ -1121,16 +1099,11 @@ namespace libfiles::detail
 
 			for (std::size_t listed = 0; listed < max_listed_boxes && file_size - offset >= 8; ++listed)
 			{
-				std::uint64_t size = r.be32(offset);
-				const auto type = r.be32(offset + 4);
-				std::uint64_t header = 8;
-
-				if (size == 1)
-				{
-					if (file_size - offset < 16) break;
-					size = r.be64(offset + 8);
-					header = 16;
-				}
+				bmff::box_header head;
+				if (bmff::read_header(r, offset, file_size - offset, head) != bmff::header_status::box) break;
+				auto size = head.size;
+				const auto type = head.type;
+				const std::uint64_t header = head.header;
 
 				if (size == 0) size = file_size - offset;
 				if (size < header || size > file_size - offset) break;
@@ -1183,6 +1156,10 @@ namespace libfiles::detail
 			result.height = read.info->height;
 			result.orientation = static_cast<std::uint16_t>(read.info->orientation);
 			result.pixel_format = read.info->grey ? "grayscale" : read.info->alpha_bits > 0 ? "rgba" : "rgb";
+			result.picture = {
+				read.info->grey ? chroma_format::gray : chroma_format::rgb, static_cast<std::uint8_t>(read.info->bits_per_sample),
+				read.info->alpha_bits > 0
+			};
 		}
 
 		if (read.exif)

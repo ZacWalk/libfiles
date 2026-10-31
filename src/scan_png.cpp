@@ -340,6 +340,12 @@ namespace libfiles::detail
 					result.height = load_be32(ihdr + 4);
 					color_type = ihdr[9];
 
+					// The depth is a sample's, or a palette index's.
+					result.picture.chroma = (color_type & 2) != 0 ? chroma_format::rgb : chroma_format::gray;
+					result.picture.bit_depth = ihdr[8];
+					result.picture.alpha = (color_type & 4) != 0;
+					result.picture.palette = color_type == 3;
+
 					switch (color_type)
 					{
 					case 0: result.pixel_format = "gray";

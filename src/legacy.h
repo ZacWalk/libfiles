@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "date_internal.h"
+#include "text_internal.h"
 #include "write_internal.h"
 
 #include <array>
@@ -166,27 +168,4 @@ namespace libfiles::detail
 
 	// True when the edit sets a field IPTC holds.
 	bool touches_iptc(const legacy_edits& edits);
-
-	// UTF-8 to UTF-16LE, a malformed sequence becoming U+FFFD. No terminator.
-	bytes utf16le(std::string_view text);
-
-	struct date_parts
-	{
-		int year = 0;
-		int month = 0;
-		int day = 0;
-		bool has_time = false;
-		int hour = 0;
-		int minute = 0;
-		int second = 0;
-		bool has_zone = false;
-		int zone_minutes = 0;
-	};
-
-	// "YYYY-MM-DD[Thh:mm[:ss[.s]][Z|+hh:mm|-hh:mm]]", as XMP writes dates.
-	std::optional<date_parts> parse_xmp_date(std::string_view text);
-
-	// Seconds from the start of epoch_year, January 1, to the date, read as UTC unless it gives a zone.
-	// Negative when the date comes first.
-	std::int64_t seconds_since(int epoch_year, const date_parts& date);
 }

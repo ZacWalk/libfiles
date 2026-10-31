@@ -723,20 +723,7 @@ namespace libfiles
 		// Its curly quotes, dashes and euro sit at 0x80 to 0x9F, where Latin-1 has only controls.
 		std::string decode_iptc_text(const std::string_view sv)
 		{
-			if (sv.empty() || detail::is_utf8(reinterpret_cast<const std::uint8_t*>(sv.data()), sv.size()))
-			{
-				return std::string(sv);
-			}
-
-			std::string result;
-			result.reserve(sv.size() + sv.size() / 2);
-
-			for (const auto ch : sv)
-			{
-				detail::append_utf8(result, detail::windows_1252(static_cast<std::uint8_t>(ch)));
-			}
-
-			return result;
+			return detail::text_from_utf8_or_1252({reinterpret_cast<const std::uint8_t*>(sv.data()), sv.size()});
 		}
 
 		// A dataset's text is padded with NULs, which go; its spaces stay.

@@ -9,6 +9,7 @@
 // it stay where they are. A DNG carries no IPTC, as the DNG specification asks.
 
 #include "legacy.h"
+#include "tiff_internal.h"
 
 #include <algorithm>
 
@@ -17,11 +18,6 @@ namespace libfiles::detail
 	namespace
 	{
 		using directory = tiff_editor::directory;
-
-		constexpr std::uint16_t tag_xmp = 700;
-		constexpr std::uint16_t tag_iptc = 33723;
-		constexpr std::uint16_t tag_photoshop = 34377;
-		constexpr std::uint16_t tag_dng_version = 0xC612;
 	}
 
 	void plan_tiff(reader& r, const metadata_update& update, write_plan& plan)

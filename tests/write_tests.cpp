@@ -10,6 +10,7 @@
 #include "builders.h"
 #include "interruptions.h"
 #include "libfiles/write.h"
+#include "round_trip.h"
 
 #include <cstring>
 
@@ -305,4 +306,20 @@ TEST("interrupted png, gif and webp patches read whole")
 	const auto holds_what_it_declares = [](const bytes& state) { CHECK(webp_holds_what_it_declares(state)); };
 	replay(extended, -100, 2, holds_what_it_declares);
 	replay(update(extended, rated(2)).file, 2, 4, holds_what_it_declares);
+}
+
+TEST("png, gif and webp read back the edits they keep outside the packet")
+{
+	// PNG and GIF keep nothing outside the packet, nor does a WebP without EXIF.
+	check_round_trip("png", make_png(), {});
+	check_round_trip("gif", make_gif(), {});
+	check_round_trip("webp", make_simple_webp(false), {});
+
+	// A WebP that already holds EXIF keeps what EXIF does: all but the title and the place, which are IPTC's.
+	builder extended;
+	riff_chunk(extended, "VP8X", vp8x(0x08, 300, 200));
+	riff_chunk(extended, "VP8 ", vp8_frame(300, 200));
+	riff_chunk(extended, "EXIF", builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(1).le16(0).le32(0).b);
+	check_round_trip("webp with exif", finish_riff(extended),
+	                 {"copyright", "creators", "description", "digitized", "keywords", "location", "orientation", "rating", "taken", "year"});
 }

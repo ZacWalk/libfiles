@@ -9,9 +9,13 @@
 // The tag keeps its version, and every frame the edit does not own is kept byte for byte. When the new
 // frames fit the tag's space, the tag is patched where it lies at the size it has; otherwise the file is
 // rewritten in one pass with a larger tag, given padding for the next edit. ID3v1, which readers consult
-// only when there is no ID3v2 tag, is left as it is.
+// only when there is no ID3v2 tag, is left as it is. The tag is walked by id3_internal.h as the media scan
+// walks it, and a frame is known by its data as the scan decodes it, so the frames an edit replaces are the
+// ones a reader takes.
 
+#include "id3_internal.h"
 #include "legacy.h"
+#include "vocabulary_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -21,19 +25,13 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		constexpr std::uint64_t header_size = 10;
+		constexpr std::uint64_t header_size = id3_header_size;
 		// The padding a rewritten tag is given for later edits, as the toolkit gave it.
 		constexpr std::uint64_t new_padding = 2048;
 		// The largest size the tag header's 28 bits hold.
 		constexpr std::uint64_t max_tag = (1ull << 28) - 1;
 
-		constexpr std::string_view wmp_owner = "Windows Media Player 9 Series";
-
-		std::uint32_t syncsafe(const std::uint8_t* const p)
-		{
-			return static_cast<std::uint32_t>(p[0]) << 21 | static_cast<std::uint32_t>(p[1]) << 14 |
-				static_cast<std::uint32_t>(p[2]) << 7 | p[3];
-		}
+		constexpr std::string_view wmp_owner = vocabulary::wmp_rating_owner;
 
 		void append_syncsafe(bytes& to, const std::uint32_t v)
 		{
@@ -45,6 +43,9 @@ namespace libfiles::detail
 			std::string id;
 			bytes raw;
 			std::size_t header = 10;
+			// For a frame an edit may own by its data - PRIV, POPM, COMM - that data as a reader decodes it: its
+			// flags' data length, unsynchronisation and compression undone. Empty for any other frame.
+			bytes data;
 
 			std::span<const std::uint8_t> body() const { return std::span(raw).subspan(header); }
 		};
@@ -58,80 +59,79 @@ namespace libfiles::detail
 			std::vector<frame> frames;
 		};
 
-		bool valid_id(const std::span<const std::uint8_t> id)
-		{
-			return std::ranges::all_of(id, [](const std::uint8_t c) { return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); });
-		}
-
 		tag read_tag(reader& r)
 		{
 			tag t;
 			if (r.size() < header_size) return t;
 
-			const auto h = r.read(0, header_size);
-			if (!starts_with(h, "ID3")) return t;
+			const auto h = parse_id3_header(r.read(0, header_size));
+			if (!h) return t;
 
 			t.present = true;
-			t.version = h[3];
-			const auto flags = h[5];
+			t.version = h->version;
 
-			if (t.version < 2 || t.version > 4 || h[4] == 0xFF) throw format_error("the ID3 tag's version is not one libfiles writes");
-			if ((h[6] | h[7] | h[8] | h[9]) & 0x80) throw format_error("the ID3 tag's size is damaged");
-			if (flags & 0x80) throw format_error("an ID3 tag with unsynchronisation cannot be updated");
-			if (t.version == 2 && (flags & 0x40)) throw format_error("a compressed ID3v2.2 tag cannot be updated");
+			if (!h->known_version() || !h->size_syncsafe) throw format_error(id3_fault(*h, 0, r.size()));
+			if (h->unsynchronised()) throw format_error("an ID3 tag with unsynchronisation cannot be updated");
+			if (const auto fault = id3_fault(*h, 0, r.size())) throw format_error(fault);
 
-			const auto end = header_size + syncsafe(h.data() + 6);
-			t.total = end + (t.version == 4 && (flags & 0x10) ? 10 : 0);
-			if (t.total > r.size()) throw format_error("the ID3 tag runs past the end of the file");
-
-			auto pos = header_size;
+			t.total = h->total();
 
 			// An extended header is skipped, and not written back: what it checks is rewritten.
-			if (t.version >= 3 && (flags & 0x40))
+			const auto first = id3_frames_begin(r, *h, header_size, h->end());
+			if (!first) throw format_error(id3_damaged_extended_header);
+
+			// Every frame is kept, however many, so a rewrite drops none; the walk is the scan's, so the frames
+			// kept are the ones the scan reads. The frames an edit owns by their data - its packet, Windows Media
+			// Player's rating, a comment - are known by that data as a reader decodes it, inflating no more than
+			// one frame's worth in all.
+			const auto walk = [&](const id3_sizes sizes)
 			{
-				if (end - pos < 4) throw format_error("the ID3 tag's extended header is damaged");
-				const auto e = r.read(pos, 4);
-				const std::uint64_t length = t.version == 3 ? load_be32(e.data()) + 4ull : syncsafe(e.data());
-				if (length < 4 || length > end - pos) throw format_error("the ID3 tag's extended header is damaged");
-				pos += length;
-			}
+				t.frames.clear();
+				id3_frame_walker frames(r, t.version, *first, h->end(), sizes);
+				std::size_t inflated = 0;
 
-			const std::size_t frame_header = t.version == 2 ? 6 : 10;
-			const std::size_t id_length = t.version == 2 ? 3 : 4;
+				while (const auto found = frames.next())
+				{
+					frame f;
+					f.id = found->name();
+					f.header = found->header_size;
+					f.raw = r.read(found->offset, found->header_size + static_cast<std::size_t>(found->size));
 
-			while (end - pos >= frame_header)
-			{
-				const auto fh = r.read(pos, frame_header);
-				if (fh[0] == 0 || !valid_id(std::span(fh).first(id_length))) break;
+					const auto layout = id3_layout_of(*h, *found);
+					const auto by_data = is_id3_private_frame(f.id) || f.id == "POPM" || f.id == "POP" || f.id == "COMM" || f.id == "COM";
+					std::optional<bytes> decoded;
 
-				std::uint64_t size;
-				if (t.version == 2) size = static_cast<std::uint64_t>(fh[3]) << 16 | static_cast<std::uint64_t>(fh[4]) << 8 | fh[5];
-				else if (t.version == 3 || ((fh[4] | fh[5] | fh[6] | fh[7]) & 0x80)) size = load_be32(fh.data() + 4);
-				else size = syncsafe(fh.data() + 4);
+					if (by_data && !(layout.plain() && layout.prefix == 0))
+					{
+						const auto room = id3_max_frame - std::min(inflated, id3_max_frame);
+						decoded = id3_frame_data(r, *found, layout, layout.compressed ? room : id3_max_frame);
+						if (decoded && layout.compressed) inflated += decoded->size();
+					}
 
-				if (size > end - pos - frame_header) throw format_error("an ID3 frame runs past the end of its tag");
+					if (decoded) f.data = std::move(*decoded);
+					else if (by_data) f.data.assign(f.body().begin(), f.body().end());
 
-				frame f;
-				f.id.assign(fh.begin(), fh.begin() + static_cast<std::ptrdiff_t>(id_length));
-				f.header = frame_header;
-				f.raw = r.read(pos, frame_header + static_cast<std::size_t>(size));
-				t.frames.push_back(std::move(f));
-				pos += frame_header + size;
-			}
+					t.frames.push_back(std::move(f));
+				}
 
+				return std::pair{frames.overran(), frames.stray()};
+			};
+
+			auto [overran, stray] = walk(id3_sizes::standard);
+			if (id3_retry_with_plain_sizes(r, 0, *h, overran || stray)) overran = walk(id3_sizes::plain).first;
+			if (overran) throw format_error(id3_frame_overran);
 			return t;
 		}
 
 		bool owned_by(const frame& f, const std::string_view owner)
 		{
-			const auto body = f.body();
-			return body.size() > owner.size() && std::equal(owner.begin(), owner.end(), body.begin()) && body[owner.size()] == 0;
+			return id3_owned_payload(f.data, owner).has_value();
 		}
 
 		// A comment without a descriptor: the one players show.
 		bool plain_comment(const frame& f)
 		{
-			const auto b = f.body();
+			const auto b = std::span<const std::uint8_t>(f.data);
 			if (b.size() < 5) return false;
 
 			const auto d = b.subspan(4);
@@ -150,6 +150,7 @@ namespace libfiles::detail
 			int version;
 
 			std::string id(const char* v22, const char* v23) const { return version == 2 ? v22 : v23; }
+			std::string id(const vocabulary::id3_frame_name& name) const { return std::string(name.in(version)); }
 
 			bytes frame_of(const std::string& frame_id, const bytes& body) const
 			{
@@ -232,11 +233,11 @@ namespace libfiles::detail
 				return [ids = std::move(ids)](const frame& f) { return std::ranges::find(ids, f.id) != ids.end(); };
 			};
 
-			const auto text = [&](const std::optional<std::string>& value, const char* v22, const char* v23)
+			const auto text = [&](const std::optional<std::string>& value, const vocabulary::id3_frame_name& name)
 			{
 				if (!value) return;
-				field f{by_id({w.id(v22, v23)}), {}};
-				if (!value->empty()) f.frames.push_back(w.text(w.id(v22, v23), *value));
+				field f{by_id({w.id(name)}), {}};
+				if (!value->empty()) f.frames.push_back(w.text(w.id(name), *value));
 				fields.push_back(std::move(f));
 			};
 
@@ -251,7 +252,7 @@ namespace libfiles::detail
 
 				if (const auto old = std::ranges::find_if(t.frames, owns); old != t.frames.end())
 				{
-					const auto packet = old->body().subspan(4);
+					const auto packet = std::span<const std::uint8_t>(old->data).subspan(4);
 					terminated = !packet.empty() && packet.back() == 0;
 					old_length = packet.size() - (terminated ? 1 : 0);
 				}
@@ -262,18 +263,18 @@ namespace libfiles::detail
 				fields.push_back({owns, {w.frame_of(frame_id, body)}});
 			}
 
-			text(e.title, "TT2", "TIT2");
-			text(e.artist, "TP1", "TPE1");
-			text(e.album, "TAL", "TALB");
-			text(e.album_artist, "TP2", "TPE2");
-			text(e.genre, "TCO", "TCON");
-			text(e.track, "TRK", "TRCK");
-			text(e.disc, "TPA", "TPOS");
-			text(e.copyright, "TCR", "TCOP");
+			text(e.title, vocabulary::id3_title);
+			text(e.artist, vocabulary::id3_artist);
+			text(e.album, vocabulary::id3_album);
+			text(e.album_artist, vocabulary::id3_album_artist);
+			text(e.genre, vocabulary::id3_genre);
+			text(e.track, vocabulary::id3_track);
+			text(e.disc, vocabulary::id3_disc);
+			text(e.copyright, vocabulary::id3_copyright);
 
 			if (e.comment)
 			{
-				const auto frame_id = w.id("COM", "COMM");
+				const auto frame_id = w.id(vocabulary::id3_comment);
 				field f{[frame_id](const frame& fr) { return fr.id == frame_id && plain_comment(fr); }, {}};
 				if (!e.comment->empty()) f.frames.push_back(w.comment(*e.comment));
 				fields.push_back(std::move(f));
@@ -281,7 +282,7 @@ namespace libfiles::detail
 
 			if (e.copyright_url)
 			{
-				const auto frame_id = w.id("WCP", "WCOP");
+				const auto frame_id = w.id(vocabulary::id3_copyright_url);
 				field f{by_id({frame_id}), {}};
 				if (!e.copyright_url->empty()) f.frames.push_back(w.frame_of(frame_id, to_bytes(*e.copyright_url)));
 				fields.push_back(std::move(f));
@@ -290,8 +291,7 @@ namespace libfiles::detail
 			if (e.rating)
 			{
 				// Windows Media Player's scale, as Diffractor's fork of the toolkit wrote it.
-				static constexpr std::uint8_t star_to_byte[6] = {0, 1, 64, 128, 196, 255};
-				const auto frame_id = w.id("POP", "POPM");
+				const auto frame_id = w.id(vocabulary::id3_rating);
 				field f{[frame_id](const frame& fr) { return fr.id == frame_id && owned_by(fr, wmp_owner); }, {}};
 
 				if (*e.rating > 0)
@@ -299,7 +299,7 @@ namespace libfiles::detail
 					bytes body;
 					append(body, wmp_owner);
 					body.push_back(0);
-					body.push_back(star_to_byte[std::min(*e.rating, 5)]);
+					body.push_back(static_cast<std::uint8_t>(popm_from_stars(*e.rating)));
 					body.insert(body.end(), 4, 0);
 					f.frames.push_back(w.frame_of(frame_id, body));
 				}
@@ -308,11 +308,11 @@ namespace libfiles::detail
 			}
 
 			// The date: TDRC in ID3v2.4, the year, day and time frames before it.
-			std::optional<date_parts> date;
+			std::optional<libfiles::date> date;
 			if (e.date_digitized) date = parse_xmp_date(*e.date_digitized);
 			if (!date && e.year)
 			{
-				date_parts year_only;
+				libfiles::date year_only;
 				year_only.year = *e.year;
 				date = year_only;
 			}
@@ -320,21 +320,21 @@ namespace libfiles::detail
 			if (date && date->year > 0 && date->year <= 9999)
 			{
 				const auto year = std::to_string(date->year);
-				field f{by_id(w.version == 2 ? std::vector<std::string>{"TYE", "TDA", "TIM"}
-				                             : std::vector<std::string>{"TYER", "TDAT", "TIME", "TDRC"}), {}};
+				field f{by_id(w.version == 2 ? std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month), w.id(vocabulary::id3_time)}
+				                             : std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month), w.id(vocabulary::id3_time), std::string(vocabulary::id3_recording_time)}), {}};
 
 				if (w.version == 4)
 				{
 					auto value = std::string(4 - std::min<std::size_t>(4, year.size()), '0') + year;
 					if (date->month > 0) value += '-' + two(date->month) + '-' + two(date->day);
 					if (date->month > 0 && date->has_time) value += 'T' + two(date->hour) + ':' + two(date->minute) + ':' + two(date->second);
-					f.frames.push_back(w.text("TDRC", value));
+					f.frames.push_back(w.text(std::string(vocabulary::id3_recording_time), value));
 				}
 				else
 				{
-					f.frames.push_back(w.text(w.id("TYE", "TYER"), year));
-					if (date->month > 0) f.frames.push_back(w.text(w.id("TDA", "TDAT"), two(date->day) + two(date->month)));
-					if (date->month > 0 && date->has_time) f.frames.push_back(w.text(w.id("TIM", "TIME"), two(date->hour) + two(date->minute)));
+					f.frames.push_back(w.text(w.id(vocabulary::id3_year), year));
+					if (date->month > 0) f.frames.push_back(w.text(w.id(vocabulary::id3_day_month), two(date->day) + two(date->month)));
+					if (date->month > 0 && date->has_time) f.frames.push_back(w.text(w.id(vocabulary::id3_time), two(date->hour) + two(date->minute)));
 				}
 
 				fields.push_back(std::move(f));
@@ -355,20 +355,9 @@ namespace libfiles::detail
 
 	void read_mp3_packet(reader& r, packet_reading& out)
 	{
-		const auto t = read_tag(r);
-		const auto frame_id = t.version == 2 ? "PRV" : "PRIV";
-
-		for (const auto& f : t.frames)
-		{
-			if (f.id != frame_id || !owned_by(f, "XMP")) continue;
-
-			const auto body = f.body().subspan(4);
-			out.packet.assign(body.begin(), body.end());
-			while (!out.packet.empty() && out.packet.back() == '\0') out.packet.pop_back();
-			break;
-		}
-
-		out.readable = true;
+		const auto p = id3_packet(r, 0);
+		out.readable = p.readable;
+		if (p.readable) out.packet.assign(p.packet.begin(), p.packet.end());
 	}
 
 	void plan_mp3(reader& r, const metadata_update& update, write_plan& plan)

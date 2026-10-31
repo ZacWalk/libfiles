@@ -53,13 +53,21 @@ add_library(libfiles STATIC
     include/libfiles/encode.h
     include/libfiles/exif.h
     include/libfiles/exif_listing.h
+    include/libfiles/icc.h
+    include/libfiles/identify.h
     include/libfiles/iptc.h
+    include/libfiles/media.h
+    include/libfiles/properties.h
     include/libfiles/reader.h
     include/libfiles/scan.h
     include/libfiles/stream.h
+    include/libfiles/types.h
     include/libfiles/write.h
     include/libfiles/xmp.h
+    src/bmff_internal.h
     src/commodore.cpp
+    src/date_internal.h
+    src/dates.cpp
     src/decode.cpp
     src/decode_internal.h
     src/decode_psd.cpp
@@ -72,16 +80,44 @@ add_library(libfiles STATIC
     src/exif.cpp
     src/exif_listing.cpp
     src/exif_write.cpp
+    src/gps.cpp
+    src/gps_internal.h
+    src/icc.cpp
+    src/id3.cpp
+    src/id3_internal.h
+    src/identify.cpp
     src/iptc.cpp
     src/iptc_internal.h
+    src/media.cpp
+    src/media_audio.cpp
+    src/media_internal.h
+    src/media_tags.cpp
+    src/media_video.cpp
+    src/media_mpeg_internal.h
+    src/mp4_internal.h
+    src/asf_internal.h
+    src/flv_internal.h
     src/photoshop_internal.h
+    src/properties.cpp
     src/reader.cpp
+    src/riff_internal.h
     src/scan.cpp
     src/scan_gif_bmp.cpp
     src/scan_heif.cpp
     src/scan_internal.h
     src/scan_jpeg.cpp
     src/scan_jxl.cpp
+    src/scan_media_aiff.cpp
+    src/scan_media_asf.cpp
+    src/scan_media_flac.cpp
+    src/scan_media_flv.cpp
+    src/scan_media_mkv.cpp
+    src/scan_media_mp4.cpp
+    src/scan_media_mpa.cpp
+    src/scan_media_ogg.cpp
+    src/scan_media_ps.cpp
+    src/scan_media_riff.cpp
+    src/scan_media_ts.cpp
     src/scan_png.cpp
     src/scan_psd.cpp
     src/scan_tiff.cpp
@@ -114,6 +150,8 @@ add_library(libfiles STATIC
     src/text.cpp
     src/text_internal.h
     src/tiff_editor.cpp
+    src/types.cpp
+    src/vocabulary_internal.h
     src/xmp_internal.h
     src/xmp_meta.cpp
     src/xmp_rdf.cpp
@@ -192,6 +230,7 @@ if(PROJECT_IS_TOP_LEVEL)
     enable_testing()
 
     add_executable(libfiles_tests
+        tests/agreement_tests.cpp
         tests/asf_write_tests.cpp
         tests/codec_tests.cpp
         tests/av_write_tests.cpp
@@ -202,15 +241,30 @@ if(PROJECT_IS_TOP_LEVEL)
         tests/encode_tests.cpp
         tests/exif_tests.cpp
         tests/heif_jxl_scan_tests.cpp
+        tests/icc_corpus.h
+        tests/icc_tests.cpp
         tests/iptc_tests.cpp
         tests/interruptions.h
         tests/jpeg_decode_tests.cpp
         tests/jxl_codec_tests.cpp
         tests/jxl_decode_tests.cpp
+        tests/media_asf_flv_tests.cpp
+        tests/media_audio_files_tests.cpp
+        tests/media_audio_tests.cpp
+        tests/media_builders.h
+        tests/media_mkv_tests.cpp
+        tests/media_mp4_tests.cpp
+        tests/media_mpeg_tests.cpp
+        tests/media_riff_tests.cpp
+        tests/media_tags_tests.cpp
+        tests/media_tests.cpp
+        tests/media_video_tests.cpp
         tests/test.h
         tests/main.cpp
         tests/mp4_write_tests.cpp
         tests/photo_write_tests.cpp
+        tests/properties_tests.cpp
+        tests/round_trip.h
         tests/heif_decode_tests.cpp
         tests/png_decode_tests.cpp
         tests/raw_codec_tests.cpp
@@ -283,4 +337,7 @@ if(PROJECT_IS_TOP_LEVEL)
 
     add_test(NAME libfiles COMMAND libfiles_tests)
     set_tests_properties(libfiles PROPERTIES LABELS libfiles)
+    add_test(NAME libfiles-dependency-arguments
+        COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/dependency_arguments.cmake")
+    set_tests_properties(libfiles-dependency-arguments PROPERTIES LABELS libfiles)
 endif()

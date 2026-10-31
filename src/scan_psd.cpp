@@ -166,23 +166,34 @@ namespace libfiles::detail
 
 		if (!is_valid_psd_header(columns, rows, channels, depth, mode)) return result;
 
+		const auto bits = static_cast<std::uint8_t>(depth);
+
 		switch (mode)
 		{
 		case bitmap_mode: result.pixel_format = "mono";
+			result.picture = {chroma_format::gray, 1};
 			break;
 		case rgb_mode: result.pixel_format = channels >= 4 ? "argb32" : "rgb32";
+			result.picture = {chroma_format::rgb, bits, channels >= 4};
 			break;
 		case lab_mode: result.pixel_format = "lab";
+			result.picture = {chroma_format::lab, bits};
 			break;
 		case cmyk_mode: result.pixel_format = "cmyk";
+			result.picture = {chroma_format::cmyk, bits};
 			break;
 		case grayscale_mode: result.pixel_format = "gray8";
+			result.picture = {chroma_format::gray, bits};
 			break;
 		case indexed_mode: result.pixel_format = "pal8";
+			result.picture = {chroma_format::rgb, 8, false, true};
 			break;
 		case multichannel_mode: result.pixel_format = "multichannel";
+			result.picture.bit_depth = bits;
 			break;
 		case duotone_mode: result.pixel_format = "duotone";
+			// One channel of gray, printed in inks the colour data names.
+			result.picture = {chroma_format::gray, bits};
 			break;
 		default:
 			break;

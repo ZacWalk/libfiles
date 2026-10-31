@@ -2,7 +2,7 @@
 // Copyright 2026  Zac Walker
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Purpose: Tests for loading camera raw files: the DNG SDK's own sample DNGs developed into the sink to the
+// Purpose: Tests for raw output conversion and loading: the DNG SDK's own sample DNGs developed into the sink to the
 // pixels LibRaw's own dcraw_make_mem_image makes of them, their embedded previews taken as they are and
 // turned as the raw data says, and what load_raw reports for a size refused, a file LibRaw cannot open,
 // and a file cut short.
@@ -17,7 +17,7 @@
 #define LIBRAW_NODLL 1
 #define USE_DNGSDK 1
 
-#include "dng_host.h"
+#include "raw_internal.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -28,6 +28,9 @@
 #pragma warning(pop)
 #endif
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -82,6 +85,29 @@ namespace
 		bytes rgb;
 	};
 
+	// A stream that says it holds the whole file but supplies only its start, as a share that drops does.
+	class failing_stream final : public libfiles::stream
+	{
+	public:
+		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from)
+		{
+		}
+
+		std::uint64_t size() override { return _data.size(); }
+
+		std::size_t read(const std::uint64_t offset, void* data, const std::size_t size) override
+		{
+			if (offset >= _fails_from) return 0;
+			const auto n = static_cast<std::size_t>(std::min<std::uint64_t>(size, _fails_from - offset));
+			std::memcpy(data, _data.data() + offset, n);
+			return n;
+		}
+
+	private:
+		const bytes& _data;
+		std::uint64_t _fails_from = 0;
+	};
+
 	reference develop_with_libraw(const std::filesystem::path& path)
 	{
 		reference result;
@@ -113,6 +139,19 @@ namespace
 		processor->recycle();
 		return result;
 	}
+}
+
+TEST("Raw output integers truncate as LibRaw does at fractional brightness boundaries")
+{
+	CHECK_EQ(libfiles::detail::raw_output_integer(0.75f), 0);
+	CHECK_EQ(libfiles::detail::raw_output_integer(1.75f), 1);
+	CHECK_EQ(libfiles::detail::raw_output_integer(123.99f), 123);
+	CHECK_EQ(libfiles::detail::raw_output_integer(-1.75f), -1);
+	CHECK_EQ(libfiles::detail::raw_output_integer(0.0f), 0);
+	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::infinity()), 0);
+	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::quiet_NaN()), 0);
+	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::max()), std::numeric_limits<int>::max());
+	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::lowest()), std::numeric_limits<int>::min());
 }
 
 TEST("Should develop a raw file into the sink to the pixels LibRaw's own developer makes")
@@ -171,6 +210,34 @@ TEST("Should take a raw file's JPEG preview as it is, rather than develop it")
 	CHECK_EQ(sink.accepts, 0);
 	CHECK_EQ(sink.calls, 0);
 	CHECK_EQ(result.orientation, 1u);
+}
+
+TEST("Should load a raw file read through a reader as it loads the file by its path")
+{
+	const auto read_all = [](const std::filesystem::path& path)
+	{
+		std::ifstream in(path, std::ios::binary);
+		return bytes{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+	};
+
+	// Developed, and taken as its preview.
+	for (const auto prefer_preview : {false, true})
+	{
+		const auto path = sample(prefer_preview ? "04_PGTM2_per_profile.dng" : "05_PGTM2_unsigned8.dng");
+		const auto file = read_all(path);
+
+		raw_sink by_path_sink;
+		raw_sink by_reader_sink;
+		const auto by_path = libfiles::load_raw(path, by_path_sink, prefer_preview);
+		libfiles::reader memory(file);
+		const auto by_reader = libfiles::load_raw(memory, by_reader_sink, prefer_preview, path);
+
+		CHECK(by_path.success && by_reader.success);
+		CHECK(by_reader.preview == by_path.preview);
+		CHECK(by_reader.jpeg == by_path.jpeg);
+		CHECK_EQ(by_reader.orientation, by_path.orientation);
+		CHECK(by_reader_sink.memory == by_path_sink.memory);
+	}
 }
 
 TEST("Should write a raw file's bitmap preview to the sink as BGRX")
@@ -240,6 +307,30 @@ TEST("Should not load what LibRaw cannot open, nor a raw file cut short")
 	CHECK(!cut_result.success);
 
 	std::filesystem::remove_all(folder);
+}
+
+TEST("Should not load a raw file whose stream fails part-way, as it does not load the file cut short there")
+{
+	for (const auto* const name : {"05_PGTM2_unsigned8.dng", "06_PGTM2_unsigned16.dng", "12_ImageStats_WeightedAverage.dng",
+	                               "01_jxl_linear_raw_integer.dng"})
+	{
+		std::ifstream in(sample(name), std::ios::binary);
+		const bytes whole{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+		const auto fails_from = whole.size() * 3 / 5;
+		const auto loaded = [name](const bool success) { return success ? std::string(name) + " loaded" : std::string(); };
+
+		const bytes cut(whole.begin(), whole.begin() + static_cast<std::ptrdiff_t>(fails_from));
+		libfiles::reader short_file(cut);
+		raw_sink cut_sink;
+		CHECK_STR(loaded(libfiles::load_raw(short_file, cut_sink, false).success), "");
+
+		failing_stream failing(whole, fails_from);
+		libfiles::reader dropped(failing);
+		raw_sink dropped_sink;
+		const auto through_failure = libfiles::load_raw(dropped, dropped_sink, false);
+		CHECK_STR(loaded(through_failure.success), "");
+		CHECK_STR(through_failure.decoded.error, "the file could not be read");
+	}
 }
 
 TEST("Should show a raw file's preview turned as the raw data is, unless it is the raw image's shape as shown")

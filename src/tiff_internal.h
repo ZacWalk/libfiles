@@ -20,10 +20,72 @@
 
 namespace libfiles::detail
 {
+	// The TIFF and EXIF tag numbers libfiles reads and writes, named once for the reader, the scanners, the
+	// writers and the editor.
+	constexpr std::uint16_t tag_image_width = 0x0100;
+	constexpr std::uint16_t tag_image_length = 0x0101;
+	constexpr std::uint16_t tag_bits_per_sample = 0x0102;
+	constexpr std::uint16_t tag_photometric = 0x0106;
+	constexpr std::uint16_t tag_image_description = 0x010e;
+	constexpr std::uint16_t tag_make = 0x010f;
+	constexpr std::uint16_t tag_model = 0x0110;
 	constexpr std::uint16_t tag_orientation = 0x0112;
+	constexpr std::uint16_t tag_samples_per_pixel = 0x0115;
+	constexpr std::uint16_t tag_software = 0x0131;
+	constexpr std::uint16_t tag_date_time = 0x0132;
+	constexpr std::uint16_t tag_artist = 0x013b;
+	constexpr std::uint16_t tag_extra_samples = 0x0152;
 	constexpr std::uint16_t tag_jpeg_interchange_format = 0x0201;
 	constexpr std::uint16_t tag_jpeg_interchange_format_length = 0x0202;
+	constexpr std::uint16_t tag_ycbcr_subsampling = 0x0212;
+	constexpr std::uint16_t tag_xmp = 0x02bc;
+	constexpr std::uint16_t tag_rating = 0x4746;
+	constexpr std::uint16_t tag_rating_percent = 0x4749;
+	constexpr std::uint16_t tag_copyright = 0x8298;
+	constexpr std::uint16_t tag_exposure_time = 0x829a;
+	constexpr std::uint16_t tag_f_number = 0x829d;
+	// IPTC-IIM, as Photoshop keeps it in a TIFF's own directory, and the Photoshop resources beside it.
+	constexpr std::uint16_t tag_iptc = 0x83bb;
+	constexpr std::uint16_t tag_photoshop = 0x8649;
+	constexpr std::uint16_t tag_exif_ifd = 0x8769;
 	constexpr std::uint16_t tag_gps_ifd = 0x8825;
+	constexpr std::uint16_t tag_iso_speed = 0x8827;
+	constexpr std::uint16_t tag_date_time_original = 0x9003;
+	constexpr std::uint16_t tag_date_time_digitized = 0x9004;
+	constexpr std::uint16_t tag_offset_time = 0x9010;
+	constexpr std::uint16_t tag_offset_time_original = 0x9011;
+	constexpr std::uint16_t tag_offset_time_digitized = 0x9012;
+	constexpr std::uint16_t tag_shutter_speed = 0x9201;
+	constexpr std::uint16_t tag_aperture = 0x9202;
+	constexpr std::uint16_t tag_max_aperture = 0x9205;
+	constexpr std::uint16_t tag_focal_length = 0x920a;
+	constexpr std::uint16_t tag_maker_note = 0x927c;
+	constexpr std::uint16_t tag_user_comment = 0x9286;
+	constexpr std::uint16_t tag_sub_sec_time = 0x9290;
+	constexpr std::uint16_t tag_sub_sec_time_original = 0x9291;
+	constexpr std::uint16_t tag_sub_sec_time_digitized = 0x9292;
+	constexpr std::uint16_t tag_xp_title = 0x9c9b;
+	constexpr std::uint16_t tag_xp_comment = 0x9c9c;
+	constexpr std::uint16_t tag_xp_author = 0x9c9d;
+	constexpr std::uint16_t tag_xp_keywords = 0x9c9e;
+	constexpr std::uint16_t tag_xp_subject = 0x9c9f;
+	constexpr std::uint16_t tag_interop_ifd = 0xa005;
+	constexpr std::uint16_t tag_focal_length_35mm = 0xa405;
+	constexpr std::uint16_t tag_lens_model = 0xa434;
+	constexpr std::uint16_t tag_dng_version = 0xc612;
+
+	// In the GPS directory.
+	constexpr std::uint16_t tag_gps_version = 0x0000;
+	constexpr std::uint16_t tag_gps_latitude_ref = 0x0001;
+	constexpr std::uint16_t tag_gps_latitude = 0x0002;
+	constexpr std::uint16_t tag_gps_longitude_ref = 0x0003;
+	constexpr std::uint16_t tag_gps_longitude = 0x0004;
+	constexpr std::uint16_t tag_gps_altitude_ref = 0x0005;
+	constexpr std::uint16_t tag_gps_altitude = 0x0006;
+	constexpr std::uint16_t tag_gps_time_stamp = 0x0007;
+	constexpr std::uint16_t tag_gps_speed_ref = 0x000c;
+	constexpr std::uint16_t tag_gps_speed = 0x000d;
+	constexpr std::uint16_t tag_gps_date_stamp = 0x001d;
 
 	constexpr std::uint32_t type_byte = 1;
 	constexpr std::uint32_t type_ascii = 2;

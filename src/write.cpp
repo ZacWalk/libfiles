@@ -70,45 +70,51 @@ namespace libfiles
 
 		try
 		{
-			std::uint8_t head[16];
-			source.read(0, head, sizeof(head));
-
-			// HEIF and JPEG XL cannot be updated, so they have no file_format, but their packets read.
-			const auto image = detect_image_format(head);
-
-			if (image == image_format::heif || image == image_format::jxl)
+			// One identification for the scans, read_packet and plan_update, so they agree on what a file is.
+			switch (const auto type = identify(source))
 			{
-				std::vector<std::uint8_t> packet;
-				result.readable = image == image_format::heif ? detail::heif_packet(source, packet) : detail::jxl_packet(source, packet);
-				if (result.readable) result.packet.assign(packet.begin(), packet.end());
-				return result;
-			}
-
-			switch (detect_file_format(head))
-			{
-			case file_format::mp4:
+			case file_type::heif:
+			case file_type::jxl:
+				{
+					// HEIF and JPEG XL cannot be updated, but their packets read.
+					std::vector<std::uint8_t> packet;
+					result.readable = type == file_type::heif ? detail::heif_packet(source, packet) : detail::jxl_packet(source, packet);
+					if (result.readable) result.packet.assign(packet.begin(), packet.end());
+				}
+				break;
+			case file_type::mp4:
 				detail::read_mp4_packet(source, result);
 				break;
-			case file_format::asf:
+			case file_type::asf:
 				detail::read_asf_packet(source, result);
 				break;
-			case file_format::riff:
+			case file_type::avi:
+			case file_type::wav:
 				detail::read_riff_packet(source, result);
 				break;
-			case file_format::mp3:
+			case file_type::mpeg_audio:
+			case file_type::flac:
 				detail::read_mp3_packet(source, result);
 				break;
-			case file_format::flv:
+			case file_type::flv:
 				detail::read_flv_packet(source, result);
 				break;
-			case file_format::unknown:
+			case file_type::aiff:
+				detail::read_aiff_packet(source, result);
 				break;
-			default:
+			case file_type::jpeg:
+			case file_type::png:
+			case file_type::gif:
+			case file_type::webp:
+			case file_type::tiff:
+			case file_type::psd:
 				{
 					const auto scanned = scan(source);
 					result.readable = scanned.success;
 					result.packet.assign(scanned.metadata.xmp.begin(), scanned.metadata.xmp.end());
 				}
+				break;
+			default:
 				break;
 			}
 		}
@@ -133,10 +139,7 @@ namespace libfiles
 
 		try
 		{
-			std::uint8_t head[16];
-			source.read(0, head, sizeof(head));
-
-			switch (detect_file_format(head))
+			switch (info(identify(source)).update_format)
 			{
 			case file_format::jpeg: detail::plan_jpeg(source, update, plan);
 				break;

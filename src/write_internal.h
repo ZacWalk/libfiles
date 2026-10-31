@@ -74,10 +74,16 @@ namespace libfiles::detail
 
 	// True when the first bytes are an ID3v2 tag or an MPEG audio frame.
 	bool is_mpeg_audio(std::span<const std::uint8_t> head) noexcept;
+	// The packet of the ID3v2 tag that leads an MPEG audio file - or a FLAC file, which some taggers lead
+	// with one - by id3_packet's rule, which the scan keeps too.
 	void read_mp3_packet(reader& r, packet_reading& out);
 
 	bool is_flv(std::span<const std::uint8_t> head) noexcept;
 	void read_flv_packet(reader& r, packet_reading& out);
+
+	// An AIFF's packet, which libfiles reads but does not update: its last APPL chunk signed "XMP ", as its
+	// scan finds it.
+	void read_aiff_packet(reader& r, packet_reading& out);
 
 	// Same-length replacements for the bytes of updated that differ from original, which starts at
 	// offset in the file. Runs closer than a few bytes are joined.

@@ -3,18 +3,21 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 // Purpose: Writing metadata to ASF files - WMV, WMA and ASF. The packet lives where the toolkit kept it,
-// in a top-level XMP object after the data. Title, author, copyright and description go to the header's
-// Content Description, tags and rating to the WM/Category and WM/SharedUserRating descriptors Windows
-// reads, and a created date to the File Properties.
+// in a top-level XMP object after the data. Title, the artist as author, copyright and the comment as
+// description go to the header's Content Description, where Windows, FFmpeg and the taggers that write WMA
+// read them; tags and rating to the WM/Category and WM/SharedUserRating descriptors Windows reads, and a
+// created date to the File Properties.
 //
 // A packet that fits is patched where it lies; one that does not is appended at the end of the file,
 // and only then does the old object become padding. The header is rewritten where it lies, at the size
 // it has, when its padding can take the change - one write, so the file never holds half of it.
 // Otherwise the file is rewritten in one pass with a larger header, given room for the next edit.
-// Readers take the first XMP object after the data, as FFmpeg does; an update turns any others into
+// Readers take the first XMP object after the data; an update turns any others into
 // padding.
 
+#include "asf_internal.h"
 #include "legacy.h"
+#include "vocabulary_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -23,35 +26,25 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		using guid = std::array<std::uint8_t, 16>;
+		using asf::content_description_id;
+		using asf::extended_content_id;
+		using asf::extension_fixed;
+		using asf::file_properties_id;
+		using asf::guid;
+		using asf::header_extension_id;
+		using asf::header_fixed;
+		using asf::header_id;
+		using asf::load_le64;
+		using asf::object;
+		using asf::object_header;
+		using asf::padding_id;
+		using asf::read_layout;
+		using asf::xmp_id;
 
-		constexpr guid header_id = {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-		constexpr guid data_id = {0x36, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-		constexpr guid file_properties_id = {0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
-		constexpr guid content_description_id = {0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-		constexpr guid extended_content_id = {0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50};
-		constexpr guid header_extension_id = {0xB5, 0x03, 0xBF, 0x5F, 0x2E, 0xA9, 0xCF, 0x11, 0x8E, 0xE3, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
-		constexpr guid padding_id = {0x74, 0xD4, 0x06, 0x18, 0xDF, 0xCA, 0x09, 0x45, 0xA4, 0xBA, 0x9A, 0xAB, 0xCB, 0x96, 0xAA, 0xE8};
-		constexpr guid xmp_id = {0xCB, 0xCF, 0x7A, 0xBE, 0xA9, 0x97, 0xE8, 0x42, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
-
-		// An object's GUID and 64-bit size.
-		constexpr std::size_t object_header = 24;
-		// The header object's own fields: its object header, a child count and two reserved bytes.
-		constexpr std::size_t header_fixed = 30;
-		// The header extension's: its object header, a reserved GUID and word, and its data size.
-		constexpr std::size_t extension_fixed = 46;
-		constexpr std::uint64_t max_header = 16ull * 1024 * 1024;
 		// The padding a header is given when the file is rewritten, for later edits to grow into.
 		constexpr std::uint64_t header_room = 2048;
 		// The only step after what is appended: what makes it the one read, and the header.
 		constexpr std::uint8_t commit = 0;
-
-		std::uint64_t load_le64(const std::uint8_t* const p)
-		{
-			std::uint64_t v = 0;
-			for (auto i = 7; i >= 0; --i) v = v << 8 | p[i];
-			return v;
-		}
 
 		void store_le64(std::uint8_t* const p, const std::uint64_t v)
 		{
@@ -74,11 +67,6 @@ namespace libfiles::detail
 			for (auto i = 0; i < 8; ++i) to.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
 		}
 
-		bool is(const std::span<const std::uint8_t> at, const guid& id)
-		{
-			return at.size() >= id.size() && std::equal(id.begin(), id.end(), at.begin());
-		}
-
 		// An object: its GUID and size, then the payload.
 		bytes make_object(const guid& id, const std::span<const std::uint8_t> payload)
 		{
@@ -86,62 +74,6 @@ namespace libfiles::detail
 			append_le64(out, object_header + payload.size());
 			out.insert(out.end(), payload.begin(), payload.end());
 			return out;
-		}
-
-		struct object
-		{
-			std::uint64_t start = 0;
-			std::uint64_t size = 0;
-			guid id{};
-
-			std::uint64_t end() const { return start + size; }
-		};
-
-		struct layout
-		{
-			std::vector<object> objects;
-			std::size_t data_at = 0;
-			// The XMP objects after the data, in the order of the file.
-			std::vector<std::size_t> xmp_at;
-
-			const object& header() const { return objects.front(); }
-			const object* xmp() const { return xmp_at.empty() ? nullptr : &objects[xmp_at.front()]; }
-		};
-
-		layout read_layout(reader& r)
-		{
-			layout l;
-			const auto size = r.size();
-			std::uint64_t pos = 0;
-			auto found_data = false;
-
-			while (size - pos >= object_header)
-			{
-				object o;
-				o.start = pos;
-				r.read(pos, o.id.data(), o.id.size());
-				o.size = r.le64(pos + 16);
-
-				if (o.size < object_header || o.size > size - pos) throw format_error("an ASF object runs past the end of the file");
-
-				if (o.id == data_id && !found_data)
-				{
-					l.data_at = l.objects.size();
-					found_data = true;
-				}
-				else if (o.id == xmp_id && found_data)
-				{
-					l.xmp_at.push_back(l.objects.size());
-				}
-
-				l.objects.push_back(o);
-				pos += o.size;
-			}
-
-			if (l.objects.empty() || l.objects.front().id != header_id) throw format_error("the ASF has no header object");
-			if (!found_data) throw format_error("the ASF has no data object");
-			if (l.header().size > max_header) throw format_error("the ASF header is too large to update");
-			return l;
 		}
 
 		// A header object held whole, header included, so what is not edited is written back byte for byte.
@@ -157,23 +89,19 @@ namespace libfiles::detail
 		std::vector<child> parse_objects(const std::span<const std::uint8_t> payload, const std::size_t base)
 		{
 			std::vector<child> out;
-			std::size_t pos = 0;
+			reader r(payload);
 
-			while (pos < payload.size())
+			const auto stop = asf::walk_objects(r, 0, payload.size(), [&](const object& o)
 			{
-				if (payload.size() - pos < object_header) throw format_error("an ASF header holds a damaged object");
-
-				const auto size = load_le64(payload.data() + pos + 16);
-				if (size < object_header || size > payload.size() - pos) throw format_error("an ASF header holds a damaged object");
-
+				const auto start = static_cast<std::size_t>(o.start);
 				child c;
-				std::copy_n(payload.begin() + static_cast<std::ptrdiff_t>(pos), c.id.size(), c.id.begin());
-				c.raw.assign(payload.begin() + static_cast<std::ptrdiff_t>(pos), payload.begin() + static_cast<std::ptrdiff_t>(pos + size));
-				c.at = base + pos;
+				c.id = o.id;
+				c.raw.assign(payload.begin() + static_cast<std::ptrdiff_t>(start), payload.begin() + static_cast<std::ptrdiff_t>(start + o.size));
+				c.at = base + start;
 				out.push_back(std::move(c));
-				pos += static_cast<std::size_t>(size);
-			}
+			});
 
+			if (stop != payload.size()) throw format_error("an ASF header holds a damaged object");
 			return out;
 		}
 
@@ -237,7 +165,7 @@ namespace libfiles::detail
 				auto& e = extension->raw;
 				if (e.size() < extension_fixed) throw format_error("an ASF header holds a damaged extension");
 
-				const auto data_size = static_cast<std::size_t>(load_le32(e.data() + 42));
+				const auto data_size = static_cast<std::size_t>(load_le32(e.data() + asf::extension_data_size_at));
 				if (data_size != e.size() - extension_fixed) throw format_error("an ASF header holds a damaged extension");
 
 				auto inner = parse_objects(std::span(e).subspan(extension_fixed), 0);
@@ -246,7 +174,7 @@ namespace libfiles::detail
 					bytes rebuilt(e.begin(), e.begin() + extension_fixed);
 					for (const auto& c : inner) rebuilt.insert(rebuilt.end(), c.raw.begin(), c.raw.end());
 					store_le64(rebuilt.data() + 16, rebuilt.size());
-					store_le32(rebuilt.data() + 42, static_cast<std::uint32_t>(rebuilt.size() - extension_fixed));
+					store_le32(rebuilt.data() + asf::extension_data_size_at, static_cast<std::uint32_t>(rebuilt.size() - extension_fixed));
 					e = std::move(rebuilt);
 				}
 			}
@@ -256,7 +184,7 @@ namespace libfiles::detail
 
 		bool broadcast(const child& file_properties)
 		{
-			return file_properties.raw.size() >= 104 && (file_properties.raw[88] & 1) != 0;
+			return asf::broadcast(file_properties.raw);
 		}
 
 		// UTF-16LE and its terminator, cut at a whole character to what a 16-bit length holds.
@@ -282,9 +210,32 @@ namespace libfiles::detail
 			if (value) field = value->empty() ? bytes{} : asf_string(*value);
 		}
 
+		// The author an edit gives: its artist, or failing one its creators, joined as properties' artist joins
+		// them.
+		std::optional<std::string> author_of(const legacy_edits& e)
+		{
+			if (e.artist) return e.artist;
+			if (!e.creators) return {};
+
+			std::string joined;
+
+			for (const auto& creator : *e.creators)
+			{
+				if (creator.empty()) continue;
+				if (!joined.empty()) joined += "; ";
+				joined += creator;
+			}
+
+			return joined;
+		}
+
+		// Windows, FFmpeg and the taggers that write WMA read the Author as the artist and the Description as
+		// the comment, as an MP3's TPE1 and COMM are read, so they are written from those: the toolkit wrote the
+		// creators and the description there, which read back as neither. A description stays in the packet.
 		void update_content_description(header& h, const legacy_edits& e)
 		{
-			if (!e.title && !e.creators && !e.copyright && !e.description) return;
+			const auto author = author_of(e);
+			if (!e.title && !author && !e.copyright && !e.comment) return;
 
 			// Title, author, copyright, description and rating, each a length then the text.
 			std::array<bytes, 5> fields;
@@ -293,36 +244,25 @@ namespace libfiles::detail
 			if (existing)
 			{
 				const auto& raw = existing->raw;
-				if (raw.size() < object_header + 10) throw format_error("an ASF header holds a damaged content description");
+				reader r(raw);
+				std::array<byte_range, 5> where;
 
-				auto pos = object_header + 10;
+				if (asf::content_description_fields(r, object_header, raw.size(), where) != fields.size())
+				{
+					throw format_error("an ASF header holds a damaged content description");
+				}
 
 				for (std::size_t i = 0; i < fields.size(); ++i)
 				{
-					const auto length = static_cast<std::size_t>(load_le16(raw.data() + object_header + 2 * i));
-					if (length > raw.size() - pos) throw format_error("an ASF header holds a damaged content description");
-					fields[i].assign(raw.begin() + static_cast<std::ptrdiff_t>(pos), raw.begin() + static_cast<std::ptrdiff_t>(pos + length));
-					pos += length;
+					const auto at = raw.begin() + static_cast<std::ptrdiff_t>(where[i].offset);
+					fields[i].assign(at, at + static_cast<std::ptrdiff_t>(where[i].size));
 				}
 			}
 
-			set_text(fields[0], e.title);
-			set_text(fields[2], e.copyright);
-			set_text(fields[3], e.description);
-
-			if (e.creators)
-			{
-				std::string joined;
-
-				for (const auto& creator : *e.creators)
-				{
-					if (creator.empty()) continue;
-					if (!joined.empty()) joined += "; ";
-					joined += creator;
-				}
-
-				fields[1] = joined.empty() ? bytes{} : asf_string(joined);
-			}
+			set_text(fields[vocabulary::asf_title], e.title);
+			set_text(fields[vocabulary::asf_author], author);
+			set_text(fields[vocabulary::asf_copyright], e.copyright);
+			set_text(fields[vocabulary::asf_description], e.comment);
 
 			bytes payload;
 			for (const auto& f : fields) append_le16(payload, static_cast<std::uint16_t>(f.size()));
@@ -379,33 +319,22 @@ namespace libfiles::detail
 			if (existing)
 			{
 				const auto& raw = existing->raw;
-				if (raw.size() < object_header + 2) throw format_error("an ASF header holds damaged descriptors");
+				reader r(raw);
 
-				const auto total = static_cast<std::size_t>(load_le16(raw.data() + object_header));
-				auto pos = object_header + 2;
-
-				for (std::size_t i = 0; i < total; ++i)
+				const auto whole = asf::walk_content_descriptors(r, object_header, raw.size(), [&](const asf::descriptor& d)
 				{
-					if (raw.size() - pos < 2) throw format_error("an ASF header holds damaged descriptors");
-					const auto name_length = static_cast<std::size_t>(load_le16(raw.data() + pos));
-					if (raw.size() - pos < 6 + name_length) throw format_error("an ASF header holds damaged descriptors");
-
-					const auto value_at = pos + 2 + name_length + 4;
-					const auto value_length = static_cast<std::size_t>(load_le16(raw.data() + value_at - 2));
-					if (raw.size() - value_at < value_length) throw format_error("an ASF header holds damaged descriptors");
-
-					const std::span<const std::uint8_t> name(raw.data() + pos + 2, name_length);
-					const auto owned = (owns_category && named(name, "WM/Category")) || (owns_rating && named(name, "WM/SharedUserRating"));
+					const std::span<const std::uint8_t> name(raw.data() + d.name_at, d.name_length);
+					const auto owned = (owns_category && named(name, vocabulary::wm_category)) || (owns_rating && named(name, vocabulary::wm_shared_user_rating));
 
 					if (!owned)
 					{
-						descriptors.insert(descriptors.end(), raw.begin() + static_cast<std::ptrdiff_t>(pos),
-						                   raw.begin() + static_cast<std::ptrdiff_t>(value_at + value_length));
+						descriptors.insert(descriptors.end(), raw.begin() + static_cast<std::ptrdiff_t>(d.start),
+						                   raw.begin() + static_cast<std::ptrdiff_t>(d.end()));
 						++count;
 					}
+				});
 
-					pos = value_at + value_length;
-				}
+				if (!whole) throw format_error("an ASF header holds damaged descriptors");
 			}
 
 			if (owns_category)
@@ -414,17 +343,16 @@ namespace libfiles::detail
 				{
 					if (keyword.empty() || count >= 0xFFFF) continue;
 					auto value = asf_string(keyword);
-					append_descriptor(descriptors, "WM/Category", 0, value);
+					append_descriptor(descriptors, vocabulary::wm_category, 0, value);
 					++count;
 				}
 			}
 
 			if (owns_rating && *e.rating > 0 && count < 0xFFFF)
 			{
-				static constexpr std::uint32_t star_to_percent[6] = {0, 1, 25, 50, 75, 99};
 				bytes value;
-				append_le32(value, star_to_percent[std::min(*e.rating, 5)]);
-				append_descriptor(descriptors, "WM/SharedUserRating", 3, value);
+				append_le32(value, static_cast<std::uint32_t>(percent_from_stars(*e.rating)));
+				append_descriptor(descriptors, vocabulary::wm_shared_user_rating, 3, value);
 				++count;
 			}
 
@@ -453,7 +381,7 @@ namespace libfiles::detail
 			if (!e.date_digitized) return;
 
 			auto* const properties = h.find(file_properties_id);
-			if (!properties || properties->raw.size() < 104 || broadcast(*properties)) return;
+			if (!properties || properties->raw.size() < asf::file_properties_size || broadcast(*properties)) return;
 
 			const auto d = parse_xmp_date(*e.date_digitized);
 			if (!d) return;
@@ -462,16 +390,16 @@ namespace libfiles::detail
 			if (seconds < 0) return;
 
 			const auto filetime = static_cast<std::uint64_t>(seconds) * 10'000'000;
-			if (load_le64(properties->raw.data() + 48) == filetime) return;
+			if (load_le64(properties->raw.data() + asf::creation_date_at) == filetime) return;
 
-			store_le64(properties->raw.data() + 48, filetime);
+			store_le64(properties->raw.data() + asf::creation_date_at, filetime);
 			h.changed = true;
 		}
 	}
 
 	bool is_asf(const std::span<const std::uint8_t> head) noexcept
 	{
-		return is(head, header_id);
+		return asf::is(head, header_id);
 	}
 
 	void read_asf_packet(reader& r, packet_reading& out)
@@ -518,8 +446,8 @@ namespace libfiles::detail
 			}
 			else
 			{
-				const auto object = make_object(xmp_id, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()});
-				appended.insert(appended.end(), object.begin(), object.end());
+				const auto packet_object = make_object(xmp_id, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()});
+				appended.insert(appended.end(), packet_object.begin(), packet_object.end());
 				if (current) pad_object_at(current->start);
 			}
 
@@ -541,7 +469,7 @@ namespace libfiles::detail
 
 		// The File Properties keep the file's size, which a broadcast file does not know.
 		const auto* const properties = h.find(file_properties_id);
-		const auto keeps_size = properties && properties->raw.size() >= 104 && !broadcast(*properties);
+		const auto keeps_size = properties && properties->raw.size() >= asf::file_properties_size && !broadcast(*properties);
 
 		if (h.changed)
 		{
@@ -556,7 +484,7 @@ namespace libfiles::detail
 					at += c.raw.size();
 				}
 
-				store_le64(updated.data() + at + 40, result_size);
+				store_le64(updated.data() + at + asf::file_size_at, result_size);
 			}
 
 			if (fits)
@@ -568,11 +496,11 @@ namespace libfiles::detail
 				plan.replacements.push_back({ho.start, ho.size, std::move(updated)});
 			}
 		}
-		else if (keeps_size && result_size != r.size() && load_le64(properties->raw.data() + 40) != result_size)
+		else if (keeps_size && result_size != r.size() && load_le64(properties->raw.data() + asf::file_size_at) != result_size)
 		{
 			bytes size;
 			append_le64(size, result_size);
-			patch(ho.start + properties->at + 40, std::move(size));
+			patch(ho.start + properties->at + asf::file_size_at, std::move(size));
 		}
 
 		if (!appended.empty())
