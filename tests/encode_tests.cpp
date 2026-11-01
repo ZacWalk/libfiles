@@ -2,9 +2,9 @@
 // Copyright 2026  Zac Walker
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Purpose: Tests for encoding JPEGs, PNGs and WebPs and turning JPEGs losslessly: what each encoder
-// writes, read back by libfiles' own decoders and by walking the file's markers, chunks or boxes; the
-// metadata each embeds, and what each refuses.
+// Purpose: Tests for encoding JPEGs, PNGs, WebPs and JPEG XLs and turning JPEGs losslessly: what each
+// encoder writes, read back by libfiles' own decoders and by walking the file's markers, chunks or
+// boxes; the metadata each embeds, and what each refuses.
 
 #include "test.h"
 
@@ -12,6 +12,7 @@
 #include "libfiles/encode.h"
 #include "libfiles/exif.h"
 #include "libfiles/reader.h"
+#include "libfiles/scan.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -25,6 +26,10 @@
 #include <vector>
 
 #include <jpeglib.h>
+
+#ifdef LIBFILES_JXL
+#include <jxl/decode.h>
+#endif
 
 namespace
 {
@@ -831,6 +836,201 @@ TEST("Should refuse a WebP of a pixel format it does not encode")
 	auto view = p.view();
 	view.format = static_cast<libfiles::pixel_format>(0x7F);
 	CHECK(libfiles::encode_webp(view, 1, {}, {}).data.empty());
+}
+
+#endif
+
+#ifdef LIBFILES_JXL
+
+namespace
+{
+	// A big-endian TIFF stream whose IFD0 holds an orientation and nothing else.
+	bytes tiff_with_orientation(const std::uint8_t orientation)
+	{
+		return {'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0, 0, 0, 0, 0};
+	}
+
+	// The profile libjxl itself describes sRGB with, read from a JPEG XL encoded without one.
+	bytes srgb_icc_from_libjxl()
+	{
+		const auto plain = libfiles::encode_jxl(gradient(8, 8).view(), 1, {}, {}).data;
+		bytes icc;
+		auto* const decoder = JxlDecoderCreate(nullptr);
+
+		if (decoder && JxlDecoderSubscribeEvents(decoder, JXL_DEC_COLOR_ENCODING) == JXL_DEC_SUCCESS &&
+			JxlDecoderSetInput(decoder, plain.data(), plain.size()) == JXL_DEC_SUCCESS)
+		{
+			JxlDecoderCloseInput(decoder);
+			std::size_t size = 0;
+
+			if (JxlDecoderProcessInput(decoder) == JXL_DEC_COLOR_ENCODING &&
+				JxlDecoderGetICCProfileSize(decoder, JXL_COLOR_PROFILE_TARGET_ORIGINAL, &size) == JXL_DEC_SUCCESS)
+			{
+				icc.resize(size);
+				if (JxlDecoderGetColorAsICCProfile(decoder, JXL_COLOR_PROFILE_TARGET_ORIGINAL, icc.data(), icc.size()) !=
+					JXL_DEC_SUCCESS)
+				{
+					icc.clear();
+				}
+			}
+		}
+
+		JxlDecoderDestroy(decoder);
+		return icc;
+	}
+
+	libfiles::scan_result scan_bytes(const bytes& file)
+	{
+		libfiles::reader r{std::span<const std::uint8_t>(file)};
+		return libfiles::scan(r);
+	}
+}
+
+TEST("Should encode a JPEG XL losslessly, alpha and all")
+{
+	const auto p = gradient(24, 12, libfiles::pixel_format::bgra8);
+	libfiles::jxl_options options;
+	options.lossless = true;
+	const auto jxl = libfiles::encode_jxl(p.view(), 1, {}, options);
+
+	CHECK(!jxl.data.empty());
+	CHECK(jxl.notes.empty());
+
+	capture_sink sink;
+	CHECK(decode_bytes(jxl.data, sink).success);
+	CHECK(sink.told.format == libfiles::pixel_format::bgra8);
+	CHECK_EQ(largest_difference(p, sink), 0);
+
+	auto alpha_differs = 0;
+	for (std::uint32_t y = 0; y < p.height; ++y)
+		for (std::uint32_t x = 0; x < p.width; ++x)
+			alpha_differs += p.pixels[y * p.stride + std::size_t{4} * x + 3] != sink.at(x, y)[3];
+	CHECK_EQ(alpha_differs, 0);
+}
+
+TEST("Should encode a JPEG XL of a single pixel, and of an odd size, row padding and all")
+{
+	for (const auto& [width, height] : {std::pair{1u, 1u}, std::pair{7u, 3u}})
+	{
+		const auto p = gradient(width, height, libfiles::pixel_format::bgra8);
+		libfiles::jxl_options options;
+		options.lossless = true;
+		const auto jxl = libfiles::encode_jxl(p.view(), 1, {}, options);
+		CHECK(!jxl.data.empty());
+
+		capture_sink sink;
+		CHECK(decode_bytes(jxl.data, sink).success);
+		CHECK_EQ(sink.told.width, p.width);
+		CHECK_EQ(sink.told.height, p.height);
+		CHECK_EQ(largest_difference(p, sink), 0);
+	}
+}
+
+TEST("Should encode a JPEG XL lossily, red and blue where they were, smaller at a lower quality")
+{
+	const auto p = gradient(128, 96);
+	libfiles::jxl_options fine_options;
+	fine_options.quality = 95;
+	libfiles::jxl_options coarse_options;
+	coarse_options.quality = 30;
+
+	const auto fine = libfiles::encode_jxl(p.view(), 1, {}, fine_options);
+	const auto coarse = libfiles::encode_jxl(p.view(), 1, {}, coarse_options);
+	CHECK(fine.notes.empty());
+
+	capture_sink sink;
+	CHECK(decode_bytes(fine.data, sink).success);
+	CHECK(sink.told.format == libfiles::pixel_format::bgrx8);
+	// Red and blue swapped would differ by around fifty on average.
+	CHECK(mean_difference(p, sink) < 4.0);
+	CHECK(!coarse.data.empty());
+	CHECK(coarse.data.size() < fine.data.size());
+
+	// Quality 100 stays lossy, where libjxl alone would read its distance of 0 as lossless and refuse
+	// it for an image whose profile is not kept.
+	libfiles::jxl_options top;
+	top.quality = 100;
+	CHECK(!libfiles::encode_jxl(p.view(), 1, {}, top).data.empty());
+}
+
+TEST("Should box a JPEG XL's EXIF and XMP, the EXIF turned as the codestream is")
+{
+	const auto tiff = tiff_with_orientation(1);
+	const bytes xmp = {'<', 'x', ':', 'x', 'm', 'p', 'm', 'e', 't', 'a', '/', '>'};
+	libfiles::embedded_metadata metadata;
+	metadata.exif = tiff;
+	metadata.xmp = xmp;
+
+	const auto jxl = libfiles::encode_jxl(gradient(16, 16).view(), 6, metadata, {});
+	CHECK(!jxl.data.empty());
+	CHECK(starts_with(jxl.data, std::string_view("\0\0\0\x0CJXL \r\n\x87\n", 12)));
+
+	const auto scanned = scan_bytes(jxl.data);
+	CHECK(scanned.success);
+	CHECK(scanned.orientation == 6);
+	CHECK(scanned.metadata.exif == tiff_with_orientation(6));
+	CHECK(scanned.metadata.xmp == xmp);
+
+	capture_sink sink;
+	CHECK(decode_bytes(jxl.data, sink).success);
+	CHECK_EQ(sink.told.orientation, std::uint16_t{6});
+
+	// The signature a JPEG's APP1 begins with is not part of the box.
+	bytes signed_exif = {'E', 'x', 'i', 'f', 0, 0};
+	signed_exif.insert(signed_exif.end(), tiff.begin(), tiff.end());
+	metadata.exif = signed_exif;
+	CHECK(scan_bytes(libfiles::encode_jxl(gradient(16, 16).view(), 3, metadata, {}).data).metadata.exif ==
+		tiff_with_orientation(3));
+
+	// Nothing to box: a bare codestream.
+	const auto bare = libfiles::encode_jxl(gradient(16, 16).view(), 1, {}, {}).data;
+	CHECK(bare.size() > 2 && bare[0] == 0xFF && bare[1] == 0x0A);
+}
+
+TEST("Should keep a JPEG XL's ICC profile, and write sRGB in place of one libjxl refuses")
+{
+	const auto srgb = srgb_icc_from_libjxl();
+	CHECK(!srgb.empty());
+
+	for (const auto lossless : {false, true})
+	{
+		libfiles::jxl_options options;
+		options.lossless = lossless;
+		libfiles::embedded_metadata metadata;
+		metadata.icc = srgb;
+
+		const auto kept = libfiles::encode_jxl(gradient(16, 16).view(), 1, metadata, options);
+		CHECK(!kept.data.empty());
+		CHECK(kept.notes.empty());
+
+		// A CMYK profile cannot describe RGB pixels, and these bytes are no profile at all.
+		for (const auto& refused : {rgb_icc_profile(), bytes(64, 0x42)})
+		{
+			auto cmyk = refused;
+			if (cmyk.size() >= 20) std::memcpy(cmyk.data() + 16, "CMYK", 4);
+			metadata.icc = cmyk;
+
+			const auto written = libfiles::encode_jxl(gradient(16, 16).view(), 1, metadata, options);
+			CHECK(!written.data.empty());
+			CHECK(!written.notes.empty());
+
+			capture_sink sink;
+			CHECK(decode_bytes(written.data, sink).success);
+		}
+	}
+}
+
+TEST("Should refuse a JPEG XL of a pixel format it does not encode, or of no pixels")
+{
+	const auto planes = nv12(16, 16, 128, 128);
+	const auto refused = libfiles::encode_jxl(planes.view(), 1, {}, {});
+	CHECK(refused.data.empty());
+	CHECK(!refused.notes.empty());
+
+	auto empty = gradient(8, 8);
+	auto view = empty.view();
+	view.width = 0;
+	CHECK(libfiles::encode_jxl(view, 1, {}, {}).data.empty());
 }
 
 #endif

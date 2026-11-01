@@ -2,8 +2,8 @@
 // Copyright 2026  Zac Walker
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Purpose: What the JPEG, PNG and WebP encoders share: the signatures metadata blocks begin with, and
-// the EXIF block written when an image has no EXIF but an orientation.
+// Purpose: What the JPEG, PNG, WebP and JPEG XL encoders share: the signatures metadata blocks begin
+// with, and the EXIF block written when an image has no EXIF but an orientation.
 
 #pragma once
 

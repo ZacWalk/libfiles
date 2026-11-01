@@ -64,7 +64,7 @@ for the format you are changing. Open work is in [docs/todo.md](docs/todo.md).
 | `src/id3.cpp`, `src/id3_internal.h` | ID3v2's structure - header, frames, unsynchronisation - and the one rule for which tag has a packet, shared by the scans and the MP3 writer |
 | `src/reader.cpp` | The memory stream and the windowed reader |
 | `src/scan.cpp` | Format detection, `scan()`, `thumbnails()`, the structure-row helpers |
-| `src/scan_<format>.cpp` | One scanner per format; `scan_heif.cpp` (HEIC, AVIF and the other ISO base media stills) and `scan_jxl.cpp` (JPEG XL) also find their packets for `read_packet` |
+| `src/scan_<format>.cpp` | One scanner per format; `scan_heif.cpp` (HEIC, AVIF and the other ISO base media stills) and `scan_jxl.cpp` (JPEG XL) also find their packets for `read_packet`, and `scan_jxl.cpp` its boxes for `write_jxl.cpp` |
 | `src/media.cpp`, `src/media_internal.h` | The audio and video scan, `scan_media`: detection, dispatch to one scanner per container, the contract the scanners and the codec readers share, and the finishing rules for duration, overall bit rate and completeness |
 | `src/scan_media_<container>.cpp` | One scanner per container: `mp4` (ISO base media and QuickTime), `mkv` (Matroska and WebM), `riff` (AVI and WAV), `aiff`, `asf` (WMV and WMA), `flv`, `mpa` (MP3, MP2 and MP1), `flac`, `ogg`, `ts` (MPEG transport streams) and `ps` (MPEG program streams) |
 | `src/media_video.cpp`, `src/media_audio.cpp` | The codec headers the containers share - H.264, HEVC, AV1, VP8 and VP9, MPEG-1, -2 and -4, VC-1, DV, JPEG and Theora; AAC, MPEG audio, AC-3, DTS, FLAC, Opus and the rest - and the Windows `WAVEFORMATEX` and `BITMAPINFOHEADER` |
@@ -76,7 +76,7 @@ for the format you are changing. Open work is in [docs/todo.md](docs/todo.md).
 | `src/libexif_*`, `tools/port_libexif.py` | libexif's tag names, value text and maker note decoders, ported by the tool from libexif's source and kept close to it. Change the tool, not the files it writes; libexif's notices stay |
 | `src/decode.cpp`, `src/decode_internal.h` | The decode framework: dispatch, the header cursor, and the failures every decoder reports alike |
 | `src/decode_<format>.cpp` | One decoder per format, writing into the caller's memory: PSD always; JPEG, PNG, WebP, HEIF and JPEG XL when their codec's option is on |
-| `src/encode_<format>.cpp`, `src/encode_internal.h` | The JPEG, PNG and WebP encoders, with the metadata each carries, and the lossless JPEG turn |
+| `src/encode_<format>.cpp`, `src/encode_internal.h` | The JPEG, PNG, WebP and JPEG XL encoders, with the metadata each carries, and the lossless JPEG turn |
 | `src/raw.cpp`, `src/raw_listing.cpp`, `src/dng_xmp_sdk.cpp` | Camera raw over LibRaw, by path or through a reader: loading a preview or the developed raw data, the scan and the listing; and the DNG SDK's XMP backend over libfiles' XMP |
 | `src/commodore.cpp` | Listing and drawing Commodore 64 disks, tapes, cartridges and programs |
 | `src/iptc.cpp` | Reading and listing IPTC-IIM, with libiptcdata's dataset table |

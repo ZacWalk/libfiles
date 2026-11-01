@@ -208,6 +208,8 @@ TEST("identify agrees with each area's detect function")
 	heads.push_back(padded(builder().raw("BM").b));
 	heads.push_back(padded(builder().raw("II").u8(42).u8(0).b));
 	heads.push_back(padded(builder().raw("OggS").b));
+	heads.push_back(padded(builder().u8(0xFF).u8(0x0A).b));
+	heads.push_back(padded(jxl_signature));
 	heads.push_back(padded({}));
 
 	for (const auto& h : heads)
@@ -375,6 +377,43 @@ TEST("An edit to an MP3 whose ID3v2.4 tag has iTunes' plain sizes keeps every fr
 	CHECK_STR(text(after.xmp), packet);
 	CHECK_EQ(tags_named(after, "TXXX:Notes"), 1u);
 	CHECK_STR(packet_of(out.file).packet, packet);
+}
+
+TEST("An XMP edit to an MP3 whose ID3v2.4 tag has iTunes' plain sizes keeps them plain, and every frame")
+{
+	const auto long_text = builder().u8(0).raw("Notes").u8(0).raw(std::string(292, 'x')).b;
+	const auto notes = id3_frame(4, "TXXX", long_text, 0, true);
+	const auto album = id3_frame(4, "TALB", builder().u8(0).raw("Album").b, 0, true);
+	const auto packet = packet_titled("Packet title");
+	const auto xmp = id3_frame(4, "PRIV", builder().raw("XMP").u8(0).raw(packet).b, 0, true);
+	const auto file = builder().raw(id3_tag(4, {notes, album, xmp}, 64)).raw(mp3_frames(8)).b;
+
+	// The packet frame the edit writes is far over 127 bytes, where a syncsafe size and a plain one
+	// differ: written syncsafe among plain frames, neither reading of the tag walks it whole, and the
+	// frames past the first a walk misreads were lost - for good at the next edit.
+	libfiles::xmp::meta meta;
+	meta.parse(packet);
+	meta.set_localized_text(libfiles::xmp::ns::dc, "title", "", "x-default", "New title");
+	const auto out = update(file, libfiles::metadata_update(&meta));
+	CHECK(out.plan.ok());
+	CHECK(contains(out.file, notes));
+	CHECK(contains(out.file, album));
+
+	const auto after = scan_av(out.file);
+	CHECK(after.success);
+	CHECK_STR(after.properties.album, "Album");
+	CHECK_EQ(tags_named(after, "TXXX:Notes"), 1u);
+	CHECK_STR(title_in(text(after.xmp)), "New title");
+	CHECK_STR(title_in(packet_of(out.file).packet), "New title");
+
+	// The edit after it finds every frame too.
+	meta.set_localized_text(libfiles::xmp::ns::dc, "title", "", "x-default", "Again");
+	const auto again = update(out.file, libfiles::metadata_update(&meta));
+	CHECK(again.plan.ok());
+	CHECK(contains(again.file, notes));
+	CHECK(contains(again.file, album));
+	CHECK_STR(scan_av(again.file).properties.album, "Album");
+	CHECK_STR(title_in(packet_of(again.file).packet), "Again");
 }
 
 TEST("An unsynchronised ID3 tag's packet reads the same in the scan and read_packet")

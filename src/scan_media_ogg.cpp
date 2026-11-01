@@ -34,6 +34,9 @@ namespace libfiles::detail
 		constexpr std::uint64_t max_checked = 2 * (max_header_walk + max_tail);
 		// The granule position of a page on which no packet ends.
 		constexpr std::uint64_t no_granule = ~std::uint64_t{0};
+		// As many logical streams as FFmpeg reads by default. Past that a file is made to be slow: each
+		// page searches every stream, so beginning pages alone would cost the square of their number.
+		constexpr std::size_t max_streams = 1000;
 		constexpr std::uint8_t continued_page = 1;
 		constexpr std::uint8_t first_page = 2;
 		constexpr std::size_t no_position = ~std::size_t{0};
@@ -577,6 +580,7 @@ namespace libfiles::detail
 
 				if (std::ranges::find(streams, p.serial, &logical_stream::serial) == streams.end())
 				{
+					if (streams.size() >= max_streams) break;
 					streams.push_back(begin_stream(p, streams.size(), out));
 				}
 			}

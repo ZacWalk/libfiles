@@ -54,7 +54,8 @@ namespace libfiles::detail
 		bool little_endian() const { return _little_endian; }
 		bool has(directory d, std::uint16_t tag) const;
 
-		// Where a value lies in the stream as read: inline in its entry or out of line.
+		// Where a value lies in the stream as read: inline in its entry or out of line. None for one that
+		// would lie over the header or a directory, as only a damaged entry says.
 		std::optional<byte_range> value_range(directory d, std::uint16_t tag) const;
 
 		// The value as the stream stores it, in its byte order.
@@ -96,6 +97,10 @@ namespace libfiles::detail
 		};
 
 		static bool read_ifd(const tiff_bytes& data, std::uint64_t offset, ifd& out);
+		// Whether a range holds a byte of the header or of a directory the editor read. A damaged entry
+		// can name either as where its value lies, and a value written there destroys what the file is
+		// read by, so such a value is never rewritten where it lies.
+		bool overlaps_structure(std::uint64_t offset, std::uint64_t size) const;
 		std::uint16_t u16(const std::uint8_t* p) const;
 		std::uint32_t u32(const std::uint8_t* p) const;
 		void put16(bytes& to, std::uint16_t v) const;

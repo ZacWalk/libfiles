@@ -113,7 +113,9 @@ namespace libfiles::xmp
 	constexpr bool is_schema(const option_bits o) { return (o & schema_node) != 0; }
 
 	// Misuse of the data model - a value for an array, an index of zero, an unregistered namespace -
-	// throws this, as the toolkit does. Parsing never throws for malformed input.
+	// throws this, as the toolkit does. Parsing keeps whatever precedes a malformed packet's first fault
+	// rather than throwing, except for a packet the toolkit rejects whole - an alias to x-default that
+	// carries its own language - which throws this and leaves the meta empty.
 	class error : public std::runtime_error
 	{
 	public:

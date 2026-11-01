@@ -46,6 +46,7 @@ namespace libfiles
 		case image_format::webp: return file_format::webp;
 		case image_format::tiff: return file_format::tiff;
 		case image_format::psd: return file_format::psd;
+		case image_format::jxl: return file_format::jxl;
 		case image_format::heif: return file_format::unknown;
 		default: break;
 		}
@@ -65,6 +66,11 @@ namespace libfiles
 
 	packet_reading read_packet(reader& source)
 	{
+		return read_packet(source, {});
+	}
+
+	packet_reading read_packet(reader& source, const brotli_decompressor& brotli)
+	{
 		packet_reading result;
 		if (source.size() < 16) return result;
 
@@ -76,9 +82,11 @@ namespace libfiles
 			case file_type::heif:
 			case file_type::jxl:
 				{
-					// HEIF and JPEG XL cannot be updated, but their packets read.
+					// HEIF cannot be updated, but its packet reads; JPEG XL's is read as its scan reads it.
 					std::vector<std::uint8_t> packet;
-					result.readable = type == file_type::heif ? detail::heif_packet(source, packet) : detail::jxl_packet(source, packet);
+					result.readable = type == file_type::heif
+						                  ? detail::heif_packet(source, packet)
+						                  : detail::jxl_packet(source, packet, brotli ? &brotli : nullptr);
 					if (result.readable) result.packet.assign(packet.begin(), packet.end());
 				}
 				break;
@@ -152,6 +160,8 @@ namespace libfiles
 			case file_format::tiff: detail::plan_tiff(source, update, plan);
 				break;
 			case file_format::psd: detail::plan_psd(source, update, plan);
+				break;
+			case file_format::jxl: detail::plan_jxl(source, update, plan);
 				break;
 			case file_format::mp4: detail::plan_mp4(source, update, plan);
 				break;

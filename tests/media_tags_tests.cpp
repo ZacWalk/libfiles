@@ -1638,6 +1638,9 @@ TEST("media tags file the fixtures' MP4 and QuickTime tags as Diffractor filed F
 	CHECK_STR(indy.description, "Indiana Jones");
 	CHECK_STR(indy.synopsis, "When Dr. Indiana Jones");
 	CHECK(indy.episode == 1 && indy.season == 1);
+	// stik 9: the file says it is a film, whatever its junk tvsn and tves say.
+	CHECK(indy.media_kind == 9);
+	CHECK(!apply_all(tag_family::itunes, {{"tvsh", "Show"}}).media_kind);
 
 	const auto love = apply_all(tag_family::itunes, {
 		{"\xC2\xA9" "nam", "This Year's Love"}, {"aART", "David Gray"}, {"\xC2\xA9" "day", "2007-11-09T08:00:00Z"},

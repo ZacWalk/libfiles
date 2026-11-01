@@ -143,6 +143,21 @@ namespace libfiles::detail
 		return std::ranges::any_of(entries, [tag](const entry& e) { return e.tag == tag; });
 	}
 
+	bool tiff_editor::overlaps_structure(const std::uint64_t offset, const std::uint64_t size) const
+	{
+		const auto overlaps = [offset, size](const std::uint64_t at, const std::uint64_t length)
+		{
+			return offset < at + length && at < offset + size;
+		};
+
+		if (overlaps(0, 8)) return true;
+
+		return std::ranges::any_of(_ifds, [&overlaps](const ifd& d)
+		{
+			return d.present && overlaps(d.offset, 2 + 12ull * d.entries.size() + 4);
+		});
+	}
+
 	std::optional<byte_range> tiff_editor::value_range(const directory d, const std::uint16_t tag) const
 	{
 		for (const auto& e : _ifds[index(d)].entries)
@@ -153,7 +168,7 @@ namespace libfiles::detail
 			if (size <= 4) return byte_range{e.at + 8, size};
 
 			const std::uint64_t offset = u32(e.value.data());
-			if (offset > _size || size > _size - offset) return {};
+			if (offset > _size || size > _size - offset || overlaps_structure(offset, size)) return {};
 			return byte_range{offset, size};
 		}
 
@@ -289,7 +304,8 @@ namespace libfiles::detail
 						const auto fits = old_size == e.value.size() || (zeros_end && old_size > e.value.size());
 
 						if (old_size > 4 && fits && old_offset <= stream_size &&
-							old_size <= stream_size - old_offset && claim(old_offset, old_size))
+							old_size <= stream_size - old_offset && !overlaps_structure(old_offset, old_size) &&
+							claim(old_offset, old_size))
 						{
 							auto data = e.value;
 							data.resize(static_cast<std::size_t>(old_size), 0);

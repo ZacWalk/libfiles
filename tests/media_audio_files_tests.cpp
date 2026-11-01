@@ -1374,6 +1374,24 @@ TEST("media ogg describes the first link of a chained file")
 	CHECK_EQ(only_stream(scan(twice)).duration, 0.0);
 }
 
+// Every page searched every stream begun so far, so a file of nothing but beginning pages cost the
+// square of their number. As FFmpeg does by default, the scan reads the first thousand streams.
+TEST("media ogg reads at most a thousand logical streams")
+{
+	bytes file;
+	for (std::uint32_t serial = 1; serial <= 1500; ++serial)
+	{
+		ogg_writer w{serial};
+		const auto begin = w.pages({{builder().raw("\x01video").zeros(50).b, 0}});
+		file.insert(file.end(), begin.begin(), begin.end());
+	}
+
+	const auto s = scan(file);
+	CHECK(s.success);
+	CHECK(!s.streams.empty());
+	CHECK(s.streams.size() <= std::size_t{1000});
+}
+
 TEST("media ogg reads Speex, and a stream it does not know as data")
 {
 	ogg_writer speex{20};

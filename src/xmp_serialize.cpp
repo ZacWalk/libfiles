@@ -87,7 +87,8 @@ namespace libfiles::xmp
 			if (!w.out.empty() && w.out.back() == ':') w.out.back() = '=';
 			else w.out += '=';
 			w.out += '"';
-			w.out += uri;
+			// Escaped as any attribute value: the parser decodes one taken from an xmlns attribute.
+			append_value(w.out, uri, true);
 			w.out += '"';
 
 			used += prefix;
@@ -145,7 +146,8 @@ namespace libfiles::xmp
 		{
 			w.indent(base_indent + 2);
 			w.out += "<rdf:Description rdf:about=\"";
-			w.out += tree.name;
+			// The about name is parsed from an attribute too, so it may hold what an attribute escapes.
+			append_value(w.out, tree.name, true);
 			w.out += '"';
 
 			std::string used = ":xml:rdf:";

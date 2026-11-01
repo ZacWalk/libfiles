@@ -346,6 +346,8 @@ namespace libfiles::detail
 			disc_count,
 			season,
 			episode,
+			// iTunes' stik: what kind of recording the file is.
+			media_kind,
 			location,
 		};
 
@@ -387,6 +389,7 @@ namespace libfiles::detail
 			{"tvsh", field::show},
 			{"tvsn", field::season},
 			{"tves", field::episode},
+			{"stik", field::media_kind},
 			{"keyw", field::keywords},
 			{"\xC2\xA9" "key", field::keywords},
 			{"\xC2\xA9" "mak", field::camera_make},
@@ -610,6 +613,11 @@ namespace libfiles::detail
 			{"RATING", field::rating},
 			{"PART_NUMBER", field::track},
 			{"TOTAL_PARTS", field::track_count},
+			// Tags that name their level, as mkvmerge and media servers write a series: FFmpeg keys them under
+			// their TargetType and files them under no property, so a show, season and episode read as nothing.
+			{"COLLECTION/TITLE", field::show},
+			{"SEASON/PART_NUMBER", field::season},
+			{"EPISODE/PART_NUMBER", field::episode},
 		};
 
 		constexpr mapping vorbis_names[] = {
@@ -903,6 +911,9 @@ namespace libfiles::detail
 				break;
 			case field::episode:
 				if (const auto n = number_and_total(one).first; n > 0 && (!lacking || p.episode == 0)) p.episode = n;
+				break;
+			case field::media_kind:
+				if (const auto n = parse_count(one); n && (!lacking || !p.media_kind)) p.media_kind = *n;
 				break;
 			case field::location:
 				{

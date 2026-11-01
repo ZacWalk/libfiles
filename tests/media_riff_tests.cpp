@@ -736,6 +736,36 @@ TEST("media riff avi reads INFO on both sides of its movie data, the side before
 	CHECK_STR(s.properties.title, "Byzantium");
 }
 
+// Every INFO item was kept, and each field after the movie data was looked for among those before it:
+// a file of them cost the product of the two. A scan reads as many items as Matroska's keeps tags.
+TEST("media riff avi reads at most 4096 INFO items")
+{
+	const auto items = [](const int first, const int count)
+	{
+		std::vector<bytes> result;
+		for (auto n = first; n < first + count; ++n)
+		{
+			const char id[] = {'I', static_cast<char>('A' + n / 676 % 26), static_cast<char>('A' + n / 26 % 26),
+			                   static_cast<char>('A' + n % 26)};
+			result.push_back(chunk(std::string_view(id, 4), text("v")));
+		}
+		return result;
+	};
+
+	const auto file = riff("AVI ", {
+		list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)}),
+		list("INFO", items(0, 5000)),
+		list("movi", {chunk("00dc", mpeg4_headers)}),
+		chunk("idx1", bytes(16, 0)),
+		list("INFO", items(5000, 5000)),
+	});
+
+	const auto s = scan(file);
+	CHECK(s.success);
+	CHECK(!s.tags.empty());
+	CHECK(s.tags.size() <= std::size_t{4096});
+}
+
 TEST("media riff avi shows an edit to its INFO wherever its lists lie")
 {
 	const auto hdrl = list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)});

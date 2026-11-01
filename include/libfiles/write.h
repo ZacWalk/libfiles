@@ -126,6 +126,10 @@ namespace libfiles
 		// file's XMP as it is.
 		const xmp::meta* xmp = nullptr;
 		legacy_edits legacy;
+		// For a JPEG XL that keeps its XMP or EXIF in a Brotli-compressed box: the decompressor its scan
+		// was given, so the update reads the file as the scan read it. Without one, an update that would
+		// change what such a box holds is refused.
+		brotli_decompressor brotli;
 	};
 
 	// Sixteen bytes are enough; fewer match less. An ID3v2 tag reads as MPEG audio whatever follows it:
@@ -138,13 +142,15 @@ namespace libfiles
 	// find it. readable is false when the file's structure cannot be read, so its packet is unknown rather
 	// than absent. The file is identified as identify(reader&) identifies it.
 	//
+	// A JPEG XL container's packet is read from its last 'xml ' box. When that box is Brotli-compressed
+	// ('brob') the packet is read with the decompressor given; without one it is not read and readable is
+	// false: there is a packet, but read_packet cannot say what it holds. A bare JPEG XL codestream has no
+	// packet.
+	//
 	// Some formats libfiles reads but does not update have their packets read too: a HEIF's from the XMP
 	// item - of type 'mime' and content type application/rdf+xml, or of the older type 'XMP' - attached to
-	// its primary image, as scan() finds it; a JPEG XL container's from its last 'xml ' box; an AIFF's from
-	// its last APPL chunk signed "XMP "; and a FLAC's from the ID3v2 tag some taggers put before it, by the
-	// rule an MP3's is read by. When a JPEG XL's box is Brotli-compressed ('brob') the packet is not read
-	// and readable is false: there is a packet, but read_packet cannot say what it holds. A bare JPEG XL
-	// codestream has no packet.
+	// its primary image, as scan() finds it; an AIFF's from its last APPL chunk signed "XMP "; and a FLAC's
+	// from the ID3v2 tag some taggers put before it, by the rule an MP3's is read by.
 	struct packet_reading
 	{
 		bool readable = false;
@@ -152,6 +158,7 @@ namespace libfiles
 	};
 
 	packet_reading read_packet(reader& source);
+	packet_reading read_packet(reader& source, const brotli_decompressor& brotli);
 
 	// Never throws for a malformed file; the plan's error says why it cannot be updated.
 	write_plan plan_update(reader& source, const metadata_update& update);

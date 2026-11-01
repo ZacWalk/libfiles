@@ -387,6 +387,7 @@ namespace libfiles
 		if (into.comments.empty()) into.comments = from.comments;
 		if (into.keywords.empty()) into.keywords = from.keywords;
 		if (!into.rating) into.rating = from.rating;
+		if (!into.media_kind) into.media_kind = from.media_kind;
 
 		const std::pair<int*, int> numbers[] = {
 			{&into.year, from.year}, {&into.track, from.track}, {&into.track_count, from.track_count}, {&into.disc, from.disc},

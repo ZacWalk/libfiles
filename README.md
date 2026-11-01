@@ -38,10 +38,10 @@ the caller stages.
 | EXIF: read, write a fresh block, patch numbers in place, list every entry with maker notes | EXIF blocks from any container | [exif.h](include/libfiles/exif.h), [exif_listing.h](include/libfiles/exif_listing.h) |
 | IPTC-IIM: read the fields an organizer files, and list every dataset | IPTC blocks | [iptc.h](include/libfiles/iptc.h) |
 | ICC colour profiles: list the name, gamut, curve and white point, the header and every tag | Profiles from any container | [icc.h](include/libfiles/icc.h) |
-| Metadata updates: XMP, with EXIF, IPTC and container tags reconciled | JPEG, TIFF, PSD, PNG, GIF, WebP, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
+| Metadata updates: XMP, with EXIF, IPTC and container tags reconciled | JPEG, TIFF, PSD, PNG, GIF, WebP, JPEG XL, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
 | Decoding into caller memory as BGRX, BGRA or NV12, reduced while decoding | JPEG, PNG, WebP, PSD, HEIF and AVIF, JPEG XL | [decode.h](include/libfiles/decode.h) |
 | Native documents: palettes, packed and grayscale storage, pages and frames | BMP, GIF, JPEG, PNG, TIFF, PCX, PSD, WPG | [document.h](include/libfiles/document.h) |
-| Encoding with metadata, and lossless JPEG rotation | JPEG, PNG, WebP | [encode.h](include/libfiles/encode.h) |
+| Encoding with metadata, and lossless JPEG rotation | JPEG, PNG, WebP, JPEG XL | [encode.h](include/libfiles/encode.h) |
 | Camera raw: largest preview or developed raw data, scan and listing, by path or through a stream | Every format LibRaw and the DNG SDK read | [raw.h](include/libfiles/raw.h) |
 | Commodore 64 media: list and draw in the C64's characters | D64, D71, D81, T64, CRT, P00, PRG | [commodore.h](include/libfiles/commodore.h) |
 

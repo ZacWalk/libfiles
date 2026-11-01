@@ -64,6 +64,9 @@ namespace libfiles
 		int disc_count = 0;
 		int season = 0;
 		int episode = 0;
+		// What an iTunes-tagged recording says it is, as MP4's stik atom numbers it: 9 a film, 10 a TV episode,
+		// 6 a music video, 1 music. Absent when the file does not say.
+		std::optional<int> media_kind;
 		// When the picture was taken or the recording made, or failing that when the file was.
 		date created;
 		// When the recording was first released, for a reissue or a rip.

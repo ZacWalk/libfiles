@@ -76,7 +76,7 @@ format's decoding:
 | BMP | `image/bmp` | yes |  |  | yes |  |  |  |
 | TIFF | `image/tiff` | yes |  |  | yes | yes | yes |  |
 | HEIF and AVIF | `image/heif` | yes |  | yes |  | yes |  |  |
-| JPEG XL | `image/jxl` | yes |  | yes |  | yes |  |  |
+| JPEG XL | `image/jxl` | yes |  | yes |  | yes | yes |  |
 | PCX | `image/vnd.zbrush.pcx` |  |  |  | yes |  |  |  |
 | WordPerfect Graphics | `image/x-wpg` |  |  |  | yes |  |  |  |
 | MP4 and QuickTime | `video/mp4` |  | yes |  |  | yes | yes |  |
@@ -132,7 +132,8 @@ patched and rewritten, and require its own blocks to read back exactly these:
 |---|---|
 | JPEG, TIFF, PSD | title, description, creators, copyright, keywords, rating, the dates taken and digitized, the place, credit and source, location and orientation |
 | WebP holding EXIF | as JPEG, but for the title and the place, which only IPTC keeps |
-| PNG, GIF, FLV, a WebP without EXIF | nothing: only the packet |
+| JPEG XL holding EXIF | as WebP holding EXIF, but for the orientation, which its codestream keeps; in one made from a JPEG, only what fits the block where it lies |
+| PNG, GIF, FLV, a WebP or JPEG XL without EXIF | nothing: only the packet |
 | MPEG audio | title, artist, album, album artist, genre, comment, copyright, track, disc, rating and year; and the date, to the minute in ID3v2.3, which keeps no seconds |
 | WAV | title, artist, comment, copyright, genre and the creation date, which is when it was recorded |
 | AVI | as WAV, with IDIT's date taken, which its scan reads over the creation date |
@@ -243,7 +244,8 @@ container's `jxlc` box, or `jxlp` parts with other boxes between them - and the
 and the orientation is the codestream's own unless an EXIF block states one.
 A container may keep its metadata Brotli-compressed in `brob` boxes. libfiles
 carries no Brotli decoder, so such a box is left out unless the caller supplies
-one in `scan_limits::brotli`, as Diffractor does with its own.
+one in `scan_limits::brotli`, as Diffractor does with its own; `read_packet` and
+an update take one too.
 
 An EXIF block is read by walking IFD0 and the Exif, GPS and Interoperability
 directories it points to; a directory is read once however many pointers lead
@@ -423,6 +425,21 @@ changes: a rating in a packet that keeps its length is a byte or two.
   first packet appended at the end of the file is declared in VP8X only once the
   RIFF size takes it in. An `EXIF` chunk the file already has takes the edit's
   EXIF fields.
+- **JPEG XL**: the packet's `xml ` box and the `Exif` box, found as the scan
+  finds them - the last of each - and replaced where they stand, with every
+  other box kept in place. A first packet goes before the codestream's first
+  box, where libjxl's encoder puts one, and a bare codestream is put in a
+  container for it: the signature and file type boxes, the packet, then the
+  codestream whole in a `jxlc` box. A box Brotli-compressed in a `brob` is read
+  with the caller's decompressor and replaced by a plain one; without a
+  decompressor an update that would change it is refused. An `Exif` box the file
+  already has takes the edit's EXIF fields but the orientation: libjxl turns the
+  picture by the codestream's, which an update does not rewrite. A file made
+  from a JPEG keeps a `jbrd` box, from which libjxl gives that JPEG back with
+  the first `Exif` and `xml ` boxes as its segments, and refuses to unless each
+  is the size it was. So in such a file those boxes keep their size: a packet
+  that cannot be written at its old length is refused, and an EXIF field that
+  would grow the block is left as it is, for the packet to hold.
 - **JPEG**: the packet's APP1, EXIF's APP1 and the IPTC in APP13's Photoshop
   resources, with its MD5 digest beside it. Segments the file lacks are added
   after its leading APP0 and APP1 segments. Extended XMP is left as it is.
@@ -870,7 +887,12 @@ Where libfiles differs on purpose:
 - Every top-level `onMetaData` value of an FLV is a tag; FFmpeg keeps only the
   encoder.
 - A Matroska TITLE tag with a TagLanguage is still the title, and the DURATION
-  and BPS statistics tags give a track's duration and bit rate.
+  and BPS statistics tags give a track's duration and bit rate. A series tagged
+  by level - `COLLECTION/TITLE`, `SEASON/PART_NUMBER` and `EPISODE/PART_NUMBER`,
+  keyed under their TargetType as FFmpeg keys them - gives the show, season and
+  episode, which FFmpeg files under no property.
+- An MP4's `stik` atom gives `media_kind`: what iTunes says the recording is, so
+  a reader can tell a film whose `tvsn` and `tves` are junk from an episode.
 - An MPEG-4 Part 2 stream without a fixed frame rate has none, where FFmpeg
   reports its time resolution. HEVC whose profile says its source is interlaced
   is interlaced, as well as one with `field_seq_flag`. The SPS in an `hvcC` or

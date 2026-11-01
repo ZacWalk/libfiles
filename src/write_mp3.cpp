@@ -54,6 +54,8 @@ namespace libfiles::detail
 		{
 			bool present = false;
 			int version = 3;
+			// The frames were walked with plain sizes, as iTunes wrote ID3v2.4's, not syncsafe ones.
+			bool plain_sizes = false;
 			// What the tag takes at the start of the file: header, frames, padding and footer.
 			std::uint64_t total = 0;
 			std::vector<frame> frames;
@@ -118,7 +120,11 @@ namespace libfiles::detail
 			};
 
 			auto [overran, stray] = walk(id3_sizes::standard);
-			if (id3_retry_with_plain_sizes(r, 0, *h, overran || stray)) overran = walk(id3_sizes::plain).first;
+			if (id3_retry_with_plain_sizes(r, 0, *h, overran || stray))
+			{
+				overran = walk(id3_sizes::plain).first;
+				t.plain_sizes = true;
+			}
 			if (overran) throw format_error(id3_frame_overran);
 			return t;
 		}
@@ -148,6 +154,9 @@ namespace libfiles::detail
 		struct writer
 		{
 			int version;
+			// Frames are added with the sizes the tag's own frames have: a syncsafe size among plain ones
+			// past 127 bytes reads as neither, and a reader loses every frame after it.
+			bool plain_sizes = false;
 
 			std::string id(const char* v22, const char* v23) const { return version == 2 ? v22 : v23; }
 			std::string id(const vocabulary::id3_frame_name& name) const { return std::string(name.in(version)); }
@@ -165,7 +174,7 @@ namespace libfiles::detail
 				}
 				else
 				{
-					if (version == 3) append_be32(out, size);
+					if (version == 3 || plain_sizes) append_be32(out, size);
 					else append_syncsafe(out, size);
 					out.push_back(0);
 					out.push_back(0);
@@ -363,7 +372,7 @@ namespace libfiles::detail
 	void plan_mp3(reader& r, const metadata_update& update, write_plan& plan)
 	{
 		const auto t = read_tag(r);
-		const writer w{t.present ? t.version : 3};
+		const writer w{t.present ? t.version : 3, t.plain_sizes};
 		const auto fields = fields_of(w, t, update);
 		if (fields.empty()) return;
 

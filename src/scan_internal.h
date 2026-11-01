@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -87,13 +88,57 @@ namespace libfiles::detail
 
 	// The XMP packet of a HEIF or JPEG XL file, found as scan() finds it but read alone. A file whose
 	// structure cannot be read throws format_error or read_error; false means the packet is there but
-	// cannot be read - a JPEG XL packet in a Brotli-compressed box, or one larger than a scan keeps.
+	// cannot be read - a JPEG XL packet in a Brotli-compressed box with no decompressor to read it, or one
+	// larger than a scan keeps.
 	bool heif_packet(reader& r, std::vector<std::uint8_t>& packet);
-	bool jxl_packet(reader& r, std::vector<std::uint8_t>& packet);
+	bool jxl_packet(reader& r, std::vector<std::uint8_t>& packet, const brotli_decompressor* brotli = nullptr);
 
 	// What one JPEG XL scan lets the caller's Brotli decompressor produce, across all of its
 	// compressed boxes: twice the 16 MiB a scan keeps of one metadata block.
 	inline constexpr std::size_t max_jxl_decompressed = 32u * 1024u * 1024u;
+
+	// The signature box that begins a JPEG XL container, and so every JPEG XL file but a bare codestream.
+	inline constexpr std::uint8_t jxl_container_signature[12] = {0, 0, 0, 0x0C, 'J', 'X', 'L', ' ', 0x0D, 0x0A, 0x87, 0x0A};
+
+	// A box of a JPEG XL container, where the read passed it.
+	struct jxl_box_place
+	{
+		std::uint64_t offset = 0;
+		// The whole box, its header included; a box of size zero runs to the end of the file.
+		std::uint64_t size = 0;
+		std::uint32_t header = 8;
+		// A 'brob' box, which holds the box Brotli-compressed.
+		bool compressed = false;
+	};
+
+	// Where a JPEG XL file keeps what its writer changes, read as the scan reads the file.
+	struct jxl_layout
+	{
+		// The read reached the end of the file without a fault, and the codestream's headers read.
+		bool whole = false;
+		bool container = false;
+		// The box the packet is read from - the last XMP box - and the packet, which is none when the box
+		// is compressed and no decompressor was given.
+		std::optional<jxl_box_place> xmp_box;
+		std::optional<std::vector<std::uint8_t>> xmp;
+		// The box the EXIF is read from - the last that could be read - and what it holds: the offset to
+		// the TIFF header, then the block.
+		std::optional<jxl_box_place> exif_box;
+		std::vector<std::uint8_t> exif;
+		// The last Exif box was left unread - compressed, with no decompressor to read it - so a reader
+		// that has one reads another block than exif_box holds.
+		bool exif_unread = false;
+		// The first XMP and Exif boxes, which libjxl takes to give back the JPEG a 'jbrd' box describes,
+		// and whether the file has such a box.
+		std::optional<std::uint64_t> first_xmp_box;
+		std::optional<std::uint64_t> first_exif_box;
+		bool jpeg_reconstruction = false;
+		// Where the codestream's first box begins.
+		std::uint64_t codestream_box = 0;
+	};
+
+	// The file read as scan_jxl reads it, with the caller's decompressor for its compressed boxes, if any.
+	jxl_layout read_jxl_layout(reader& r, const brotli_decompressor* brotli);
 
 	// The most codestream parts a JPEG XL file's read holds at once - parts not yet read, and parts
 	// held until their turn - which stays small however many 'jxlp' boxes the file has. For tests.

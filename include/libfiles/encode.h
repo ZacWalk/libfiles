@@ -2,10 +2,10 @@
 // Copyright 2026  Zac Walker
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Purpose: Encoding an image its caller holds in memory as a JPEG, a PNG or a WebP, with the metadata
-// it carries, and turning a JPEG losslessly - what works on its coefficients rather than its pixels.
-// The JPEG encoder and the lossless turn need libfiles built with libjpeg-turbo, the PNG encoder with
-// libpng and the WebP encoder with libwebp.
+// Purpose: Encoding an image its caller holds in memory as a JPEG, a PNG, a WebP or a JPEG XL, with the
+// metadata it carries, and turning a JPEG losslessly - what works on its coefficients rather than its
+// pixels. The JPEG encoder and the lossless turn need libfiles built with libjpeg-turbo, the PNG encoder
+// with libpng, the WebP encoder with libwebp and the JPEG XL encoder with libjxl.
 
 #pragma once
 
@@ -186,6 +186,25 @@ namespace libfiles
 	// and the XMP. data is empty when it cannot, and the notes say why.
 	encoded encode_webp(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata,
 	                    const webp_options& options);
+
+	struct jxl_options
+	{
+		// Bit for bit, alpha and all. Otherwise only the colour is lossy; alpha stays lossless.
+		bool lossless = false;
+		// 1 to 100, read as libjpeg reads its quality and mapped to libjxl's distance: 90 is libjxl's
+		// default, visually lossless.
+		int quality = 90;
+		// libjxl's effort, 1 the fastest to 9 the smallest; 7 is its default.
+		int effort = 7;
+	};
+
+	// Encodes bgrx8 as RGB and bgra8 as RGBA - straight alpha - as a JPEG XL. The orientation goes in the
+	// codestream, which a JPEG XL reader takes it from, and an EXIF's orientation is brought into line
+	// with it. The ICC profile describes the pixels; the EXIF and the XMP go in boxes of their own,
+	// uncompressed, so a reader without Brotli finds them. IPTC and Photoshop resources have no place in
+	// the format and are left out. data is empty when it cannot, and the notes say why.
+	encoded encode_jxl(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata,
+	                   const jxl_options& options);
 
 	namespace test_hooks
 	{

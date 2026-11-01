@@ -51,6 +51,7 @@ namespace libfiles::detail
 	void plan_png(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_gif(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_webp(reader& r, const metadata_update& update, write_plan& plan);
+	void plan_jxl(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_jpeg(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_tiff(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_psd(reader& r, const metadata_update& update, write_plan& plan);

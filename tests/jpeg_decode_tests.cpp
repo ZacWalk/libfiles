@@ -689,6 +689,33 @@ TEST("a jpeg cut short decodes as far as its data goes, or says why not")
 	CHECK(!decode(corrupt, corrupt_sink).success);
 }
 
+// libjpeg meets a marker it does not expect after the last row only when the decompression is
+// finished, and the exception it leaves by passes through its C frames. Built to assume no C function
+// throws, a release build dropped the catch waiting for it and ended the process on such a file - a
+// corrupt or recovered photo - rather than keeping the rows it had decoded.
+TEST("a jpeg with a stray marker after its last row keeps every row, and the decoder carries on")
+{
+	jpeg_spec s;
+	s.width = 64;
+	s.height = 64;
+	const auto file = encode(s);
+	const auto whole = decode_reference(file, JCS_EXT_BGRX, 1, true);
+
+	auto stray = file;
+	CHECK(stray.size() > 2);
+	const std::uint8_t reserved[] = {0xFF, 0x02};
+	stray.insert(stray.end() - 2, std::begin(reserved), std::end(reserved));
+
+	jpeg_sink sink;
+	const auto result = decode(stray, sink);
+	CHECK(result.success);
+	CHECK(same_as_reference(sink, whole));
+
+	jpeg_sink next;
+	CHECK(decode(file, next).success);
+	CHECK(same_as_reference(next, whole));
+}
+
 TEST("a jpeg decode is refused or cancelled when the sink says so, and a decoder carries on after")
 {
 	jpeg_spec s;

@@ -47,6 +47,9 @@ namespace libfiles::xmp::detail
 			std::shared_mutex lock;
 			std::unordered_map<std::string, std::string> uri_to_prefix;
 			std::unordered_map<std::string, std::string> prefix_to_uri;
+			// Per suggested prefix, the last numbered one given out. Prefixes are never removed, so every
+			// number below it is taken and the next free one is found from here, as it would be from 1.
+			std::unordered_map<std::string, int> last_suffix;
 
 			namespace_table()
 			{
@@ -126,9 +129,17 @@ namespace libfiles::xmp::detail
 
 				auto unique = base + ':';
 
-				for (auto suffix = 1; prefix_to_uri.contains(unique); ++suffix)
+				if (prefix_to_uri.contains(unique))
 				{
-					unique = base + '_' + std::to_string(suffix) + "_:";
+					// Probing from 1 each time made a packet that declares one prefix for many URIs cost the
+					// square of their number, all under the table's exclusive lock.
+					auto& suffix = last_suffix[base];
+
+					do
+					{
+						unique = base + '_' + std::to_string(++suffix) + "_:";
+					}
+					while (prefix_to_uri.contains(unique));
 				}
 
 				uri_to_prefix.emplace(std::string(uri), unique);

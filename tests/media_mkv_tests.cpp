@@ -1440,6 +1440,29 @@ TEST("media mkv reads the first block of a Cluster of unknown size")
 	if (r.streams.size() == 1) CHECK(r.streams[0].video.chroma == chroma_format::yuv422);
 }
 
+TEST("media mkv files a series tagged by level under show, season and episode")
+{
+	// As mkvmerge and media servers tag an episode: the series at COLLECTION, the season at SEASON and the
+	// episode at EPISODE. FFmpeg keys these under their TargetType and files them under nothing.
+	const auto r = scan(cat({
+		ebml_header(), segment({
+			info({el_float(id::duration, 1000.0)}),
+			master(id::tracks, {track(1, 1, "V_VP8", {picture_size(16, 16)})}),
+			master(id::tags, {
+				tag({el_uint(id::target_type_value, 70), el_str(id::target_type, "COLLECTION")}, {simple_tag("TITLE", "The Show")}),
+				tag({el_uint(id::target_type_value, 60), el_str(id::target_type, "SEASON")}, {simple_tag("PART_NUMBER", "2")}),
+				tag({el_uint(id::target_type_value, 50), el_str(id::target_type, "EPISODE")}, {simple_tag("PART_NUMBER", "7")}),
+			}),
+		})
+	}));
+
+	CHECK(r.success);
+	CHECK_STR(r.properties.show, "The Show");
+	CHECK_EQ(r.properties.season, 2);
+	CHECK_EQ(r.properties.episode, 7);
+	CHECK_EQ(r.properties.track, 0);
+}
+
 TEST("media mkv files its tags under the properties FFmpeg gave them")
 {
 	// tagged.mkv's tags, as Diffractor reads them, and an encoder named twice: MuxingApp is the one

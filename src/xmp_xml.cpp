@@ -357,6 +357,12 @@ namespace libfiles::xmp::detail
 			std::string value;
 		};
 
+		// Deeper than any packet a writer makes - a struct in an array in a struct is a dozen - and shallow
+		// enough for what walks the tree after: the RDF reading, the choice of root and the tree's own
+		// destruction each recurse once per level, and a crafted packet ten thousand deep ran a thread out
+		// of stack, which nothing can catch.
+		constexpr std::size_t max_element_depth = 128;
+
 		// The `dc` namespace early Flash wrote into SWF files.
 		std::string_view fix_dc_uri(const std::string_view uri)
 		{
@@ -660,6 +666,9 @@ namespace libfiles::xmp::detail
 
 			bool start_tag()
 			{
+				// One level too deep is a fault like any other: what was built so far is kept.
+				if (_stack.size() >= max_element_depth) return false;
+
 				++_pos; // '<'
 				std::string qname;
 				if (!read_qname(qname)) return false;

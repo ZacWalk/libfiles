@@ -153,6 +153,7 @@ namespace libfiles
 		webp,
 		tiff,
 		psd,
+		jxl,
 		// ISO base media - MP4, M4A, M4V, 3GP - and QuickTime.
 		mp4,
 		// ASF: WMV, WMA and ASF.

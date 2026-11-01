@@ -72,6 +72,9 @@ namespace libfiles::detail
 
 		// The most a scan reads of a text chunk or an INFO item; a longer one is skipped.
 		constexpr std::uint64_t max_text = 1u << 20;
+		// The INFO items a scan reads across all its lists: as many tags as Matroska's scan keeps. A file
+		// with more is made to be slow, keeping every one and comparing each late field with each early one.
+		constexpr std::size_t max_info_items = 4096;
 		// The most it reads of a stream's format or data, where a codec keeps its configuration.
 		constexpr std::uint64_t max_format = 1u << 16;
 		// The start of a video stream's first chunk that is read for its codec's headers: first a little, then
@@ -122,17 +125,18 @@ namespace libfiles::detail
 			if (!text.empty()) tags.push_back({std::string(key), std::string(text), {}});
 		}
 
-		// Each item of a LIST INFO, as its id and text. A writer that leaves out the pad after an odd-sized item
-		// puts the next a byte early, so an item that runs past the list after an odd-sized one is read from a
-		// byte earlier, as FFmpeg reads it.
+		// Each item of a LIST INFO, as its id and text, while the scan's item budget lasts. A writer that leaves
+		// out the pad after an odd-sized item puts the next a byte early, so an item that runs past the list
+		// after an odd-sized one is read from a byte earlier, as FFmpeg reads it.
 		template <typename Visit>
-		void for_each_info_item(reader& r, const std::uint64_t pos, std::uint64_t end, Visit&& visit)
+		void for_each_info_item(reader& r, const std::uint64_t pos, std::uint64_t end, std::size_t& items_left,
+		                        Visit&& visit)
 		{
 			end = std::min(end, r.size());
 			auto at = pos;
 			auto odd = false;
 
-			while (end > at && end - at >= 8)
+			while (end > at && end - at >= 8 && items_left > 0)
 			{
 				std::uint64_t size = r.le32(at + 4);
 
@@ -143,7 +147,11 @@ namespace libfiles::detail
 					size = r.le32(at + 4);
 				}
 
-				if (const auto id = r.le32(at); id != 0 && size <= max_text) visit(id, text_from_unknown(r.read(at + 8, static_cast<std::size_t>(size))));
+				if (const auto id = r.le32(at); id != 0 && size <= max_text)
+				{
+					--items_left;
+					visit(id, text_from_unknown(r.read(at + 8, static_cast<std::size_t>(size))));
+				}
 
 				odd = (size & 1) != 0;
 				at += 8 + size + (size & 1);
@@ -151,9 +159,10 @@ namespace libfiles::detail
 		}
 
 		// A LIST INFO's items, as tags.
-		void read_info(reader& r, const std::uint64_t pos, const std::uint64_t end, media_scan_result& out)
+		void read_info(reader& r, const std::uint64_t pos, const std::uint64_t end, std::size_t& items_left,
+		               media_scan_result& out)
 		{
-			for_each_info_item(r, pos, end, [&out](const std::uint32_t id, const std::string& text)
+			for_each_info_item(r, pos, end, items_left, [&out](const std::uint32_t id, const std::string& text)
 			{
 				add_tag(out, tag_family::riff_info, fourcc_text(id), text);
 			});
@@ -405,7 +414,8 @@ namespace libfiles::detail
 			{
 				if (c.size < 4) return;
 
-				for_each_info_item(_r, c.payload() + 4, c.payload() + available(_r, c, end), [this](const std::uint32_t id, std::string text)
+				for_each_info_item(_r, c.payload() + 4, c.payload() + available(_r, c, end), _info_items_left,
+				                   [this](const std::uint32_t id, std::string text)
 				{
 					_late_info.emplace_back(id, std::move(text));
 				});
@@ -557,7 +567,7 @@ namespace libfiles::detail
 			// are kept from any list after the movie data.
 			void early_info(const std::uint64_t pos, const std::uint64_t end)
 			{
-				for_each_info_item(_r, pos, end, [this](const std::uint32_t id, const std::string& text)
+				for_each_info_item(_r, pos, end, _info_items_left, [this](const std::uint32_t id, const std::string& text)
 				{
 					if (!trim_text(text).empty()) _early_info.push_back(id);
 					add_tag(_out, tag_family::riff_info, fourcc_text(id), text);
@@ -914,6 +924,7 @@ namespace libfiles::detail
 			// The INFO fields given before the movie data, and those found after it, waiting.
 			std::vector<std::uint32_t> _early_info;
 			std::vector<std::pair<std::uint32_t, std::string>> _late_info;
+			std::size_t _info_items_left = max_info_items;
 			media_date _created;
 			media_date _exif_created;
 		};
@@ -1041,6 +1052,7 @@ namespace libfiles::detail
 		std::uint64_t data_bytes = 0;
 		std::string display_title;
 		media_date created;
+		auto info_items_left = max_info_items;
 
 		const auto l = walk_layout(r, [&](std::size_t, const chunk& c, const std::uint64_t end)
 		{
@@ -1074,11 +1086,13 @@ namespace libfiles::detail
 				if (!fact && available(r, c, end) >= 4) fact = r.le32(c.payload());
 				break;
 			case list_id:
-				if (c.type == info_type) read_info(r, c.payload() + 4, c.payload() + available(r, c, end), out);
+				if (c.type == info_type)
+					read_info(r, c.payload() + 4, c.payload() + available(r, c, end), info_items_left, out);
 				break;
 			case list_lower_id:
 				// Some writers name the list in lower case, which FFmpeg reads too.
-				if (available(r, c, end) >= 4 && r.le32(c.payload()) == info_type) read_info(r, c.payload() + 4, c.payload() + available(r, c, end), out);
+				if (available(r, c, end) >= 4 && r.le32(c.payload()) == info_type)
+					read_info(r, c.payload() + 4, c.payload() + available(r, c, end), info_items_left, out);
 				break;
 			case id3_id:
 			case id3_upper_id: read_id3_chunk(r, c, budget, out);

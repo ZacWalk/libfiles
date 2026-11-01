@@ -223,6 +223,28 @@ TEST("a tiff value that fits is patched where it lies")
 	CHECK_EQ(le16(*tiff_value(result, 0x0112), 0), 6u);
 }
 
+// A damaged entry can say its value lies over the header or a directory. A value that fitted was written
+// there, destroying the header the file is read by, with nothing else in the edit to object.
+TEST("a tiff value said to lie over the header is appended rather than written there")
+{
+	auto stream = make_tiff_stream();
+	std::fill_n(stream.begin() + 18, 4, std::uint8_t{0}); // ImageDescription's value said to be at 0
+	auto in_place = true;
+
+	const auto result = edited(stream, [](tiff_editor& e)
+	{
+		e.set_ascii(directory::ifd0, 0x010E, "a description of 23 chr");
+	}, &in_place);
+
+	CHECK(!in_place);
+	const auto header_kept = result.size() >= 8 && std::equal(stream.begin(), stream.begin() + 8, result.begin());
+	CHECK(header_kept);
+	if (!header_kept) return;
+
+	CHECK_STR(ascii(tiff_value(result, 0x010E)), "a description of 23 chr");
+	CHECK_EQ(le16(*tiff_value(result, 0x0112), 0), 6u);
+}
+
 TEST("a tiff value that does not fit is appended, and nothing moves")
 {
 	const auto stream = make_tiff_stream();

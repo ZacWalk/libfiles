@@ -9,7 +9,9 @@
 
 #include "libfiles/xmp.h"
 
+#include <format>
 #include <string>
+#include <vector>
 
 namespace xmp = libfiles::xmp;
 namespace ns = libfiles::xmp::ns;
@@ -122,6 +124,28 @@ TEST("xmp stops at junk after the root but keeps the root")
 {
 	const auto m = parsed(packet("<xmp:Rating>1</xmp:Rating>") + "<junk/>");
 	CHECK_STR(get(m, ns::xmp, "Rating"), "1");
+}
+
+TEST("xmp keeps what precedes nesting no writer makes, rather than run out of stack")
+{
+	// Each level of the walk after the parse, and of the tree's destruction, is a call: ten thousand
+	// levels, closed or not, ran a thread out of stack. A cap stops there and keeps what came before.
+	std::string deep = "<xmp:Rating>2</xmp:Rating><p:a xmlns:p='urn:p'>";
+	for (auto i = 0; i < 10000; ++i) deep += "<p:a>";
+	const auto m = parsed(packet(deep));
+	CHECK_STR(get(m, ns::xmp, "Rating"), "2");
+
+	std::string bare;
+	for (auto i = 0; i < 10000; ++i) bare += "<a>";
+	CHECK(parsed(bare).empty());
+
+	// A packet as deep as real ones go reads whole.
+	std::string nested = "<p:s xmlns:p='urn:p' rdf:parseType='Resource'>";
+	for (auto i = 0; i < 20; ++i) nested += "<p:s rdf:parseType='Resource'>";
+	nested += "<p:v>leaf</p:v>";
+	for (auto i = 0; i < 21; ++i) nested += "</p:s>";
+	const auto ordinary = parsed(packet(nested + "<xmp:Label>Red</xmp:Label>"));
+	CHECK_STR(get(ordinary, ns::xmp, "Label"), "Red");
 }
 
 TEST("xmp turns simple Dublin Core values into arrays")
@@ -324,6 +348,27 @@ TEST("xmp registers unknown namespaces and keeps prefixes unique")
 	CHECK_STR(xmp::register_namespace("http://ns.google.com/photos/1.0/panorama/", "GPano"), "GPano:");
 }
 
+// Each URI declared under a prefix already taken probed every numbered prefix from 1, so a packet
+// declaring one prefix for many URIs cost the square of their number under the table's lock. The
+// numbering found from where the last probe stopped is the same, a number taken in between included.
+TEST("xmp numbers a prefix declared for many namespaces as before, without probing from 1")
+{
+	CHECK_STR(xmp::register_namespace("urn:libfiles-probe:taken", "lfprobe_3_"), "lfprobe_3_:");
+
+	std::vector<std::string> prefixes;
+	for (auto n = 0; n < 50000; ++n)
+	{
+		prefixes.push_back(xmp::register_namespace(std::format("urn:libfiles-probe:{}", n), "lfprobe"));
+	}
+
+	CHECK_STR(prefixes[0], "lfprobe:");
+	CHECK_STR(prefixes[1], "lfprobe_1_:");
+	CHECK_STR(prefixes[2], "lfprobe_2_:");
+	CHECK_STR(prefixes[3], "lfprobe_4_:");
+	CHECK_STR(prefixes.back(), "lfprobe_50000_:");
+	CHECK_STR(xmp::register_namespace("urn:libfiles-probe:7", "lfprobe"), prefixes[7]);
+}
+
 TEST("xmp reads qualified values written with rdf:value")
 {
 	const auto m = parsed(packet("<dc:format rdf:parseType='Resource'><rdf:value>image/png</rdf:value>"
@@ -484,6 +529,33 @@ TEST("xmp keeps a value's control characters escaped")
 	m.set_property(ns::xmp, "Label", "a\tb\x01" "c");
 	CHECK_STR(get(m, ns::xmp, "Label"), "a\tb c");
 	CHECK(m.serialize().find("a&#x9;b c") != std::string::npos);
+}
+
+// The about name and the namespace URIs are read from attributes, so they may hold what an attribute
+// escapes. Written back raw they broke the Description's start tag, and every property went with it.
+TEST("xmp writes its about name and namespace URIs escaped")
+{
+	const std::string text = "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		"<rdf:Description rdf:about=\"a?b=1&amp;c=&quot;2&quot;&lt;\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" "
+		"xmlns:lfesc=\"urn:libfiles-escape?x=1&amp;y=&quot;2&quot;\">"
+		"<xmp:Rating>3</xmp:Rating><lfesc:v>value</lfesc:v>"
+		"</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>";
+	const auto original = parsed(text);
+	CHECK_STR(original.about(), "a?b=1&c=\"2\"<");
+	CHECK_STR(get(original, ns::xmp, "Rating"), "3");
+	CHECK_STR(get(original, "urn:libfiles-escape?x=1&y=\"2\"", "v"), "value");
+
+	for (const auto compact : {false, true})
+	{
+		const auto back = parsed(original.serialize({.use_compact_format = compact}));
+		CHECK_STR(back.about(), original.about());
+		CHECK_STR(dump(back), dump(original));
+	}
+
+	const auto exact = parsed(original.serialize({.exact_packet_length = true, .padding = 4096}));
+	CHECK_STR(exact.about(), original.about());
+	CHECK_STR(dump(exact), dump(original));
 }
 
 TEST("xmp refuses malformed paths and unregistered schemas")

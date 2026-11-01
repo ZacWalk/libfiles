@@ -474,25 +474,45 @@ namespace libfiles::detail
 		}
 
 		// Finishes a decompression that produced every row, abandons one that did not; an error
-		// finishing is no reason to discard rows already written.
+		// finishing is no reason to discard rows already written. The error comes back by longjmp, not
+		// as the exception error_exit throws: MSVC's /EHsc lets an optimized build assume an extern "C"
+		// function never throws and drop a catch whose try holds only libjpeg calls, and in a noexcept
+		// function the exception that then escaped ended the process.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4611) // nothing with a destructor lives in this frame
+#endif
 		void close(jpeg_decompress_struct& d) noexcept
 		{
-			try
+			auto& s = state_of(&d);
+			const auto previous_exit = d.err->error_exit;
+			const auto previous_jump = s.jump;
+			std::jmp_buf jump;
+			s.jump = &jump;
+			d.err->error_exit = [](const j_common_ptr info)
+			{
+				std::longjmp(*static_cast<jpeg_state*>(info->client_data)->jump, 1);
+			};
+
+			volatile auto abandoning = false;
+
+			if (setjmp(jump) == 0)
 			{
 				if (d.output_scanline < d.output_height) jpeg_abort_decompress(&d);
 				else jpeg_finish_decompress(&d);
 			}
-			catch (const jpeg_failure&)
+			else if (!abandoning)
 			{
-				try
-				{
-					jpeg_abort_decompress(&d);
-				}
-				catch (const jpeg_failure&)
-				{
-				}
+				abandoning = true;
+				jpeg_abort_decompress(&d);
 			}
+
+			d.err->error_exit = previous_exit;
+			s.jump = previous_jump;
 		}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 	}
 
 	void decode_jpeg(reader& r, image_sink& sink, const decode_options& options, jpeg_state_ptr& state, decode_result& result)

@@ -2,12 +2,12 @@
 // Copyright 2026  Zac Walker
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Purpose: The JPEG XL scanner, for a bare codestream and the box container, and the read of a JPEG
-// XL file's XMP packet. The codestream's headers - its size header and image metadata - are read bit
-// by bit as libjxl reads them, for the size, orientation, colour channels and alpha its basic info
-// reports; the image data never is. The 'Exif' and 'xml ' boxes are taken as libjxl hands them to a
-// caller that subscribes to its box events, as Diffractor did: a box counts once the decoder moves on
-// past it, so a fault anywhere ends the boxes there, and the last of each kind wins.
+// Purpose: The JPEG XL scanner, for a bare codestream and the box container, the read of a JPEG XL file's
+// XMP packet, and of where its boxes lie for its writer. The codestream's headers - its size header and
+// image metadata - are read bit by bit as libjxl reads them, for the size, orientation, colour channels
+// and alpha its basic info reports; the image data never is. The 'Exif' and 'xml ' boxes are taken as
+// libjxl hands them to a caller that subscribes to its box events, as Diffractor did: a box counts once
+// the decoder moves on past it, so a fault anywhere ends the boxes there, and the last of each kind wins.
 
 #include "bmff_internal.h"
 #include "scan_internal.h"
@@ -37,9 +37,10 @@ namespace libfiles::detail
 		constexpr auto box_exif = fourcc("Exif");
 		constexpr auto box_xml = fourcc("xml ");
 		constexpr auto box_jxll = fourcc("jxll");
+		constexpr auto box_jbrd = fourcc("jbrd");
 		constexpr auto brand_jxl = fourcc("jxl ");
 
-		constexpr std::uint8_t container_signature[12] = {0, 0, 0, 0x0C, 'J', 'X', 'L', ' ', 0x0D, 0x0A, 0x87, 0x0A};
+		constexpr const auto& container_signature = jxl_container_signature;
 
 		// A metadata box larger than this stops the scan of the boxes, as it stopped Diffractor's.
 		constexpr std::size_t max_metadata_block = 16u * 1024u * 1024u;
@@ -729,6 +730,7 @@ namespace libfiles::detail
 			std::vector<std::uint8_t> data;
 			// Compressed, with no decompressor to hand: left out.
 			bool unknown = false;
+			jxl_box_place place;
 		};
 
 		struct jxl_read
@@ -744,6 +746,15 @@ namespace libfiles::detail
 			// The most codestream parts held at once, waiting to be read or held out of order, which
 			// the tests check stays small.
 			std::size_t peak_parts = 0;
+			// Where the boxes the writer changes lie, as jxl_layout gives them.
+			std::optional<jxl_box_place> xmp_box;
+			std::optional<jxl_box_place> exif_box;
+			// The last Exif box was compressed, and could not be read.
+			bool exif_unread = false;
+			std::optional<std::uint64_t> first_xmp_box;
+			std::optional<std::uint64_t> first_exif_box;
+			bool jpeg_reconstruction = false;
+			std::optional<std::uint64_t> codestream_box;
 		};
 
 		// Reads the file as libjxl decodes it for a caller that wants its basic info and every box, with
@@ -779,16 +790,24 @@ namespace libfiles::detail
 				{
 					if (pending->kind == box_kind::exif)
 					{
-						if (!pending->unknown) out.exif = std::move(pending->data);
+						if (!pending->unknown)
+						{
+							out.exif = std::move(pending->data);
+							out.exif_box = pending->place;
+						}
+
+						out.exif_unread = pending->unknown;
 					}
 					else if (pending->unknown)
 					{
 						out.xmp_unknown = true;
+						out.xmp_box = pending->place;
 					}
 					else
 					{
 						out.xmp = std::move(pending->data);
 						out.xmp_unknown = false;
+						out.xmp_box = pending->place;
 					}
 				}
 
@@ -880,6 +899,10 @@ namespace libfiles::detail
 				const auto contents = pos + header;
 				const auto contents_size = unbounded ? 0 : box_size - header;
 				const auto available = end - contents;
+				const jxl_box_place place{pos, end - pos, static_cast<std::uint32_t>(header), type == box_brob};
+
+				// libjxl gives back a JPEG from a 'jbrd' box as written, never from a compressed one.
+				if (type == box_jbrd) out.jpeg_reconstruction = true;
 
 				if (type == box_ftyp)
 				{
@@ -895,6 +918,7 @@ namespace libfiles::detail
 
 				if (type == box_jxlc || type == box_jxlp)
 				{
+					if (!out.codestream_box) out.codestream_box = pos;
 					auto data = contents;
 
 					if (type == box_jxlp)
@@ -980,7 +1004,11 @@ namespace libfiles::detail
 
 					metadata_box box;
 					box.kind = inner == box_exif ? box_kind::exif : box_kind::xmp;
+					box.place = place;
 					const auto compressed = type == box_brob;
+
+					auto& first = inner == box_exif ? out.first_exif_box : out.first_xmp_box;
+					if (!first) first = pos;
 
 					if (compressed && !unbounded && contents_size < 4) return out;
 
@@ -1175,14 +1203,33 @@ namespace libfiles::detail
 		return result;
 	}
 
-	bool jxl_packet(reader& r, std::vector<std::uint8_t>& packet)
+	bool jxl_packet(reader& r, std::vector<std::uint8_t>& packet, const brotli_decompressor* const brotli)
 	{
-		auto read = read_jxl(r, nullptr);
+		auto read = read_jxl(r, brotli);
 
 		packet.clear();
 		if (!read.complete || read.xmp_unknown) return false;
 		if (read.xmp) packet = std::move(*read.xmp);
 		return true;
+	}
+
+	jxl_layout read_jxl_layout(reader& r, const brotli_decompressor* const brotli)
+	{
+		auto read = read_jxl(r, brotli);
+
+		jxl_layout out;
+		out.whole = read.complete && read.info.has_value();
+		out.container = read.container;
+		out.xmp_box = read.xmp_box;
+		if (!read.xmp_unknown) out.xmp = std::move(read.xmp);
+		out.exif_box = read.exif_box;
+		if (read.exif) out.exif = std::move(*read.exif);
+		out.exif_unread = read.exif_unread;
+		out.first_xmp_box = read.first_xmp_box;
+		out.first_exif_box = read.first_exif_box;
+		out.jpeg_reconstruction = read.jpeg_reconstruction;
+		out.codestream_box = read.codestream_box.value_or(0);
+		return out;
 	}
 
 	std::size_t jxl_parts_held(reader& r)

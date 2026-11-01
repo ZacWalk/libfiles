@@ -113,7 +113,7 @@ namespace libfiles
 					row(bmp, img, "BMP", "image/bmp", bmp_ext, image_format::bmp, no_media, no_update, none),
 					row(tiff, img, "TIFF", "image/tiff", tiff_ext, image_format::tiff, no_media, file_format::tiff, c_scan | c_updated),
 					row(heif, img, "HEIF and AVIF", "image/heif", heif_ext, image_format::heif, no_media, no_update, capability::read_packet),
-					row(jxl, img, "JPEG XL", "image/jxl", jxl_ext, image_format::jxl, no_media, no_update, capability::read_packet),
+					row(jxl, img, "JPEG XL", "image/jxl", jxl_ext, image_format::jxl, no_media, file_format::jxl, c_updated),
 					row(pcx, img, "PCX", "image/vnd.zbrush.pcx", pcx_ext, image_format::pcx, no_media, no_update, none),
 					row(wpg, img, "WordPerfect Graphics", "image/x-wpg", wpg_ext, image_format::wpg, no_media, no_update, none),
 					row(mp4, av, "MP4 and QuickTime", "video/mp4", mp4_ext, no_image, media_format::mp4, file_format::mp4, c_media | c_updated),

@@ -129,6 +129,7 @@ add_library(libfiles STATIC
     src/write_gif.cpp
     src/write_internal.h
     src/write_jpeg.cpp
+    src/write_jxl.cpp
     src/write_mp3.cpp
     src/write_mp4.cpp
     src/write_png.cpp
@@ -190,7 +191,7 @@ if(LIBFILES_HEIF)
 endif()
 
 if(LIBFILES_JXL)
-    target_sources(libfiles PRIVATE src/decode_jxl.cpp)
+    target_sources(libfiles PRIVATE src/decode_jxl.cpp src/encode_jxl.cpp)
     target_link_libraries(libfiles PRIVATE libfiles::jxl)
     target_compile_definitions(libfiles PRIVATE LIBFILES_JXL)
 endif()
@@ -248,6 +249,7 @@ if(PROJECT_IS_TOP_LEVEL)
         tests/jpeg_decode_tests.cpp
         tests/jxl_codec_tests.cpp
         tests/jxl_decode_tests.cpp
+        tests/jxl_write_tests.cpp
         tests/media_asf_flv_tests.cpp
         tests/media_audio_files_tests.cpp
         tests/media_audio_tests.cpp
