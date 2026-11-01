@@ -4,6 +4,9 @@
 // Purpose: Native TIFF pages, palettes, strips, tiles and metadata through libtiff.
 
 #include "document_internal.h"
+#include "legacy.h"
+#include "tiff_internal.h"
+#include "libfiles/icc.h"
 
 #include <tiffio.h>
 
@@ -109,6 +112,13 @@ namespace libfiles::detail
 				[](thandle_t, void*, toff_t) {}, options.get()), TIFFClose);
 		if (!owner) decode.fail("the TIFF header could not be read");
 		auto* file = owner.get();
+		const auto next_page = [&]
+		{
+			if (TIFFLastDirectory(file)) return false;
+			if (TIFFReadDirectory(file)) return true;
+			decode.result.warnings.emplace_back("a later TIFF page could not be read; complete pages before it were kept");
+			return false;
+		};
 		std::vector<std::uint8_t> tile_buffer, strip, row;
 		std::vector<std::uint32_t> raster;
 		auto& info = decode.result.info;
@@ -140,6 +150,8 @@ namespace libfiles::detail
 			TIFFGetFieldDefaulted(file, TIFFTAG_PLANARCONFIG, &planar);
 			TIFFGetFieldDefaulted(file, TIFFTAG_ORIENTATION, &orientation);
 			TIFFGetField(file, TIFFTAG_EXTRASAMPLES, &extras, &extra_types);
+			const bool has_alpha = extras && extra_types &&
+				(extra_types[0] == EXTRASAMPLE_ASSOCALPHA || extra_types[0] == EXTRASAMPLE_UNASSALPHA);
 			const bool rgba = TIFFIsTiled(file) || bits > 8 || planar == PLANARCONFIG_SEPARATE ||
 				orientation != ORIENTATION_TOPLEFT || photometric == PHOTOMETRIC_SEPARATED ||
 				photometric == PHOTOMETRIC_YCBCR ||
@@ -147,17 +159,61 @@ namespace libfiles::detail
 				(extras && extra_types && extra_types[0] == EXTRASAMPLE_ASSOCALPHA);
 			std::uint32_t length = 0;
 			void* data = nullptr;
+			bool complete_exif = false;
 			if (TIFFGetField(file, TIFFTAG_PHOTOSHOP, &length, &data) && data && length)
 			{
 				decode.working_bytes(length);
 				metadata_blocks blocks;
 				parse_photoshop_resources(blocks, {static_cast<const std::uint8_t*>(data), length}, false);
 				if (!blocks.iptc.empty()) decode.output.metadata(document_metadata::iptc, blocks.iptc);
+				if (!blocks.photoshop.empty()) decode.output.metadata(document_metadata::photoshop, blocks.photoshop);
 			}
 			if (TIFFGetField(file, TIFFTAG_XMLPACKET, &length, &data) && data && length)
 			{
 				decode.working_bytes(length);
 				decode.output.metadata(document_metadata::xmp, {static_cast<const std::uint8_t*>(data), length});
+			}
+			std::uint64_t metadata_directory = 0;
+			char* date_time = nullptr;
+			if (!info.frames && (TIFFGetField(file, TIFFTAG_EXIFIFD, &metadata_directory) ||
+				TIFFGetField(file, TIFFTAG_GPSIFD, &metadata_directory) ||
+				TIFFGetField(file, TIFFTAG_DATETIME, &date_time)))
+			{
+				try
+				{
+					auto exif = tiff_editor::empty_stream();
+					reader header(exif);
+					tiff_editor metadata;
+					if (!metadata.open(header)) decode.fail("could not initialize TIFF metadata");
+					metadata.import_metadata(decode.input);
+					exif = apply_changes(exif, metadata.changes(exif.size()));
+					decode.working_bytes(exif.size());
+					decode.output.metadata(document_metadata::exif, exif);
+					complete_exif = true;
+				}
+				catch (const format_error& error)
+				{
+					decode.result.warnings.emplace_back(
+						std::string("TIFF metadata could not be preserved: ") + error.what());
+				}
+			}
+			if (!complete_exif)
+			{
+				exif_fields fields;
+				char* text = nullptr;
+				if (TIFFGetField(file, TIFFTAG_MAKE, &text) && text) fields.camera_make = text;
+				if (TIFFGetField(file, TIFFTAG_MODEL, &text) && text) fields.camera_model = text;
+				if (TIFFGetField(file, TIFFTAG_IMAGEDESCRIPTION, &text) && text) fields.description = text;
+				if (TIFFGetField(file, TIFFTAG_ARTIST, &text) && text) fields.artist = text;
+				if (TIFFGetField(file, TIFFTAG_COPYRIGHT, &text) && text) fields.copyright = text;
+				if (!fields.camera_make.empty() || !fields.camera_model.empty() ||
+					!fields.description.empty() || !fields.artist.empty() ||
+					!fields.copyright.empty() || (orientation > 1 && orientation <= 8))
+				{
+					if (orientation >= 1 && orientation <= 8)
+						fields.orientation = orientation;
+					decode.output.metadata(document_metadata::exif, make_exif(fields));
+				}
 			}
 			decode.output.metadata_complete();
 			if (TIFFGetField(file, TIFFTAG_ICCPROFILE, &length, &data))
@@ -165,7 +221,7 @@ namespace libfiles::detail
 				if (!data || !length) decode.fail("invalid TIFF colour profile");
 				decode.working_bytes(length);
 				const auto* profile = static_cast<const std::uint8_t*>(data);
-				const bool rgb = length >= 20 && std::memcmp(profile + 16, "RGB ", 4) == 0;
+				const bool rgb = icc_declares_rgb({profile, length});
 				decode.output.metadata(rgb ? document_metadata::icc : document_metadata::source_icc, {profile, length});
 				if (!rgb) decode.result.warnings.emplace_back(
 					"The source TIFF colour profile is retained as opaque metadata, not attached to RGB pixels.");
@@ -173,7 +229,8 @@ namespace libfiles::detail
 			document_frame frame;
 			frame.width = width;
 			frame.height = height;
-			frame.storage = rgba ? document_storage::bgra32 : storage_from_bits(samples * bits);
+			frame.storage = (rgba || (has_alpha && !decode.options.legacy_tiff_storage))
+				? document_storage::bgra32 : storage_from_bits(samples * bits);
 			std::array<std::uint32_t, 256> palette{};
 			const auto entries = palette_entries(frame.storage);
 			for (std::size_t i = 0; i < entries; ++i)
@@ -218,6 +275,12 @@ namespace libfiles::detail
 				info.has_resolution = true;
 				info.pixels_per_meter_x = density(x, unit, decode);
 				info.pixels_per_meter_y = density(y, unit, decode);
+			}
+			if (!decode.options.pixels)
+			{
+				++info.frames;
+				if (!next_page()) break;
+				continue;
 			}
 			decode.begin(frame);
 			const auto stride = document_row_bytes(width, frame.storage);
@@ -322,12 +385,7 @@ namespace libfiles::detail
 				}
 			}
 			decode.end();
-			if (TIFFLastDirectory(file)) break;
-			if (!TIFFReadDirectory(file))
-			{
-				decode.result.warnings.emplace_back("a later TIFF page could not be read; complete pages before it were kept");
-				break;
-			}
+			if (!next_page()) break;
 		}
 		while (true);
 		if (decode.result.resource_limit) decode.fail("not enough memory to decode the TIFF image");

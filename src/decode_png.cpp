@@ -9,6 +9,7 @@
 
 #include "decode_internal.h"
 #include "document_internal.h"
+#include "scan_internal.h"
 
 #include "libfiles/exif.h"
 #include "libfiles/scan.h"
@@ -336,7 +337,10 @@ namespace libfiles::detail
 					int count_alpha = 0;
 					png_get_tRNS(png, info, &alpha, &count_alpha, &transparent);
 					for (int i = 0; i < count_alpha && static_cast<std::size_t>(i) < entries; ++i)
+					{
 						palette[i] = (palette[i] & 0xffffff) | (static_cast<std::uint32_t>(alpha[i]) << 24);
+						if (alpha[i] == 0 && !frame.transparent) frame.transparent = static_cast<std::uint32_t>(i);
+					}
 					if (frame.storage == document_storage::indexed8) frame.storage = document_storage::indexed8_alpha;
 				}
 				frame.palette = {palette.data(), entries};
@@ -371,17 +375,6 @@ namespace libfiles::detail
 			}
 			decode.end();
 			png_read_end(png, info);
-			png_textp text = nullptr;
-			int count = 0;
-			png_get_text(png, info, &text, &count);
-			for (int i = 0; i < count; ++i)
-			{
-				const auto size = std::max(text[i].text_length, text[i].itxt_length);
-				if (size && std::strcmp(text[i].key, "XML:com.adobe.xmp") == 0)
-					decode.output.metadata(document_metadata::xmp,
-						{reinterpret_cast<const std::uint8_t*>(text[i].text), size});
-			}
-			decode.output.metadata_complete();
 		}
 	}
 #ifdef _MSC_VER
@@ -390,6 +383,15 @@ namespace libfiles::detail
 
 	void document_png(document_decode& decode)
 	{
+		if (!decode.options.pixels)
+		{
+			const auto scanned = scan_png(decode.input, &decode);
+			if (!scanned.success) decode.fail("the PNG metadata header could not be read");
+			decode.result.info.width = static_cast<std::uint32_t>(scanned.width);
+			decode.result.info.height = static_cast<std::uint32_t>(scanned.height);
+			decode.result.info.frames = 1;
+			return;
+		}
 		std::array<std::uint8_t, 8> signature{};
 		decode.input.read(0, signature.data(), signature.size());
 		if (!std::equal(signature.begin(), signature.end(), std::begin(png_signature)))
@@ -400,5 +402,6 @@ namespace libfiles::detail
 		std::vector<std::uint8_t> rows;
 		std::array<std::uint32_t, 256> palette{};
 		read_document_png(decode, source, owner, rows, palette);
+		scan_png(decode.input, &decode);
 	}
 }

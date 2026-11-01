@@ -35,7 +35,7 @@ namespace libfiles::detail
 	class tiff_editor
 	{
 	public:
-		enum class directory : std::uint8_t { ifd0, exif, gps };
+		enum class directory : std::uint8_t { ifd0, exif, gps, interoperability };
 
 		static constexpr std::uint16_t type_byte = 1;
 		static constexpr std::uint16_t type_ascii = 2;
@@ -62,8 +62,13 @@ namespace libfiles::detail
 		void set(directory d, std::uint16_t tag, std::uint16_t type, std::uint32_t count, bytes value);
 		void set_ascii(directory d, std::uint16_t tag, std::string_view text);
 		void set_short(directory d, std::uint16_t tag, std::uint16_t value);
+		void set_long(directory d, std::uint16_t tag, std::uint32_t value);
 		void set_rationals(directory d, std::uint16_t tag, const std::vector<std::pair<std::uint32_t, std::uint32_t>>& values);
 		void remove(directory d, std::uint16_t tag);
+
+		// Copies descriptive fields through the shared TIFF parser, not pixel-layout fields.
+		// Values change byte order where needed; opaque maker-note bytes remain untouched.
+		void import_metadata(reader& source, bool include_orientation = true);
 
 		bool changed() const { return !_edits.empty(); }
 
@@ -108,7 +113,7 @@ namespace libfiles::detail
 
 		bool _little_endian = true;
 		std::uint64_t _size = 0;
-		std::array<ifd, 3> _ifds;
+		std::array<ifd, 4> _ifds;
 		std::map<std::pair<directory, std::uint16_t>, edit> _edits;
 	};
 

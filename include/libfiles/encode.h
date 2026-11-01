@@ -10,10 +10,13 @@
 #pragma once
 
 #include "libfiles/decode.h"
+#include "libfiles/document.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -54,6 +57,8 @@ namespace libfiles
 		std::span<const std::uint8_t> icc;
 		// Photoshop image resources other than the IPTC one, as 8BIM records.
 		std::span<const std::uint8_t> photoshop;
+		std::uint32_t pixels_per_meter_x = 0;
+		std::uint32_t pixels_per_meter_y = 0;
 
 		embedded_metadata() = default;
 
@@ -63,6 +68,65 @@ namespace libfiles
 		{
 		}
 	};
+
+	// The native document encoders report these separately so an application can choose a different
+	// format for an unsupported storage layout, retry after a larger budget, or keep a cancelled
+	// operation out of its publication path.
+	struct document_encode_result
+	{
+		bool success = false;
+		bool unsupported = false;
+		bool cancelled = false;
+		bool resource_limit = false;
+		std::string error;
+		std::vector<std::string> warnings;
+		std::vector<std::uint8_t> data;
+
+		explicit operator bool() const noexcept { return success; }
+	};
+
+	struct document_encode_options
+	{
+		int quality = 85;
+		bool progressive = false;
+		bool optimize = false;
+		// Selects historical native-writer conventions, including TIFF inch resolution and metadata
+		// layout. reset_orientation_metadata opts TIFF into standard EXIF carrying for upright saves.
+		// It never enables a lossy pixel conversion.
+		bool legacy_compatibility = false;
+		// The caller has physically made pixels upright; correct existing EXIF/XMP orientation and
+		// dimensions and unlink stale thumbnails instead of carrying the old turn into the saved file.
+		bool reset_orientation_metadata = false;
+		// Used by JPEG when no document_info resolution is present, and by the row overload.
+		std::uint32_t pixels_per_meter_x = 0;
+		std::uint32_t pixels_per_meter_y = 0;
+		std::uint64_t maximum_working_bytes = 256ull * 1024 * 1024;
+		std::function<bool()> cancelled;
+		std::function<void(std::uint32_t, std::uint32_t)> progress;
+	};
+
+	// The native formats have no lossy colour conversion fallback: indexed and packed storage stays
+	// indexed or packed where the target format can represent it, and an unsupported layout is refused.
+	bool can_encode_document(image_format format) noexcept;
+
+	// Encodes a complete native document. The document owns its rows and metadata for the duration of
+	// the call. BMP, GIF, TIFF and PNG retain native indexed/packed rows where their file format permits
+	// them; JPEG accepts one bgr24/bgrx32/bgra32/gray8 frame and is inherently lossy.
+	document_encode_result encode_document(const decoded_document& document, image_format format,
+	                                        const document_encode_options& options = {});
+
+	// Row-oriented convenience form for one image_view. It is intentionally separate from the document
+	// form so callers cannot accidentally flatten a multi-page or indexed document into BGRA pixels.
+	document_encode_result encode_document(const image_view& image, image_format format,
+	                                        const document_info& info = {},
+	                                        const embedded_metadata& metadata = {},
+	                                        const document_encode_options& options = {});
+
+	// Writes only after a complete in-memory encode succeeds. Encoding or cancellation therefore never
+	// touches the destination; a destination write failure follows the writable_stream's own staging
+	// and rollback policy.
+	document_encode_result encode_document(writable_stream& destination, const decoded_document& document,
+	                                        image_format format, const document_encode_options& options = {});
 
 	// An image encoded, with what the encoder noted on the way.
 	struct encoded
@@ -76,6 +140,18 @@ namespace libfiles
 	struct jpeg_options
 	{
 		int quality = 85;
+		// A grayscale row passed to jpeg_encoder::write_rows has one byte per pixel when this is true.
+		bool grayscale = false;
+		// A BGR24 row passed to write_rows has three bytes per pixel. This keeps the native JPEG
+		// path's source colour conversion distinct from the four-byte display-row encoder.
+		bool bgr24 = false;
+		bool progressive = false;
+		bool optimize = false;
+		// Native legacy writers explicitly emit an inch-based JFIF density. The generic encoder
+		// leaves libjpeg's default density fields untouched unless this is requested.
+		bool legacy_density = false;
+		std::uint32_t pixels_per_meter_x = 0;
+		std::uint32_t pixels_per_meter_y = 0;
 		// The JPEG an edit is being written back over, when there is one. Encoding against its own
 		// quantization tables and chroma sampling leaves an untouched block quantizing to itself, where
 		// the quality's tables would re-quantize the whole image. Adopted from a plain 8-bit YCbCr JPEG
@@ -83,9 +159,10 @@ namespace libfiles
 		std::span<const std::uint8_t> source;
 	};
 
-	// Encodes rows of four-byte pixels - blue, green, red and a fourth byte it ignores - as a JPEG. Long
-	// lived and reused for every image, because creating libjpeg's compressor is not free; each use
-	// resets it first, so one that a throw abandoned does not fail the next.
+	// Encodes rows of four-byte pixels - blue, green, red and a fourth byte it ignores - as a JPEG,
+	// or rows of three-byte BGR/one-byte grayscale when the corresponding option is set. Long lived
+	// and reused for every image, because creating libjpeg's compressor is not free; each use resets
+	// it first, so one that a throw abandoned does not fail the next.
 	class jpeg_encoder
 	{
 	public:
@@ -141,6 +218,65 @@ namespace libfiles
 		std::uint32_t width = 0;
 		std::uint32_t height = 0;
 		std::int64_t workspace_bytes = 0;
+		// A result with no data is otherwise distinguishable by these flags: the source was not a
+		// transformable JPEG, the request was cancelled, or libjpeg/transupp rejected it.
+		bool unsupported = false;
+		bool cancelled = false;
+		bool resource_limit = false;
+		bool invalid = false;
+		std::string error;
+	};
+
+	enum class jpeg_transform : std::uint8_t
+	{
+		none,
+		rotate90,
+		rotate180,
+		rotate270,
+		flip_horizontal,
+		flip_vertical,
+		transpose,
+		transverse,
+	};
+
+	enum class jpeg_transform_policy : std::uint8_t
+	{
+		// Refuse a turn when an edge is a partial iMCU. This is the exact transform used by Diffractor.
+		perfect,
+		// Keep transupp's partial edge blocks, matching ImageWalker's historical native path. No trim
+		// is enabled; pixels are never silently discarded.
+		partial_blocks,
+	};
+
+	enum class jpeg_density_unit : std::uint8_t
+	{
+		aspect_ratio,
+		inches,
+		centimetres
+	};
+
+	struct jpeg_density
+	{
+		jpeg_density_unit unit = jpeg_density_unit::aspect_ratio;
+		std::uint16_t x = 1;
+		std::uint16_t y = 1;
+	};
+
+	struct jpeg_transform_options
+	{
+		jpeg_transform transform = jpeg_transform::none;
+		jpeg_transform_policy policy = jpeg_transform_policy::perfect;
+		// Explicitly permits transupp to discard partial edge iMCUs. False never trims; a
+		// perfect request remains distinguishable as unsupported instead.
+		bool trim = false;
+		bool force_grayscale = false;
+		bool optimize_coding = false;
+		bool progressive = false;
+		// Unset preserves the source JFIF density. An override is in the output's axis order.
+		std::optional<jpeg_density> density;
+		std::uint64_t maximum_bytes = 256ull * 1024 * 1024;
+		std::function<bool()> cancelled;
+		std::function<void(std::uint32_t, std::uint32_t)> progress;
 	};
 
 	// A JPEG's header, and its lossless turns. Long lived and reused for every image, and reset before
@@ -168,6 +304,13 @@ namespace libfiles
 		// in bytes. Throws encode_error when libjpeg fails part way.
 		lossless_turn turn(std::span<const std::uint8_t> jpeg, jpeg_encoder& encoder, std::uint16_t orientation,
 		                   std::uint64_t budget) const;
+
+		// An explicit coefficient-only transform. It never recompresses; trimming requires trim=true.
+		// A failed transform
+		// reports error; an unsupported partial-MCU request, an over-budget workspace and cancellation
+		// have their own flags.
+		lossless_turn transform(std::span<const std::uint8_t> jpeg, jpeg_encoder& encoder,
+		                       const jpeg_transform_options& options = {}) const;
 
 		struct state;
 

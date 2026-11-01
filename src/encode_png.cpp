@@ -100,6 +100,9 @@ namespace libfiles
 			png_set_iCCP(png.get(), info_ptr, "icc", PNG_COMPRESSION_TYPE_BASE, metadata.icc.data(),
 			             static_cast<png_uint_32>(metadata.icc.size()));
 		}
+		if (metadata.pixels_per_meter_x > 0 && metadata.pixels_per_meter_y > 0)
+			png_set_pHYs(png.get(), info_ptr, metadata.pixels_per_meter_x, metadata.pixels_per_meter_y,
+			             PNG_RESOLUTION_METER);
 
 		if (!metadata.xmp.empty())
 		{

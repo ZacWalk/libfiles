@@ -430,6 +430,22 @@ namespace libfiles
 				       ? JXFORM_NONE
 				       : transform[orientation - 1];
 		}
+
+		std::optional<JXFORM_CODE> to_transform(const jpeg_transform transform)
+		{
+			switch (transform)
+			{
+			case jpeg_transform::none: return JXFORM_NONE;
+			case jpeg_transform::rotate90: return JXFORM_ROT_90;
+			case jpeg_transform::rotate180: return JXFORM_ROT_180;
+			case jpeg_transform::rotate270: return JXFORM_ROT_270;
+			case jpeg_transform::flip_horizontal: return JXFORM_FLIP_H;
+			case jpeg_transform::flip_vertical: return JXFORM_FLIP_V;
+			case jpeg_transform::transpose: return JXFORM_TRANSPOSE;
+			case jpeg_transform::transverse: return JXFORM_TRANSVERSE;
+			default: return std::nullopt;
+			}
+		}
 	}
 
 	jpeg_encoder::jpeg_encoder() : _state(std::make_unique<state>())
@@ -477,18 +493,39 @@ namespace libfiles
 
 		_state->cinfo.image_width = width;
 		_state->cinfo.image_height = height;
-		_state->cinfo.input_components = 4;
-		_state->cinfo.in_color_space = JCS_EXT_BGRX;
+		_state->cinfo.input_components = options.grayscale ? 1 : options.bgr24 ? 3 : 4;
+		_state->cinfo.in_color_space = options.grayscale ? JCS_GRAYSCALE :
+			options.bgr24 ? JCS_EXT_BGR : JCS_EXT_BGRX;
 
-		if (!copy_source_encode_params(&_state->cinfo, options.source, _state->notes))
+		if (options.grayscale || options.bgr24 ||
+			!copy_source_encode_params(&_state->cinfo, options.source, _state->notes))
 		{
 			jpeg_set_defaults(&_state->cinfo);
 			jpeg_set_quality(&_state->cinfo, options.quality, TRUE);
-			jpeg_set_colorspace(&_state->cinfo, JCS_YCbCr);
+			jpeg_set_colorspace(&_state->cinfo, options.grayscale ? JCS_GRAYSCALE : JCS_YCbCr);
 		}
 
 		// Last, because jpeg_set_defaults resets it and the copy above runs it internally.
 		_state->cinfo.dct_method = JDCT_ISLOW;
+		_state->cinfo.optimize_coding = options.optimize ? TRUE : FALSE;
+		if (options.progressive) jpeg_simple_progression(&_state->cinfo);
+
+		if (options.legacy_density)
+		{
+			// ImageWalker’s historical writer always emits inch density, with one dpi when
+			// the source does not state a resolution. The generic DDF path deliberately leaves
+			// libjpeg's defaults untouched.
+			const auto jfif_density = [](const std::uint32_t ppm)
+			{
+				const auto scaled = static_cast<std::uint64_t>(ppm) * 100;
+				const auto density = (scaled + 3937 / 2) / 3937;
+				return static_cast<std::uint16_t>(
+					std::min<std::uint64_t>(65535, std::max<std::uint64_t>(1, density)));
+			};
+			_state->cinfo.density_unit = 1;
+			_state->cinfo.X_density = jfif_density(options.pixels_per_meter_x);
+			_state->cinfo.Y_density = jfif_density(options.pixels_per_meter_y);
+		}
 	}
 
 	void jpeg_encoder::start(const std::uint32_t width, const std::uint32_t height, const std::uint16_t orientation,
@@ -751,6 +788,8 @@ namespace libfiles
 			if (!jtransform_request_workspace(&_state->dinfo, &transformoption))
 			{
 				// Refused as imperfect. An empty result tells the caller to take the re-encode path.
+				result.unsupported = true;
+				result.error = "the JPEG transform would move a partial MCU";
 				return result;
 			}
 
@@ -766,6 +805,7 @@ namespace libfiles
 			if (static_cast<std::uint64_t>(result.workspace_bytes) > budget)
 			{
 				result.over_budget = true;
+				result.error = "the JPEG coefficient transform exceeds its memory budget";
 				return result;
 			}
 
@@ -780,6 +820,8 @@ namespace libfiles
 			// only happens when the entropy data ends early, and transupp indexes this array unchecked.
 			if (src_coef_arrays == nullptr)
 			{
+				result.invalid = true;
+				result.error = "the JPEG coefficient stream is incomplete";
 				return result;
 			}
 
@@ -825,5 +867,178 @@ namespace libfiles
 		}
 
 		return result;
+	}
+
+	lossless_turn jpeg_transformer::transform(const std::span<const std::uint8_t> jpeg, jpeg_encoder& encoder,
+	                                          const jpeg_transform_options& options) const
+	{
+		lossless_turn result;
+		if (options.density && (static_cast<std::uint8_t>(options.density->unit) > 2 ||
+			!options.density->x || !options.density->y))
+		{
+			result.invalid = true;
+			result.error = "invalid JFIF output density";
+			return result;
+		}
+
+		// This is the status-returning sibling of turn(). It uses the same transupp path, but keeps
+		// malformed/unsupported/over-budget/cancelled outcomes distinguishable for a caller that must
+		// not silently fall back to a lossy re-encode.
+		jpeg_abort_decompress(&_state->dinfo);
+		jpeg_abort_compress(&encoder._state->cinfo);
+		const on_exit reset_codecs([this, &encoder]
+		{
+			jpeg_abort_decompress(&_state->dinfo);
+			jpeg_abort_compress(&encoder._state->cinfo);
+		});
+
+		try
+		{
+			if (jpeg.size() < 2 || jpeg[0] != 0xff || jpeg[1] != 0xd8)
+			{
+				result.unsupported = true;
+				result.error = "the input is not a JPEG";
+				return result;
+			}
+			const auto transform = to_transform(options.transform);
+			if (!transform)
+			{
+				result.unsupported = true;
+				result.error = "the JPEG transform is not supported";
+				return result;
+			}
+			const auto stop = [&]
+			{
+				if (options.cancelled && options.cancelled())
+				{
+					result.cancelled = true;
+					result.error = "JPEG transformation was cancelled";
+					return true;
+				}
+				return false;
+			};
+			const auto report = [&](const std::uint32_t current)
+			{
+				if (options.progress) options.progress(current, 4);
+			};
+			if (stop()) return result;
+
+			_state->mem_source.bytes_in_buffer = jpeg.size();
+			_state->mem_source.next_input_byte = jpeg.data();
+			constexpr JCOPY_OPTION copyoption = JCOPYOPT_ALL;
+			jpeg_transform_info transformoption = {};
+			transformoption.perfect =
+				options.policy == jpeg_transform_policy::perfect && !options.trim ? TRUE : FALSE;
+			transformoption.slow_hflip = FALSE;
+			transformoption.transform = *transform;
+			transformoption.trim = options.trim ? TRUE : FALSE;
+			transformoption.force_grayscale = options.force_grayscale ? TRUE : FALSE;
+			transformoption.crop = FALSE;
+			transformoption.crop_width_set = JCROP_UNSET;
+			transformoption.crop_height_set = JCROP_UNSET;
+			transformoption.crop_xoffset_set = JCROP_UNSET;
+			transformoption.crop_yoffset_set = JCROP_UNSET;
+
+			jcopy_markers_setup(&_state->dinfo, copyoption);
+			if (JPEG_HEADER_OK != jpeg_read_header(&_state->dinfo, TRUE))
+			{
+				result.invalid = true;
+				result.error = "the JPEG header is incomplete";
+				return result;
+			}
+			result.width = _state->dinfo.image_width;
+			result.height = _state->dinfo.image_height;
+			report(1);
+			if (stop()) return result;
+
+			if (!jtransform_request_workspace(&_state->dinfo, &transformoption))
+			{
+				result.unsupported = true;
+				result.error = "the JPEG transform would move a partial MCU";
+				return result;
+			}
+			const auto coefficients = coefficient_bytes();
+			if (coefficients <= 0 || coefficients > std::numeric_limits<std::int64_t>::max() / 2)
+			{
+				result.unsupported = true;
+				result.error = "the JPEG has no transformable DCT coefficient array";
+				return result;
+			}
+			result.workspace_bytes = coefficients * 2;
+			if (static_cast<std::uint64_t>(result.workspace_bytes) > options.maximum_bytes)
+			{
+				result.over_budget = true;
+				result.error = "the JPEG coefficient transform exceeds its memory budget";
+				return result;
+			}
+
+			constexpr jpeg_options encode_options;
+			encoder.setup(_state->dinfo.image_width, _state->dinfo.image_height, encode_options);
+			auto* const source_coefficients = jpeg_read_coefficients(&_state->dinfo);
+			if (!source_coefficients)
+			{
+				result.invalid = true;
+				result.error = "the JPEG coefficient stream is incomplete";
+				return result;
+			}
+			report(2);
+			if (stop()) return result;
+
+			auto& destination = encoder._state->cinfo;
+			jpeg_copy_critical_parameters(&_state->dinfo, &destination);
+			destination.optimize_coding = options.optimize_coding ? TRUE : FALSE;
+			if (options.progressive) jpeg_simple_progression(&destination);
+			auto* const destination_coefficients = jtransform_adjust_parameters(
+				&_state->dinfo, &destination, source_coefficients, &transformoption);
+			if (options.density)
+			{
+				destination.density_unit = static_cast<UINT8>(options.density->unit);
+				destination.X_density = options.density->x;
+				destination.Y_density = options.density->y;
+			}
+			jpeg_write_coefficients(&destination, destination_coefficients);
+
+			for (auto* marker = _state->dinfo.marker_list; marker != nullptr; marker = marker->next)
+			{
+				const std::span<const std::uint8_t> block = {marker->data, marker->data_length};
+				if (marker->marker == XMP_EXIF_MARKER && is_exif_signature(block))
+				{
+					const auto fixed = fix_dims(block, destination.image_width, destination.image_height);
+					marker->data = static_cast<std::uint8_t*>(_state->dinfo.mem->alloc_large(
+						reinterpret_cast<j_common_ptr>(&_state->dinfo), JPOOL_IMAGE, fixed.size()));
+					marker->original_length = static_cast<unsigned int>(fixed.size());
+					marker->data_length = static_cast<unsigned int>(fixed.size());
+					std::memcpy(marker->data, fixed.data(), fixed.size());
+				}
+			}
+
+			jcopy_markers_execute(&_state->dinfo, &destination, copyoption);
+			jtransform_execute_transform(&_state->dinfo, &destination, source_coefficients, &transformoption);
+			report(3);
+			if (stop()) return result;
+
+			result.data = encoder.complete(false);
+			jpeg_finish_decompress(&_state->dinfo);
+			report(4);
+			return result;
+		}
+		catch (const std::bad_alloc&)
+		{
+			result.resource_limit = true;
+			result.error = "not enough memory for the JPEG coefficient transform";
+			return result;
+		}
+		catch (const encode_error& error)
+		{
+			result.invalid = true;
+			result.error = error.what();
+			return result;
+		}
+		catch (const std::exception& error)
+		{
+			result.invalid = true;
+			result.error = error.what();
+			return result;
+		}
 	}
 }

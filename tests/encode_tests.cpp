@@ -7,6 +7,7 @@
 // boxes; the metadata each embeds, and what each refuses.
 
 #include "test.h"
+#include "builders.h"
 
 #include "libfiles/decode.h"
 #include "libfiles/encode.h"
@@ -224,23 +225,7 @@ namespace
 		return result;
 	}
 
-	// The smallest ICC profile libpng accepts for an RGB image: a header naming RGB data and the XYZ
-	// connection space, and an empty tag table.
-	bytes rgb_icc_profile()
-	{
-		bytes icc(132, 0);
-		icc[3] = 132;
-		icc[8] = 0x02;
-		icc[9] = 0x10;
-		std::memcpy(icc.data() + 12, "mntr", 4);
-		std::memcpy(icc.data() + 16, "RGB ", 4);
-		std::memcpy(icc.data() + 20, "XYZ ", 4);
-		std::memcpy(icc.data() + 36, "acsp", 4);
-		// The D50 illuminant, as s15Fixed16 numbers.
-		const std::uint8_t d50[] = {0x00, 0x00, 0xF6, 0xD6, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0xD3, 0x2D};
-		std::memcpy(icc.data() + 68, d50, sizeof d50);
-		return icc;
-	}
+	using test_build::rgb_icc_profile;
 
 	bytes encode_jpeg(const picture& p, const std::uint16_t orientation = 1,
 	                  const libfiles::embedded_metadata& metadata = {}, const libfiles::jpeg_options& options = {})

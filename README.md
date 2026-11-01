@@ -16,9 +16,11 @@ lands in both.
   video, and writes metadata to photos, video and audio with it: the scans, XMP,
   EXIF and IPTC, the decoders and encoders, camera raw and the Commodore 64
   listings.
-- **ImageWalker**'s `libiw` takes its native readers (JPEG, PNG, GIF, TIFF,
-  PCX, PSD, WPG and BMP), WebP display decoding, metadata and codecs from it,
-  and keeps image storage, encoding and its Windows imaging adapters.
+- **ImageWalker** links native documents, readers, encoders, metadata and
+  lossless JPEG transforms directly. Its shared application headers retain
+  release adapters and editing workflows; Windows imaging services come from
+  libdesktop.
+- **fast-draw** and **zpilot** use its PNG encoder and shared codec recipes.
 
 Reading is the hot path - a scan reads only the structure it needs, a few block
 reads over a network share - and writing is safe: an edit is either patched in
@@ -41,7 +43,7 @@ the caller stages.
 | Metadata updates: XMP, with EXIF, IPTC and container tags reconciled | JPEG, TIFF, PSD, PNG, GIF, WebP, JPEG XL, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
 | Decoding into caller memory as BGRX, BGRA or NV12, reduced while decoding | JPEG, PNG, WebP, PSD, HEIF and AVIF, JPEG XL | [decode.h](include/libfiles/decode.h) |
 | Native documents: palettes, packed and grayscale storage, pages and frames | BMP, GIF, JPEG, PNG, TIFF, PCX, PSD, WPG | [document.h](include/libfiles/document.h) |
-| Encoding with metadata, and lossless JPEG rotation | JPEG, PNG, WebP, JPEG XL | [encode.h](include/libfiles/encode.h) |
+| Encoding with metadata, native documents and lossless JPEG transforms | BMP, GIF, JPEG, PNG, TIFF, WebP, JPEG XL | [encode.h](include/libfiles/encode.h) |
 | Camera raw: largest preview or developed raw data, scan and listing, by path or through a stream | Every format LibRaw and the DNG SDK read | [raw.h](include/libfiles/raw.h) |
 | Commodore 64 media: list and draw in the C64's characters | D64, D71, D81, T64, CRT, P00, PRG | [commodore.h](include/libfiles/commodore.h) |
 

@@ -160,6 +160,12 @@ TEST("native decoding distinguishes refusal cancellation and working-memory limi
 	options.maximum_working_bytes = 1;
 	const auto limited = libfiles::decode_document(reader, libfiles::image_format::pcx, sink, options);
 	CHECK(!limited.success && limited.resource_limit && !limited.error.empty());
+
+	libfiles::decoded_document retained;
+	options.maximum_working_bytes = 256ull * 1024 * 1024;
+	options.maximum_retained_bytes = 1;
+	const auto retained_limit = libfiles::decode_document(reader, libfiles::image_format::pcx, retained, options);
+	CHECK(!retained_limit.success && retained_limit.resource_limit && retained.frames.empty());
 }
 
 TEST("native BMP honors row order zero pixel offsets and zero resolution")

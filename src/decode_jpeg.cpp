@@ -740,8 +740,11 @@ namespace libfiles::detail
 			d.dct_method = thumbnail ? JDCT_FASTEST : JDCT_FLOAT;
 			d.do_fancy_upsampling = thumbnail ? FALSE : TRUE;
 			d.do_block_smoothing = thumbnail ? FALSE : TRUE;
-			decode.working_bytes(buffers_whole_image(d) ? coefficient_bytes(d) : 0);
-			if (!jpeg_start_decompress(&d)) decode.fail("the JPEG decoder did not start");
+			if (decode.options.pixels)
+			{
+				decode.working_bytes(buffers_whole_image(d) ? coefficient_bytes(d) : 0);
+				if (!jpeg_start_decompress(&d)) decode.fail("the JPEG decoder did not start");
+			}
 
 			constexpr char xmp_id[] = "http://ns.adobe.com/xap/1.0/";
 			constexpr char photoshop_id[] = "Photoshop 3.0";
@@ -777,14 +780,14 @@ namespace libfiles::detail
 				profile.insert(profile.end(), bytes.begin(), bytes.end());
 			}
 			if (!profile.empty()) decode.output.metadata(document_metadata::icc, profile);
-			if (!photoshop.empty()) decode.output.metadata(document_metadata::iptc, photoshop);
+			if (!photoshop.empty()) decode.output.metadata(document_metadata::photoshop, photoshop);
 			if (!xmp.empty()) decode.output.metadata(document_metadata::xmp, xmp);
 			decode.output.metadata_complete();
 
 			auto& info = decode.result.info;
 			info.width = d.image_width;
 			info.height = d.image_height;
-			info.storage = d.output_components == 1 ? document_storage::gray8 : document_storage::bgr24;
+			info.storage = d.jpeg_color_space == JCS_GRAYSCALE ? document_storage::gray8 : document_storage::bgr24;
 			info.bits_per_pixel = storage_bits(info.storage);
 			if (d.saw_JFIF_marker) info.version = static_cast<std::uint16_t>((d.JFIF_major_version << 8) | d.JFIF_minor_version);
 			info.has_resolution = d.density_unit == 1 || d.density_unit == 2;
@@ -800,6 +803,7 @@ namespace libfiles::detail
 			}
 			if (!decode.options.pixels)
 			{
+				info.frames = 1;
 				jpeg_abort_decompress(&d);
 				return;
 			}

@@ -96,6 +96,16 @@ namespace
 	}
 }
 
+TEST("icc RGB declaration is bounded and distinct from whole-profile validation")
+{
+	CHECK(icc_declares_rgb(corpus(srgb)));
+	CHECK(!icc_declares_rgb(corpus(press)));
+	CHECK(!icc_declares_rgb(corpus(greyscale)));
+	for (std::size_t length = 0; length < 20; ++length)
+		CHECK(!icc_declares_rgb(std::span(corpus(srgb)).first(length)));
+	CHECK(icc_declares_rgb(std::span(corpus(srgb)).first(20)));
+}
+
 TEST("icc summary names a profile, its space and primaries, tone response, white point and intent")
 {
 	const auto rows = list_icc(corpus(srgb));

@@ -18,13 +18,30 @@ namespace libfiles::detail
 		const auto signed_height = static_cast<std::int32_t>(input.le32(22));
 		if (width <= 0 || signed_height == 0 || signed_height == std::numeric_limits<std::int32_t>::min())
 			decode.fail("invalid BMP dimensions");
-		if (input.le32(30) != 0) decode.fail("this BMP compression requires a different decoder");
+		const auto compression = input.le32(30);
+		const auto source_bits = input.le16(28);
+		if (compression != 0 && !(compression == 3 && (source_bits == 16 || source_bits == 32)))
+			decode.fail("this BMP compression requires a different decoder");
 		const auto height = static_cast<std::uint32_t>(signed_height < 0 ? -signed_height : signed_height);
-		const auto storage = storage_from_bits(input.le16(28));
+		auto storage = storage_from_bits(source_bits);
+		std::uint32_t mask_offset = 54;
+		if (compression == 3)
+		{
+			const auto red = input.le32(54);
+			const auto green = input.le32(58);
+			const auto blue = input.le32(62);
+			if (source_bits == 16 && red == 0x7c00 && green == 0x03e0 && blue == 0x001f)
+				storage = document_storage::bgr555;
+			else if (source_bits == 16 && red == 0xf800 && green == 0x07e0 && blue == 0x001f)
+				storage = document_storage::bgr565;
+			else
+				decode.fail("unsupported BMP bitfield masks");
+			mask_offset += 12;
+		}
 		const auto entries = palette_entries(storage);
 		const auto declared_colors = input.le32(46);
 		const auto colors = declared_colors == 0 || declared_colors > entries ? entries : declared_colors;
-		const auto minimum_offset = 54 + colors * 4;
+		const auto minimum_offset = mask_offset + colors * 4;
 		const auto declared_offset = input.le32(10);
 		const std::uint64_t offset = declared_offset == 0 ? minimum_offset : declared_offset;
 		const auto stride = document_row_bytes(width, storage);
@@ -36,7 +53,7 @@ namespace libfiles::detail
 			const auto gray = entries == 2 ? static_cast<std::uint32_t>(i * 255) : static_cast<std::uint32_t>(i);
 			palette[i] = 0xff000000u | gray * 0x010101;
 		}
-		for (std::size_t i = 0; i < colors; ++i) palette[i] = input.le32(54 + i * 4) | 0xff000000;
+		for (std::size_t i = 0; i < colors; ++i) palette[i] = input.le32(mask_offset + i * 4) | 0xff000000;
 		document_frame frame;
 		frame.width = width;
 		frame.height = height;

@@ -73,10 +73,10 @@ format's decoding:
 | JPEG | `image/jpeg` | yes |  | yes | yes | yes | yes | yes |
 | PNG | `image/png` | yes |  | yes | yes | yes | yes | yes |
 | WebP | `image/webp` | yes |  | yes |  | yes | yes | yes |
-| GIF | `image/gif` | yes |  |  | yes | yes | yes |  |
+| GIF | `image/gif` | yes |  |  | yes | yes | yes | yes |
 | Photoshop | `image/vnd.adobe.photoshop` | yes |  | yes | yes | yes | yes |  |
-| BMP | `image/bmp` | yes |  |  | yes |  |  |  |
-| TIFF | `image/tiff` | yes |  |  | yes | yes | yes |  |
+| BMP | `image/bmp` | yes |  |  | yes |  |  | yes |
+| TIFF | `image/tiff` | yes |  |  | yes | yes | yes | yes |
 | HEIF and AVIF | `image/heif` | yes |  | yes |  | yes |  |  |
 | JPEG XL | `image/jxl` | yes |  | yes |  | yes | yes |  |
 | PCX | `image/vnd.zbrush.pcx` |  |  |  | yes |  |  |  |
@@ -261,9 +261,9 @@ container's `jxlc` box, or `jxlp` parts with other boxes between them - and the
 `Exif` and `xml ` boxes. The width and height are the codestream's, unturned,
 and the orientation is the codestream's own unless an EXIF block states one.
 A container may keep its metadata Brotli-compressed in `brob` boxes. libfiles
-carries no Brotli decoder, so such a box is left out unless the caller supplies
-one in `scan_limits::brotli`, as Diffractor does with its own; `read_packet` and
-an update take one too.
+uses its bounded Brotli decoder when `LIBFILES_JXL` is enabled. A callback in
+`scan_limits::brotli` explicitly overrides it, so tests and callers can retain
+their own policy; `read_packet` and an update use the same default and bounds.
 
 An EXIF block is read by walking IFD0 and the Exif, GPS and Interoperability
 directories it points to; a directory is read once however many pointers lead
@@ -316,6 +316,9 @@ Diffractor's, moved with its reader, and was compared with Diffractor's - whole,
 cut short and corrupted - over a corpus built in code, Diffractor's fixtures'
 profiles and Windows' own, with no difference; `tests/icc_tests.cpp` keeps the
 corpus' record.
+
+`icc_declares_rgb` reads only the bounded header signature for adapters deciding
+whether a profile can describe RGB output; it does not validate the whole profile.
 
 Photoshop's image resources - a PSD's resource section, a JPEG's APP13 - are
 read by one rule in the scans, the writers and the JPEG encoder: a resource's
@@ -720,6 +723,10 @@ borrowed metadata blocks. `metadata_complete` ends each metadata group; the
 application decides how to present or retain it. The sink owns the output and
 its total memory budget. `maximum_working_bytes` bounds decoder scratch
 rasters and strips separately; it is not a process-wide memory limit.
+With `pixels=false`, supported headers and metadata are read without raster
+delivery or retention; this does not validate image pixels. PNG uses the same
+chunk walker as its scan, TIFF visits directories without reading strips, and
+JPEG stops before starting decompression, including for progressive input.
 
 Decoded into a `decoded_document` instead, a document is kept whole - each
 frame's rows, palette and timing, and each metadata block, owned, so that a copy
@@ -736,13 +743,49 @@ palettes, and PSD with its native colour/storage conventions. GIF and TIFF
 keep complete frames/pages before a damaged later record when their legacy
 reader did. PCX and WPG read through bounded cursors; a WPG's first raster
 streams directly and subsequent rasters are staged until complete.
+TIFF marks valid unassociated strip alpha as BGRA by default. A historical
+native client can request `legacy_tiff_storage` to retain its old BGRX
+classification without changing the stored row bytes; this policy does not
+silently discard alpha for other document consumers.
 
 ImageWalker's loaders keep statistics, its metadata presentation, encoded
 blobs needed for lossless saves and its orientation policy, and give what they
 read to ImageWalker as a `decoded_document`. Memory streams
-lend their bytes instead of being copied through another stream. Windows
-codecs, compressed BMP/DIB rendering, metafiles and OLE previews remain with
-the host. Of its encoders, WebP's - kept exact under transparent pixels, at libwebp's effort 4 - and the carrying of a photo's segments into its re-encoding (`carry_jpeg_metadata`, from `read_jpeg_header`) are libfiles'; its other native encoders stay with it.
+lend their bytes instead of being copied through another stream. Installed
+Windows codecs use libdesktop's SDK adapter; compressed DIB, metafile and OLE
+compatibility stay at the historical application boundary. Native encoders,
+WebP display decoding and encoding, and carrying a JPEG's segments into its
+re-encoding (`carry_jpeg_metadata`, from `read_jpeg_header`) belong to libfiles.
+
+`encode_document` accepts owned native frames or a separate row view. It keeps
+palettes, packed storage and pages where the output format permits them, and
+refuses unsupported layouts rather than silently flattening them. Results
+distinguish cancellation, resource limits, unsupported storage and encode
+failure. Applications stage and publish the completed bytes.
+
+PNG documents retain ICC, EXIF, XMP, Author and Comment, plus arbitrary text
+keywords and iTXt language fields as standard chunk payloads. Simultaneous text
+values keep stable storage until libpng has consumed them. TIFF EXIF fields
+are imported through the shared directory editor into standard primary,
+Exif, GPS and interoperability directories; there is no private EXIF wrapper
+tag. The document reader extracts those directories without copying image
+strips, preserving opaque value bytes and converting numeric byte order.
+Descriptive TIFF fields and nonidentity orientation can supply an EXIF block;
+the default upright orientation alone does not invent metadata on a plain image.
+
+An application that has physically made pixels upright requests
+`reset_orientation_metadata`; existing EXIF and XMP orientation and pixel
+dimensions are corrected, and stale EXIF thumbnails are unlinked. Metadata that cannot be verified or
+normalized is an explicit encode failure, never an old orientation silently
+carried onto upright pixels. Historical native-writer conventions remain an
+explicit `legacy_compatibility` policy; a requested upright save takes the
+standard metadata path.
+
+JPEG coefficient transforms preserve the source JFIF density unless the
+caller explicitly supplies output-axis density. Perfect, partial-block and
+explicitly trimmed transforms are distinct policies; a rejected transform
+never falls back to recompression.
+
 Inherited native limits remain, including TIFF's rejected grayscale-strip
 path and disabled JPEG compression; TIFF tiles and its RGBA fallback work as
 before. Native PSD accepts 8-bit samples and 1-bit bitmap mode.
@@ -876,11 +919,25 @@ Where libfiles differs on purpose:
   codestream cut into so many parts that reading its headers again as each part
   arrives, as libjxl does, would read more than 64 MiB is refused. libjxl reads
   on through both.
-- A JPEG XL scan lets the caller's Brotli decompressor produce 32 MiB in all,
-  twice the 16 MiB it keeps of one block: enough for an Exif block and a packet
-  of the largest size together. Its boxes stop at the first compressed box that
-  would take it past that, as at a box too large to keep. Diffractor let libjxl
-  decompress every box, each to 16 MiB.
+- A JPEG XL scan uses libfiles' Brotli decoder when `LIBFILES_JXL` is enabled,
+  unless the caller supplies `scan_limits::brotli`, which remains an explicit
+  override. It produces 32 MiB in all, twice the 16 MiB it keeps of one block:
+  enough for an Exif block and a packet of the largest size together. Its boxes
+  stop at the first compressed box that is malformed, has trailing bytes, or
+  would take it past that budget. `read_packet()` and JPEG XL updates use the
+  same decoder and bounds; an explicit callback that refuses a box remains
+  distinguishable from the built-in path.
+- Native document encoding consumes `decoded_document` rows without flattening
+  them through a display image. BMP, PNG and GIF retain indexed and packed
+  rows where their formats allow them; GIF also keeps frame offsets, delays,
+  disposal and local palettes, and TIFF keeps pages and resolution. BMP has no
+  standard metadata blocks and its BI_RGB alpha byte is advisory; TIFF cannot
+  carry opaque EXIF bytes through libtiff's directory API, so that limitation is
+  reported rather than silently converting pixels. JPEG accepts only one
+  grayscale or BGR frame and is lossy by definition. Its coefficient operations
+  are separate: Diffractor requests a perfect transform, while ImageWalker may
+  explicitly request transupp's partial-edge policy, with no trim or
+  recompression fallback.
 - An audio or video stream is described from what its container and codec
   headers state, where FFmpeg also decodes frames. A stream's bit rate is the
   one the file states: an MP4 or AVI stream that states none has none, where

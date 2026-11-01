@@ -77,7 +77,8 @@ namespace libfiles::detail
 	void finish_structure_sections(std::vector<structure_row>& rows);
 
 	scan_result scan_jpeg(reader& r, scan_intent intent, const scan_limits& limits);
-	scan_result scan_png(reader& r);
+	struct document_decode;
+	scan_result scan_png(reader& r, document_decode* document = nullptr);
 	scan_result scan_webp(reader& r, scan_intent intent);
 	scan_result scan_gif(reader& r);
 	scan_result scan_psd(reader& r);
@@ -92,6 +93,10 @@ namespace libfiles::detail
 	// larger than a scan keeps.
 	bool heif_packet(reader& r, std::vector<std::uint8_t>& packet);
 	bool jxl_packet(reader& r, std::vector<std::uint8_t>& packet, const brotli_decompressor* brotli = nullptr);
+
+	// The decoder built by libfiles when LIBFILES_JXL is enabled. A null result means this build has
+	// no built-in decoder; callers that accept an injected decompressor keep passing its address instead.
+	const brotli_decompressor* default_brotli_decompressor() noexcept;
 
 	// What one JPEG XL scan lets the caller's Brotli decompressor produce, across all of its
 	// compressed boxes: twice the 16 MiB a scan keeps of one metadata block.
@@ -138,6 +143,7 @@ namespace libfiles::detail
 	};
 
 	// The file read as scan_jxl reads it, with the caller's decompressor for its compressed boxes, if any.
+	// A null pointer is the built-in bounded decoder when LIBFILES_JXL is enabled.
 	jxl_layout read_jxl_layout(reader& r, const brotli_decompressor* brotli);
 
 	// The most codestream parts a JPEG XL file's read holds at once - parts not yet read, and parts

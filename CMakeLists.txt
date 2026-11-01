@@ -77,6 +77,7 @@ add_library(libfiles STATIC
     src/document_pcx.cpp
     src/document_wpg.cpp
     src/encode_internal.h
+    src/encode_document.cpp
     src/exif.cpp
     src/exif_listing.cpp
     src/exif_write.cpp
@@ -242,6 +243,7 @@ if(PROJECT_IS_TOP_LEVEL)
         tests/commodore_tests.cpp
         tests/decode_tests.cpp
         tests/document_tests.cpp
+        tests/document_encode_tests.cpp
         tests/encode_tests.cpp
         tests/exif_tests.cpp
         tests/heif_jxl_scan_tests.cpp

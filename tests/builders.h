@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <optional>
 #include <span>
@@ -69,6 +70,44 @@ namespace test_build
 	bytes lit(const char (&s)[N])
 	{
 		return bytes(s, s + N - 1);
+	}
+
+	inline bytes rgb_icc_profile()
+	{
+		bytes icc(132, 0);
+		icc[3] = 132;
+		icc[8] = 0x02;
+		icc[9] = 0x10;
+		std::memcpy(icc.data() + 12, "mntrRGB XYZ ", 12);
+		std::memcpy(icc.data() + 36, "acsp", 4);
+		const std::uint8_t d50[] = {0, 0, 0xf6, 0xd6, 0, 1, 0, 0, 0, 0, 0xd3, 0x2d};
+		std::memcpy(icc.data() + 68, d50, sizeof d50);
+		return icc;
+	}
+
+	inline bytes rgb_icc_profile_with_copyright()
+	{
+		auto icc = rgb_icc_profile();
+		icc.resize(144, 0);
+		std::memcpy(icc.data() + 132, "cprt", 4);
+		const std::string copyright =
+			"Copyright 2026 Example. This RGB profile retains a standard copyright tag while testing "
+			"lossless metadata transfer between independent image encoders and decoders.";
+		icc.insert(icc.end(), {'t', 'e', 'x', 't', 0, 0, 0, 0});
+		icc.insert(icc.end(), copyright.begin(), copyright.end());
+		icc.push_back(0);
+		const auto tag_size = static_cast<std::uint32_t>(icc.size() - 144);
+		while (icc.size() % 4) icc.push_back(0);
+		const auto put32 = [&](const std::size_t offset, const std::uint32_t value)
+		{
+			for (unsigned i = 0; i < 4; ++i)
+				icc[offset + i] = static_cast<std::uint8_t>(value >> (24 - 8 * i));
+		};
+		put32(0, static_cast<std::uint32_t>(icc.size()));
+		put32(128, 1);
+		put32(136, 144);
+		put32(140, tag_size);
+		return icc;
 	}
 
 	inline std::string to_string(const std::vector<std::uint8_t>& v)

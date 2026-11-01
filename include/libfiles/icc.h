@@ -19,6 +19,9 @@
 
 namespace libfiles
 {
+	// Reads only the data-colour-space signature in the header, not profile validity.
+	bool icc_declares_rgb(std::span<const std::uint8_t> profile) noexcept;
+
 	// What a profile says it is, as a person asks: the summary list_icc opens with, field by field, in the
 	// listing's own words. Text is UTF-8; what the profile does not state is empty.
 	struct icc_summary

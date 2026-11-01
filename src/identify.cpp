@@ -70,6 +70,13 @@ namespace libfiles
 #ifdef LIBFILES_WEBP
 			if (image == image_format::webp) c = c | capability::encode;
 #endif
+			if (image == image_format::bmp) c = c | capability::encode;
+#ifdef LIBFILES_GIF
+			if (image == image_format::gif) c = c | capability::encode;
+#endif
+#ifdef LIBFILES_TIFF
+			if (image == image_format::tiff) c = c | capability::encode;
+#endif
 			return c;
 		}
 

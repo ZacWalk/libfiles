@@ -28,12 +28,6 @@ of this list; record lasting behaviour in [design.md](design.md).
 
 ## Reading
 
-- [ ] **JPEG XL `brob` boxes.** libfiles builds Brotli, so the scanner could
-      decompress compressed `Exif` and `xml ` boxes itself instead of asking
-      the caller through `scan_limits::brotli`. This changes what a scan
-      returns without a decompressor. Done when a scan reads them with none
-      supplied, within the existing 32 MiB budget, and Diffractor drops its
-      own decompressor.
 - [ ] **Native TIFF grayscale strips.** The native document reader rejects
       valid MINISWHITE and MINISBLACK strips, as ImageWalker's reader did.
       Add grayscale and monochrome fixtures first, then accept them; done when

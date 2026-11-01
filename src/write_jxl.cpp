@@ -124,7 +124,7 @@ namespace libfiles::detail
 			}
 
 			const auto& box = *layout.xmp_box;
-			if (!layout.xmp) throw format_error("the JPEG XL's packet is compressed, and there is no Brotli decompressor to read it");
+			if (!layout.xmp) throw format_error("the JPEG XL's packet is compressed, and its Brotli stream could not be read");
 
 			const auto old_size = layout.xmp->size();
 			const auto packet = serialize_packet(meta, old_size);
@@ -141,7 +141,7 @@ namespace libfiles::detail
 
 		void plan_exif(reader& r, const jxl_layout& layout, const legacy_edits& edits, write_plan& plan)
 		{
-			if (layout.exif_unread) throw format_error("the JPEG XL's EXIF is compressed, and there is no Brotli decompressor to read it");
+			if (layout.exif_unread) throw format_error("the JPEG XL's EXIF is compressed, and its Brotli stream could not be read");
 
 			// A JPEG XL without EXIF does not gain one, as a WebP does not.
 			if (!layout.exif_box) return;
@@ -195,7 +195,7 @@ namespace libfiles::detail
 
 	void plan_jxl(reader& r, const metadata_update& update, write_plan& plan)
 	{
-		const auto layout = read_jxl_layout(r, update.brotli ? &update.brotli : nullptr);
+		const auto layout = read_jxl_layout(r, update.brotli ? &update.brotli : default_brotli_decompressor());
 		if (!layout.whole) throw format_error("the JPEG XL cannot be read whole");
 
 		// A JPEG XL's orientation is its codestream's, which libjxl turns the picture by. An update does not

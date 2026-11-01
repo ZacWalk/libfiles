@@ -69,11 +69,12 @@ namespace libfiles::detail
 	constexpr std::uint16_t tag_xp_author = 0x9c9d;
 	constexpr std::uint16_t tag_xp_keywords = 0x9c9e;
 	constexpr std::uint16_t tag_xp_subject = 0x9c9f;
+	constexpr std::uint16_t tag_pixel_x_dimension = 0xa002;
+	constexpr std::uint16_t tag_pixel_y_dimension = 0xa003;
 	constexpr std::uint16_t tag_interop_ifd = 0xa005;
 	constexpr std::uint16_t tag_focal_length_35mm = 0xa405;
 	constexpr std::uint16_t tag_lens_model = 0xa434;
 	constexpr std::uint16_t tag_dng_version = 0xc612;
-
 	// In the GPS directory.
 	constexpr std::uint16_t tag_gps_version = 0x0000;
 	constexpr std::uint16_t tag_gps_latitude_ref = 0x0001;

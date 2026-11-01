@@ -9,6 +9,7 @@
 
 #include "libfiles/scan.h"
 
+#include <functional>
 #include <optional>
 
 namespace libfiles
@@ -40,7 +41,10 @@ namespace libfiles
 
 	enum class document_metadata : std::uint8_t
 	{
-		exif, iptc, xmp, icc, source_icc, comment
+		exif, iptc, xmp, icc, source_icc, photoshop, comment, author,
+		// A tEXt or uncompressed iTXt chunk: its four-byte name followed by its PNG payload.
+		// Retains arbitrary keywords, language and translated keyword, not just Author/Comment.
+		png_text
 	};
 
 	struct document_info
@@ -80,9 +84,23 @@ namespace libfiles
 	{
 		std::uint32_t thumbnail_width = 0;
 		std::uint32_t thumbnail_height = 0;
+		// Metadata-only mode never delivers or retains raster rows. It does not validate pixels.
+		// A format without a metadata/header reader reports failure rather than decoding pixels.
 		bool pixels = true;
 		// Scratch rasters/strips are separate from the sink's retained frames and codec bookkeeping.
 		std::uint64_t maximum_working_bytes = 256ull * 1024 * 1024;
+		// The whole-document overload and document_keeper check this before retaining rows or metadata.
+		// A streaming sink may choose its own policy and leave this at the default.
+		std::uint64_t maximum_retained_bytes = 256ull * 1024 * 1024;
+		// Historical native display budgets counted retained raster/metadata bytes but not the
+		// fixed palette table. Keep the generic keeper strict by default; an application may opt
+		// into that legacy accounting explicitly.
+		bool count_palette_in_retained_bytes = true;
+		// Historical native TIFF clients treated unassociated strip alpha as an ignored BGRX byte.
+		// Keep their storage classification explicit; the default retains valid alpha as BGRA.
+		bool legacy_tiff_storage = false;
+		std::function<bool()> cancelled;
+		std::function<void(std::uint32_t, std::uint32_t)> progress;
 	};
 
 	struct document_result
@@ -170,11 +188,25 @@ namespace libfiles
 	class document_keeper final : public document_sink
 	{
 	public:
+		explicit document_keeper(std::uint64_t maximum_retained_bytes = 256ull * 1024 * 1024,
+		                         std::function<bool()> cancelled = {},
+		                         std::function<void(std::uint32_t, std::uint32_t)> progress = {},
+		                         bool count_palette_in_retained_bytes = true);
+
 		decoded_document document;
 
 		bool begin_frame(const document_frame& frame) override;
 		void row(std::uint32_t y, std::span<const std::uint8_t> bytes) override;
 		void metadata(document_metadata kind, std::span<const std::uint8_t> bytes) override;
+		bool cancelled() override;
+		void progress(std::uint32_t current, std::uint32_t total) override;
+
+	private:
+		std::uint64_t _maximum_retained_bytes;
+		bool _count_palette_in_retained_bytes;
+		std::uint64_t _retained_bytes = 0;
+		std::function<bool()> _cancelled;
+		std::function<void(std::uint32_t, std::uint32_t)> _progress;
 	};
 
 	// The document decoded whole into memory, as a document_keeper keeps it, its info with it.

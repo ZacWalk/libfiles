@@ -23,6 +23,10 @@
 #include <string_view>
 #include <vector>
 
+#ifdef LIBFILES_JXL
+#include <brotli/decode.h>
+#endif
+
 namespace libfiles::detail
 {
 	namespace
@@ -1171,9 +1175,73 @@ namespace libfiles::detail
 		}
 	}
 
+	const brotli_decompressor* default_brotli_decompressor() noexcept
+	{
+#ifdef LIBFILES_JXL
+		static const brotli_decompressor decoder =
+			[](const std::span<const std::uint8_t> compressed, const std::string_view box_type,
+			   const std::size_t max_size) -> std::optional<std::vector<std::uint8_t>>
+		{
+			(void)box_type;
+			if (max_size == 0) return std::nullopt;
+
+			// The streaming API lets us stop as soon as the bounded output is full. Start with
+			// the same small working window the old reader used, and grow only when Brotli asks
+			// for more output; a tiny metadata box must not reserve the 16 MiB ceiling.
+			auto* const state = BrotliDecoderCreateInstance(nullptr, nullptr, nullptr);
+			if (!state) return std::nullopt;
+			struct state_guard
+			{
+				BrotliDecoderState* value;
+				~state_guard() { if (value) BrotliDecoderDestroyInstance(value); }
+			} guard{state};
+
+			constexpr std::size_t initial = 64u * 1024u;
+			std::vector<std::uint8_t> output(std::min(max_size, initial));
+			std::size_t input_left = compressed.size();
+			std::size_t produced = 0;
+			std::size_t output_left = output.size();
+			const std::uint8_t* input_next = compressed.data();
+			std::uint8_t* output_next = output.data();
+
+			for (;;)
+			{
+				if (output_left == 0)
+				{
+					if (output.size() == max_size) return std::nullopt;
+					const auto grown = std::min(max_size,
+						std::max(output.size() * 2, output.size() + initial));
+					output.resize(grown);
+					output_next = output.data() + produced;
+					output_left = output.size() - produced;
+				}
+				const auto result = BrotliDecoderDecompressStream(state, &input_left, &input_next,
+				                                                 &output_left, &output_next, nullptr);
+				if (result == BROTLI_DECODER_RESULT_SUCCESS)
+				{
+					if (input_left != 0)
+						return std::nullopt;
+					output.resize(output.size() - output_left);
+					return output;
+				}
+				if (result == BROTLI_DECODER_RESULT_ERROR) return std::nullopt;
+				produced = output.size() - output_left;
+				// NEEDS_MORE_INPUT with no input left is a truncated stream. Otherwise continue
+				// until the decoder reports success, an over-budget output, or a malformed stream.
+				if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT && input_left == 0)
+					return std::nullopt;
+			}
+		};
+		return &decoder;
+#else
+		return nullptr;
+#endif
+	}
+
 	scan_result scan_jxl(reader& r, const scan_intent intent, const scan_limits& limits)
 	{
-		auto read = read_jxl(r, &limits.brotli);
+		const auto* const brotli = limits.brotli ? &limits.brotli : default_brotli_decompressor();
+		auto read = read_jxl(r, brotli);
 		scan_result result;
 
 		if (read.info)

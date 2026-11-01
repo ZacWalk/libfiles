@@ -66,7 +66,9 @@ namespace libfiles
 
 	packet_reading read_packet(reader& source)
 	{
-		return read_packet(source, {});
+		static const brotli_decompressor empty;
+		const auto* const built_in = detail::default_brotli_decompressor();
+		return built_in ? read_packet(source, *built_in) : read_packet(source, empty);
 	}
 
 	packet_reading read_packet(reader& source, const brotli_decompressor& brotli)

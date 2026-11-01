@@ -14,6 +14,7 @@
 // finding one, the chunk libpng accepted before the first IDAT stands in.
 
 #include "scan_internal.h"
+#include "document_internal.h"
 
 #include <algorithm>
 #include <cstring>
@@ -200,7 +201,8 @@ namespace libfiles::detail
 		// bytes inflates, the header is a well-formed ICC header whose colour space suits the image,
 		// and every tag lies inside the profile. libpng examines nothing past the profile - not the
 		// rest of the stream, nor the chunk's CRC.
-		std::vector<std::uint8_t> read_icc_profile(const std::span<const std::uint8_t> data, const std::uint8_t color_type)
+		std::vector<std::uint8_t> read_icc_profile(const std::span<const std::uint8_t> data,
+		                                        const std::uint8_t color_type, document_decode* document)
 		{
 			// The keyword is read from the first 81 bytes, and at least a minimal zlib stream must follow those.
 			const auto read_length = std::min<std::size_t>(81u, data.size());
@@ -216,11 +218,13 @@ namespace libfiles::detail
 			constexpr std::size_t header_size = 132;
 
 			std::vector<std::uint8_t> profile;
+			if (document) document->working_bytes(header_size);
 			if (!zlib_inflate_prefix(stream, profile, header_size)) return {};
 
 			const auto profile_length = icc_field(profile, 0);
 
 			if (profile_length < header_size || profile_length > png_chunk_max) return {};
+			if (document) document->working_bytes(profile_length);
 			if (profile[8] > 3 && (profile_length & 3u) != 0) return {}; // version 4 profiles are padded
 
 			const auto tag_count = icc_field(profile, 128);
@@ -273,9 +277,81 @@ namespace libfiles::detail
 
 			return true;
 		}
+
+		void document_text(document_decode& document, const std::uint32_t type,
+		                   const std::span<const std::uint8_t> data)
+		{
+			const auto key_end = std::find(data.begin(), data.end(), 0);
+			const auto key_size = static_cast<std::size_t>(key_end - data.begin());
+			if (key_end == data.end() || key_size == 0 || key_size > 79)
+			{
+				document.result.warnings.emplace_back("a PNG text keyword is invalid");
+				return;
+			}
+			const std::string_view key(reinterpret_cast<const char*>(data.data()), key_size);
+			if (key == png_xmp_key) return;
+			auto body = data.subspan(key_size + 1);
+			std::vector<std::uint8_t> inflated;
+			std::size_t prefix_size = key_size + 1;
+			bool compressed = type == zTXt;
+			if (type == zTXt)
+			{
+				if (body.empty() || body[0] != 0)
+				{
+					document.result.warnings.emplace_back("a PNG text compression method is invalid");
+					return;
+				}
+				body = body.subspan(1);
+			}
+			else if (type == iTXt)
+			{
+				if (body.size() < 4 || body[0] > 1 || body[1] != 0)
+				{
+					document.result.warnings.emplace_back("a PNG international text header is invalid");
+					return;
+				}
+				compressed = body[0] == 1;
+				const auto language_end = std::find(body.begin() + 2, body.end(), 0);
+				const auto translated_end = language_end == body.end() ? body.end() :
+					std::find(language_end + 1, body.end(), 0);
+				if (translated_end == body.end())
+				{
+					document.result.warnings.emplace_back("a PNG international text language is truncated");
+					return;
+				}
+				body = after(body, translated_end + 1);
+				prefix_size = static_cast<std::size_t>(body.data() - data.data());
+			}
+			if (compressed)
+			{
+				const auto limit = static_cast<std::size_t>(std::min<std::uint64_t>(
+					max_decompressed_text, document.options.maximum_working_bytes));
+				if (!zlib_inflate(body, inflated, limit))
+				{
+					document.result.warnings.emplace_back("a PNG text value could not be inflated within its limit");
+					return;
+				}
+				body = inflated;
+			}
+			document.working_bytes(body.size());
+			if (type != iTXt && (key == "Author" || key == "Comment"))
+			{
+				document.output.metadata(key == "Author" ? document_metadata::author :
+					document_metadata::comment, body);
+				return;
+			}
+			document.working_bytes(4ull + prefix_size + body.size());
+			std::vector<std::uint8_t> block;
+			const char* name = type == iTXt ? "iTXt" : "tEXt";
+			block.insert(block.end(), name, name + 4);
+			block.insert(block.end(), data.begin(), data.begin() + prefix_size);
+			if (type == iTXt) block[4 + key_size + 1] = 0;
+			block.insert(block.end(), body.begin(), body.end());
+			document.output.metadata(document_metadata::png_text, block);
+		}
 	}
 
-	scan_result scan_png(reader& r)
+	scan_result scan_png(reader& r, document_decode* document)
 	{
 		scan_result result;
 
@@ -303,6 +379,7 @@ namespace libfiles::detail
 
 		for (;;)
 		{
+			if (document) document->check_cancel();
 			// Before the first IDAT the header read must succeed, so running out of file is a fault -
 			// though the IDAT chunk needs only its header, which is where libpng's read stops. After
 			// that only the walk is left, and it simply stops.
@@ -316,6 +393,8 @@ namespace libfiles::detail
 			const auto type = r.be32(pos + 4);
 			const auto data_pos = pos + 8u;
 			const auto chunk_fits = length <= file_size - data_pos && file_size - data_pos - length >= 4u;
+			if (document && (type == iCCP || type == eXIf || type == tEXt || type == zTXt || type == iTXt))
+				document->working_bytes(length);
 
 			if (!seen_idat)
 			{
@@ -394,7 +473,8 @@ namespace libfiles::detail
 					// later one.
 					if (!have_profile && !seen_plte && length >= 3u + lz77_min)
 					{
-						auto profile = read_icc_profile(r.view(data_pos, length), color_type);
+						if (document) document->working_bytes(length);
+						auto profile = read_icc_profile(r.view(data_pos, length), color_type, document);
 
 						if (!profile.empty())
 						{
@@ -424,6 +504,30 @@ namespace libfiles::detail
 			// The metadata walk reads whole chunks, and stops at the first that runs past the end.
 			if (file_size - pos < 12u || !chunk_fits) break;
 
+			if (document && (type == tEXt || type == zTXt || type == iTXt ||
+				type == chunk_type("iPTC") || type == chunk_type("iPSH") || type == chunk_type("pHYs")))
+			{
+				document->working_bytes(length);
+				if (length <= max_metadata_chunk && crc_matches(r, pos + 4, length))
+				{
+					const auto data = r.view(data_pos, length);
+					if (type == tEXt || type == zTXt || type == iTXt)
+						document_text(*document, type, data);
+					else if (type == chunk_type("pHYs"))
+					{
+						if (length == 9 && data[8] == 1)
+						{
+							document->result.info.has_resolution = true;
+							document->result.info.pixels_per_meter_x = load_be32(data.data());
+							document->result.info.pixels_per_meter_y = load_be32(data.data() + 4);
+						}
+					}
+					else
+						document->output.metadata(type == chunk_type("iPTC") ? document_metadata::iptc :
+							document_metadata::photoshop, data);
+				}
+			}
+
 			if (searching && (type == eXIf || type == tEXt || type == zTXt || type == iTXt))
 			{
 				// A metadata chunk that is oversized or damaged ends the walk's search.
@@ -444,7 +548,7 @@ namespace libfiles::detail
 			}
 
 			pos = data_pos + length + 4u;
-			if (type == IEND || (seen_idat && !searching)) break;
+			if (type == IEND || (seen_idat && !searching && !document)) break;
 		}
 
 		if (walk_exif) result.metadata.exif = std::move(*walk_exif);
@@ -453,6 +557,23 @@ namespace libfiles::detail
 		if (walk_xmp) result.metadata.xmp = std::move(*walk_xmp);
 		else if (libpng_xmp) result.metadata.xmp = std::move(*libpng_xmp);
 
+		if (document)
+		{
+			const auto retain = [&](const document_metadata kind, const std::vector<std::uint8_t>& bytes)
+			{
+				if (!bytes.empty())
+				{
+					document->working_bytes(bytes.size());
+					document->output.metadata(kind, bytes);
+				}
+			};
+			retain(document_metadata::exif, result.metadata.exif);
+			retain(document_metadata::xmp, result.metadata.xmp);
+			const auto& profile = result.metadata.icc;
+			retain(profile.size() >= 20 && std::memcmp(profile.data() + 16, "RGB ", 4) == 0
+				? document_metadata::icc : document_metadata::source_icc, profile);
+			document->output.metadata_complete();
+		}
 		return result;
 	}
 }

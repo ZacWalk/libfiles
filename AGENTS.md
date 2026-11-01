@@ -130,7 +130,8 @@ difference, and it finds the packet `read_packet` finds. Diffractor's *Should
 read media with libfiles* test compares the two over its fixtures; check a change
 to a container scanner or a codec reader against FFmpeg over real files too.
 
-After changing native document decoding, also run ImageWalker's `libiw` tests:
+After changing native document decoding, also run ImageWalker's
+`imagewalker-imaging` tests (`.\dd.ps1 test --label imagewalker-imaging`):
 they retain the old readers' golden records and verify native storage, metadata,
 SDK fallbacks, cancellation and allocation limits. Do not replace these with
 BGRA-only checks. Keep the borrowed-input path free of unnecessary copies.

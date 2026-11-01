@@ -126,9 +126,9 @@ namespace libfiles
 		// file's XMP as it is.
 		const xmp::meta* xmp = nullptr;
 		legacy_edits legacy;
-		// For a JPEG XL that keeps its XMP or EXIF in a Brotli-compressed box: the decompressor its scan
-		// was given, so the update reads the file as the scan read it. Without one, an update that would
-		// change what such a box holds is refused.
+		// For a JPEG XL that keeps its XMP or EXIF in a Brotli-compressed box: an explicitly supplied
+		// decompressor overrides libfiles' built-in bounded decoder, so the update reads the file as the
+		// scan read it. A callback that refuses the box makes an update that would change it fail.
 		brotli_decompressor brotli;
 	};
 
@@ -143,9 +143,8 @@ namespace libfiles
 	// than absent. The file is identified as identify(reader&) identifies it.
 	//
 	// A JPEG XL container's packet is read from its last 'xml ' box. When that box is Brotli-compressed
-	// ('brob') the packet is read with the decompressor given; without one it is not read and readable is
-	// false: there is a packet, but read_packet cannot say what it holds. A bare JPEG XL codestream has no
-	// packet.
+	// ('brob') the packet is read with the decompressor given; the no-argument overload uses libfiles'
+	// bounded decoder when LIBFILES_JXL is enabled. A bare JPEG XL codestream has no packet.
 	//
 	// Some formats libfiles reads but does not update have their packets read too: a HEIF's from the XMP
 	// item - of type 'mime' and content type application/rdf+xml, or of the older type 'XMP' - attached to

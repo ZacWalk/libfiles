@@ -6,6 +6,7 @@
 // document's rows as BGRA.
 
 #include "document_internal.h"
+#include "scan_internal.h"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,31 @@ namespace libfiles
 		try
 		{
 			decode.check_cancel();
+			if (!options.pixels && format != image_format::jpeg && format != image_format::png &&
+				format != image_format::tiff)
+			{
+				const auto scanned = scan(input);
+				if (!scanned.success || scanned.format != format)
+					decode.fail("this format has no readable metadata-only header");
+				result.info.width = static_cast<std::uint32_t>(scanned.width);
+				result.info.height = static_cast<std::uint32_t>(scanned.height);
+				const auto retain = [&](const document_metadata kind, const std::vector<std::uint8_t>& bytes)
+				{
+					if (!bytes.empty())
+					{
+						decode.working_bytes(bytes.size());
+						output.metadata(kind, bytes);
+					}
+				};
+				retain(document_metadata::exif, scanned.metadata.exif);
+				retain(document_metadata::xmp, scanned.metadata.xmp);
+				retain(document_metadata::iptc, scanned.metadata.iptc);
+				retain(document_metadata::icc, scanned.metadata.icc);
+				retain(document_metadata::photoshop, scanned.metadata.photoshop);
+				output.metadata_complete();
+				result.success = true;
+				return result;
+			}
 			switch (format)
 			{
 			case image_format::pcx: detail::document_pcx(decode); break;
@@ -90,6 +116,10 @@ namespace libfiles
 			result.truncated = true;
 			result.error = error.what();
 		}
+		catch (const detail::format_error& error)
+		{
+			result.error = error.what();
+		}
 		catch (const std::bad_alloc&)
 		{
 			result.resource_limit = true;
@@ -101,11 +131,23 @@ namespace libfiles
 	document_result decode_document(reader& input, const image_format format, decoded_document& output,
 	                                const document_options& options)
 	{
-		document_keeper keeper;
+		document_keeper keeper(options.maximum_retained_bytes, options.cancelled, options.progress,
+		                      options.count_palette_in_retained_bytes);
 		auto result = decode_document(input, format, keeper, options);
 		keeper.document.info = result.info;
 		output = std::move(keeper.document);
 		return result;
+	}
+
+	document_keeper::document_keeper(const std::uint64_t maximum_retained_bytes,
+	                                 std::function<bool()> cancelled,
+	                                 std::function<void(std::uint32_t, std::uint32_t)> progress,
+	                                 const bool count_palette_in_retained_bytes) :
+		_maximum_retained_bytes(maximum_retained_bytes),
+		_count_palette_in_retained_bytes(count_palette_in_retained_bytes),
+		_cancelled(std::move(cancelled)),
+		_progress(std::move(progress))
+	{
 	}
 
 	bool document_keeper::begin_frame(const document_frame& frame)
@@ -118,12 +160,21 @@ namespace libfiles
 		kept.storage = frame.storage;
 		kept.stride = document_row_bytes(frame.width, frame.storage);
 		if (frame.height != 0 && kept.stride > std::numeric_limits<std::size_t>::max() / frame.height) throw std::bad_alloc();
+		const auto pixels = static_cast<std::uint64_t>(kept.stride) * frame.height;
+		const auto remaining = _maximum_retained_bytes - std::min(_maximum_retained_bytes, _retained_bytes);
+		const auto palette = static_cast<std::uint64_t>(frame.palette.size()) * sizeof(std::uint32_t);
+		if (pixels > remaining ||
+			(_count_palette_in_retained_bytes && palette > remaining - pixels))
+			throw std::bad_alloc();
 		kept.pixels.resize(kept.stride * frame.height);
 		kept.palette.assign(frame.palette.begin(), frame.palette.end());
 		kept.transparent = frame.transparent;
 		kept.background = frame.background;
 		kept.delay_ms = frame.delay_ms;
 		kept.disposal = frame.disposal;
+		if (_count_palette_in_retained_bytes)
+			_retained_bytes += palette;
+		_retained_bytes += pixels;
 		document.frames.push_back(std::move(kept));
 		return true;
 	}
@@ -137,7 +188,20 @@ namespace libfiles
 
 	void document_keeper::metadata(const document_metadata kind, const std::span<const std::uint8_t> bytes)
 	{
+		if (bytes.size() > _maximum_retained_bytes - std::min(_maximum_retained_bytes, _retained_bytes))
+			throw std::bad_alloc();
+		_retained_bytes += bytes.size();
 		document.metadata.push_back({kind, {bytes.begin(), bytes.end()}});
+	}
+
+	bool document_keeper::cancelled()
+	{
+		return _cancelled && _cancelled();
+	}
+
+	void document_keeper::progress(const std::uint32_t current, const std::uint32_t total)
+	{
+		if (_progress) _progress(current, total);
 	}
 
 	pixel_rows decoded_frame::rows() const noexcept

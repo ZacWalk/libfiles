@@ -789,6 +789,11 @@ namespace libfiles
 		}
 	}
 
+	bool icc_declares_rgb(const std::span<const std::uint8_t> data) noexcept
+	{
+		return data.size() >= 20 && std::equal(data.begin() + 16, data.begin() + 20, "RGB ");
+	}
+
 	std::vector<structure_row> list_icc(const std::span<const std::uint8_t> data)
 	{
 		profile p;

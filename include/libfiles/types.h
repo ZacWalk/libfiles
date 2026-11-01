@@ -43,10 +43,10 @@ namespace libfiles
 		// would cross it is dropped whole.
 		std::size_t jpeg_photoshop_resources = 16u * 1024u * 1024u;
 
-		// libfiles carries no Brotli decoder, so a compressed JPEG XL metadata box is left out unless
-		// the caller supplies one. A scan asks it for at most 16 MiB a box and 32 MiB in all; a box it
-		// cannot decompress within what is left stops the scan of the boxes after it, as libjxl stops
-		// at a box it cannot decompress.
+		// When LIBFILES_JXL is enabled, libfiles supplies a bounded Brotli decoder for compressed JPEG XL
+		// metadata boxes. A caller-supplied callback overrides it, so applications can retain an explicit
+		// policy or test decompressor. A box is limited to 16 MiB and all boxes to 32 MiB; a box that
+		// cannot decompress within what is left stops the scan, as libjxl stops at a failed box.
 		brotli_decompressor brotli;
 
 		// The most scan_media inflates in all - compressed ID3 frames, a Matroska track's compressed codec

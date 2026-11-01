@@ -85,7 +85,7 @@ namespace libfiles
 		read_packet = 1u << 4,
 		// plan_update(): metadata written back into the file.
 		update = 1u << 5,
-		// encode_jpeg, encode_png or encode_webp.
+		// An encoded image or native document (see encode.h).
 		encode = 1u << 6,
 	};
 

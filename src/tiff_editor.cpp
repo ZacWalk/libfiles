@@ -119,6 +119,11 @@ namespace libfiles::detail
 			if (e.tag == tag_exif_ifd) read_ifd(data, offset, _ifds[index(directory::exif)]);
 			else if (e.tag == tag_gps_ifd) read_ifd(data, offset, _ifds[index(directory::gps)]);
 		}
+		for (const auto& e : _ifds[index(directory::exif)].entries)
+		{
+			if (e.tag == tag_interop_ifd && e.count == 1 && (e.type == 4 || e.type == 13))
+				read_ifd(data, u32(e.value.data()), _ifds[index(directory::interoperability)]);
+		}
 
 		return true;
 	}
@@ -196,6 +201,13 @@ namespace libfiles::detail
 		set(d, tag, type_short, 1, std::move(encoded));
 	}
 
+	void tiff_editor::set_long(const directory d, const std::uint16_t tag, const std::uint32_t value)
+	{
+		bytes encoded;
+		put32(encoded, value);
+		set(d, tag, type_long, 1, std::move(encoded));
+	}
+
 	void tiff_editor::set_rationals(const directory d, const std::uint16_t tag,
 	                                const std::vector<std::pair<std::uint32_t, std::uint32_t>>& values)
 	{
@@ -213,6 +225,49 @@ namespace libfiles::detail
 	void tiff_editor::remove(const directory d, const std::uint16_t tag)
 	{
 		_edits[{d, tag}] = edit{true, 0, 0, {}};
+	}
+
+	void tiff_editor::import_metadata(reader& input, const bool include_orientation)
+	{
+		tiff_editor source;
+		if (!source.open(input)) throw format_error("the TIFF metadata directory cannot be read");
+		// These tags describe encoded samples or separate metadata blocks, not EXIF fields.
+		constexpr std::uint16_t layout_tags[]{
+			254, 255, 256, 257, 258, 259, 262, 263, 264, 265, 266, 273, 277, 278,
+			279, 280, 281, 282, 283, 284, 286, 287, 288, 289, 290, 291, 292, 293,
+			296, 297, 300, 301, 318, 319, 320, 321, 322, 323, 324, 325, 330, 332,
+			333, 334, 336, 337, 338, 339, 340, 341, 342, 347, 512, 513, 514,
+			515, 517, 518, 519, 520, 521, 530, 531, 532,
+			tag_xmp, tag_iptc, tag_photoshop, 34675
+		};
+		std::uint64_t total = 0;
+		for (const auto d : {directory::ifd0, directory::exif, directory::gps, directory::interoperability})
+		{
+			for (const auto& field : source._ifds[index(d)].entries)
+			{
+				if ((d == directory::ifd0 && (std::ranges::find(layout_tags, field.tag) != std::end(layout_tags) ||
+					(!include_orientation && field.tag == tag_orientation))) ||
+					(d == directory::ifd0 && (field.tag == tag_exif_ifd || field.tag == tag_gps_ifd)) ||
+					(d == directory::exif && field.tag == tag_interop_ifd))
+					continue;
+				const auto range = source.value_range(d, field.tag);
+				if (!range || !range->size)
+					throw format_error("a TIFF metadata value is outside its stream");
+				if (range->size > 65536 || range->size > 16u * 1024u * 1024u - total)
+					throw format_error("TIFF metadata exceeds its value or block limit");
+				total += range->size;
+				auto value = input.read(range->offset, static_cast<std::size_t>(range->size));
+				if (source.little_endian() != little_endian())
+				{
+					const auto unit = field.type == 3 || field.type == 8 ? 2u :
+						field.type == 4 || field.type == 5 || field.type == 9 ||
+						field.type == 10 || field.type == 11 ? 4u : field.type == 12 ? 8u : 1u;
+					for (std::size_t at = 0; unit > 1 && at < value.size(); at += unit)
+						std::reverse(value.begin() + at, value.begin() + at + unit);
+				}
+				set(d, field.tag, field.type, field.count, std::move(value));
+			}
+		}
 	}
 
 	std::vector<replacement> tiff_editor::changes(const std::uint64_t stream_size) const
@@ -247,11 +302,17 @@ namespace libfiles::detail
 			return true;
 		};
 
-		std::array<std::optional<std::uint64_t>, 3> moved;
+		std::array<std::optional<std::uint64_t>, 4> moved;
 		auto edits = _edits;
 
-		for (const auto d : {directory::gps, directory::exif, directory::ifd0})
+		for (const auto d : {directory::gps, directory::interoperability, directory::exif, directory::ifd0})
 		{
+			if (d == directory::exif && moved[index(directory::interoperability)])
+			{
+				bytes pointer;
+				put32(pointer, static_cast<std::uint32_t>(*moved[index(directory::interoperability)]));
+				edits[{directory::exif, tag_interop_ifd}] = edit{false, type_long, 1, std::move(pointer)};
+			}
 			if (d == directory::ifd0)
 			{
 				for (const auto& [sub, tag] : {std::pair{directory::exif, tag_exif_ifd}, std::pair{directory::gps, tag_gps_ifd}})
@@ -390,7 +451,10 @@ namespace libfiles::detail
 			if (table_entries.empty() && d != directory::ifd0)
 			{
 				// A sub-directory left with nothing is dropped, with its pointer.
-				edits[{directory::ifd0, d == directory::exif ? tag_exif_ifd : tag_gps_ifd}] = edit{true, 0, 0, {}};
+				const auto parent = d == directory::interoperability ? directory::exif : directory::ifd0;
+				const auto tag = d == directory::interoperability ? tag_interop_ifd :
+					d == directory::exif ? tag_exif_ifd : tag_gps_ifd;
+				edits[{parent, tag}] = edit{true, 0, 0, {}};
 				continue;
 			}
 

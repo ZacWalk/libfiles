@@ -14,10 +14,15 @@
 #include "libfiles/scan.h"
 #include "libfiles/write.h"
 #include "round_trip.h"
+#include "scan_internal.h"
 
 #include <cstring>
 #include <string>
 #include <vector>
+
+#ifdef LIBFILES_JXL
+#include <brotli/encode.h>
+#endif
 
 #if defined(LIBFILES_JXL) && defined(LIBFILES_JPEG)
 #include "libfiles/decode.h"
@@ -162,6 +167,23 @@ namespace
 
 	bytes exif_contents(const bytes& tiff) { return builder().be32(0).raw(tiff).b; }
 
+#ifdef LIBFILES_JXL
+	bytes real_brob(const std::string_view type, const bytes& contents, const bool trailing = false)
+	{
+		auto compressed = bytes(BrotliEncoderMaxCompressedSize(contents.size()));
+		auto size = compressed.size();
+		if (!BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, contents.size(),
+		                            contents.data(), &size, compressed.data()))
+			return {};
+		compressed.resize(size);
+		builder payload;
+		payload.raw(type);
+		payload.b.insert(payload.b.end(), compressed.begin(), compressed.end());
+		if (trailing) payload.b.push_back(0x7f);
+		return iso_box("brob", payload.b);
+	}
+#endif
+
 	bytes packet_bytes(const libfiles::xmp::meta& meta, const libfiles::xmp::serialize_options& options = {})
 	{
 		return to_bytes(meta.serialize(options));
@@ -272,12 +294,17 @@ TEST("a compressed jpeg xl box is read with the decompressor its scan was given,
 {
 	const auto file = container({iso_box("jxlc", codestream({})), brob("Exif", exif_contents(oriented_tiff(1))),
 	                             brob("xml ", packet_bytes(rated(2)))});
+	libfiles::brotli_decompressor rejects = [](std::span<const std::uint8_t>, std::string_view,
+	                                           std::size_t) -> std::optional<bytes> { return {}; };
 
-	// Without one, what such a box holds cannot be read, so it is not replaced.
-	CHECK(!update(file, rated(5)).plan.ok());
+	// An explicitly supplied decompressor still controls the result, including one that refuses the box.
+	const auto rejected_meta = rated(5);
+	libfiles::metadata_update rejected{&rejected_meta};
+	rejected.brotli = rejects;
+	CHECK(!update(file, rejected).plan.ok());
 
 	libfiles::reader r(file);
-	CHECK(!libfiles::read_packet(r).readable);
+	CHECK(!libfiles::read_packet(r, rejects).readable);
 	const auto packet = libfiles::read_packet(r, fake_brotli);
 	CHECK(packet.readable);
 	CHECK(packet.packet == to_string(packet_bytes(rated(2))));
@@ -288,7 +315,8 @@ TEST("a compressed jpeg xl box is read with the decompressor its scan was given,
 	const auto edited = update(file, u);
 	CHECK(edited.plan.ok());
 	CHECK_STR(types_of(edited.file), "JXL ,ftyp,jxlc,brob,xml ");
-	CHECK_EQ(rating_of(edited.file), 5);
+	CHECK(!edited.file.empty());
+	CHECK_EQ(rating_of(edited.file, with_brotli()), 5);
 
 	// A compressed EXIF the edit writes to needs one too; a packet alone does not touch it.
 	libfiles::metadata_update exif_edit{&meta};
@@ -300,6 +328,50 @@ TEST("a compressed jpeg xl box is read with the decompressor its scan was given,
 	CHECK_STR(types_of(both.file), "JXL ,ftyp,jxlc,Exif,xml ");
 	CHECK(exif_properties(both.file).rating == 5);
 }
+
+#ifdef LIBFILES_JXL
+TEST("built-in Brotli reads JPEG XL brob boxes for scan packet and update")
+{
+	const auto* const builtin = libfiles::detail::default_brotli_decompressor();
+	CHECK(builtin != nullptr);
+	if (builtin)
+	{
+		const bytes plain{'t', 'i', 'n', 'y'};
+		bytes compressed(BrotliEncoderMaxCompressedSize(plain.size()));
+		auto compressed_size = compressed.size();
+		CHECK(BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, plain.size(),
+		                            plain.data(), &compressed_size, compressed.data()));
+		compressed.resize(compressed_size);
+		const auto small = (*builtin)(compressed, "xml ", 16u * 1024u * 1024u);
+		CHECK(small && *small == plain);
+		if (small) CHECK(small->capacity() <= 64u * 1024u);
+	}
+
+	const auto file = container({iso_box("jxlc", codestream({})),
+	                             real_brob("Exif", exif_contents(oriented_tiff(1))),
+	                             real_brob("xml ", packet_bytes(rated(2)))});
+
+	const auto scan = scanned(file);
+	CHECK(scan.success);
+	CHECK(!scan.metadata.exif.empty());
+	CHECK(to_string(scan.metadata.xmp) == to_string(packet_bytes(rated(2))));
+
+	libfiles::reader source(file);
+	const auto packet = libfiles::read_packet(source);
+	CHECK(packet.readable);
+	CHECK(packet.packet == to_string(packet_bytes(rated(2))));
+
+	const auto edited = update(file, rated(5));
+	CHECK(edited.plan.ok());
+	CHECK_EQ(rating_of(edited.file), 5);
+
+	// A malformed or trailing stream is refused by the built-in decoder, while the explicit
+	// callback path remains independently testable above.
+	const auto malformed = container({iso_box("jxlc", codestream({})),
+	                                  real_brob("xml ", packet_bytes(rated(2)), true)});
+	CHECK(scanned(malformed).metadata.xmp.empty());
+}
+#endif
 
 TEST("a jpeg xl reads back the edits it keeps outside the packet, and leaves its orientation to its codestream")
 {
