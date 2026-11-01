@@ -97,7 +97,10 @@ add_library(libfiles STATIC
     src/mp4_internal.h
     src/asf_internal.h
     src/flv_internal.h
+    src/jpeg_carry.cpp
     src/photoshop_internal.h
+    src/photo_internal.h
+    src/photo_values.cpp
     src/properties.cpp
     src/reader.cpp
     src/riff_internal.h

@@ -155,7 +155,17 @@ namespace libfiles
 
 				if (options.lossless)
 				{
-					WebPConfigLosslessPreset(&config, 7);
+					if (options.method >= 0)
+					{
+						config.lossless = true;
+						config.quality = static_cast<float>(options.quality);
+						config.method = options.method;
+					}
+					else
+					{
+						WebPConfigLosslessPreset(&config, 7);
+					}
+
 					config.thread_level = 1;
 				}
 				else
@@ -165,11 +175,13 @@ namespace libfiles
 					config.thread_level = options.fast ? 0 : 1;
 					config.lossless = false;
 					config.quality = static_cast<float>(options.quality);
-					config.method = options.fast ? 2 : 6;
+					config.method = options.method >= 0 ? options.method : options.fast ? 2 : 6;
 					config.use_sharp_yuv = options.fast ? 0 : 1;
 					// https://groups.google.com/a/webmproject.org/forum/#!topic/webp-discuss/7dV1qXrdQ2Y
 					config.alpha_quality = options.lossy_alpha ? options.quality : 100;
 				}
+
+				config.exact = options.exact ? 1 : 0;
 
 				const auto valid_config = WebPValidateConfig(&config) != 0;
 

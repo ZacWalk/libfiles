@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 // Purpose: Tests for the properties model: each block - EXIF, IPTC, XMP - read into the same properties by
-// its table, the rule blocks are reconciled by, and a file's properties read whole.
+// its table with what it states, the values in them read as Diffractor read them, the rule blocks are
+// reconciled by, and a file's properties read whole.
 
 #include "test.h"
 
@@ -22,6 +23,8 @@ using namespace test_build;
 namespace
 {
 	namespace ns = libfiles::xmp::ns;
+	using libfiles::date_source;
+	using libfiles::property;
 
 	libfiles::date day(const int year, const int month, const int d)
 	{
@@ -48,12 +51,36 @@ namespace
 		return d;
 	}
 
+	libfiles::date utc(libfiles::date d)
+	{
+		d.zone = libfiles::date::time_zone::utc;
+		return d;
+	}
+
 	bool near(const double a, const double b)
 	{
 		return std::abs(a - b) < 1e-9;
 	}
 
-	// A property of every kind set, each to a value no other has.
+	// The date EXIF's DateTimeOriginal gives for the text, if any.
+	std::optional<libfiles::date> exif_date(const std::string& text)
+	{
+		libfiles::exif_metadata e;
+		e.original.text = text;
+		const auto p = libfiles::properties_from_exif(e);
+		if (p.dates.empty()) return {};
+		return p.dates.front().when;
+	}
+
+	// The sources of the dates, in the order read.
+	std::vector<date_source> sources(const libfiles::properties& p)
+	{
+		std::vector<date_source> out;
+		for (const auto& d : p.dates) out.push_back(d.source);
+		return out;
+	}
+
+	// A property of every kind set, each to a value no other has, and stated.
 	libfiles::properties every_property()
 	{
 		libfiles::properties p;
@@ -82,10 +109,12 @@ namespace
 		p.disc_count = 5;
 		p.season = 6;
 		p.episode = 7;
-		p.created = day(2001, 2, 3);
+		p.episode_count = 8;
+		p.media_kind = 9;
 		p.original_release = day(1999, 1, 1);
 		p.location = libfiles::gps_position{1.5, -2.5};
 		p.altitude = 30.0;
+		p.speed = 12.5;
 		p.lens = "lens";
 		p.f_number = 2.8;
 		p.exposure_time = 0.004;
@@ -93,18 +122,25 @@ namespace
 		p.focal_length_35mm = 75;
 		p.iso_speed = 200;
 		p.orientation = 6;
-		p.digitized = day(2001, 2, 4);
-		p.modified = day(2001, 2, 5);
 		p.city = "city";
 		p.state = "state";
 		p.country = "country";
 		p.credit = "credit";
 		p.source = "source";
+		p.creators = {"creator"};
+		p.copyright_url = "url";
+		p.label = "label";
+		p.raw_file_name = "raw";
+		p.panorama = libfiles::panorama_projection::cylindrical;
+		p.dates = {{date_source::exif_original, at(day(2001, 2, 3), 4, 5, 6)}};
+		p.created = at(day(2001, 2, 3), 4, 5, 6);
+
+		for (auto i = 0u; i <= static_cast<unsigned>(property::panorama); ++i) p.mark_stated(static_cast<property>(i));
 		return p;
 	}
 }
 
-TEST("EXIF reads into properties by the table")
+TEST("EXIF reads into properties by the table, with what it states")
 {
 	libfiles::exif_metadata e;
 	e.title = "XP title";
@@ -112,7 +148,7 @@ TEST("EXIF reads into properties by the table")
 	e.copyright = "(c) Ann";
 	e.description = "A description";
 	e.comment = "A comment";
-	e.keywords = "alpha; beta;;gamma ";
+	e.keywords = "alpha; New York;;gamma ";
 	e.rating = 3;
 	e.software = "Editor 2";
 	e.camera_make = "Make";
@@ -130,6 +166,9 @@ TEST("EXIF reads into properties by the table")
 	e.latitude = 51.5;
 	e.longitude = -0.125;
 	e.altitude = -12.0f;
+	e.speed = 30.0f;
+	e.gps_date = "2020:05:06";
+	e.gps_time = std::array<double, 3>{5.0, 7.0, 9.5};
 
 	const auto p = libfiles::properties_from_exif(e);
 
@@ -138,7 +177,8 @@ TEST("EXIF reads into properties by the table")
 	CHECK_STR(p.copyright, "(c) Ann");
 	CHECK_STR(p.description, "A description");
 	CHECK(p.comments == (std::vector<libfiles::media_text>{{"A comment", ""}}));
-	CHECK(p.keywords == (std::vector<std::string>{"alpha", "beta", "gamma"}));
+	// XPKeywords holds keywords separated by semicolons, each kept whole.
+	CHECK(p.keywords == (std::vector<std::string>{"alpha", "New York", "gamma"}));
 	CHECK(p.rating == 3);
 	CHECK_STR(p.encoder, "Editor 2");
 	CHECK_STR(p.camera_make, "Make");
@@ -148,29 +188,80 @@ TEST("EXIF reads into properties by the table")
 	CHECK_EQ(p.focal_length_35mm, 75);
 	CHECK_EQ(p.iso_speed, 400);
 	CHECK(p.orientation == 8);
-	CHECK(p.created == zoned(at(day(2020, 5, 6), 7, 8, 9), 120));
+	CHECK(p.location == (libfiles::gps_position{51.5, -0.125}));
+	CHECK(p.altitude == -12.0);
+	CHECK(near(p.speed, 30.0));
+
+	// Each date with its tag, the fraction of a second SubSecTime gives and the zone OffsetTime does; and the
+	// GPS stamp, in UTC, to the whole second.
+	auto original = zoned(at(day(2020, 5, 6), 7, 8, 9), 120);
+	original.nanoseconds = 120'000'000;
+	CHECK(sources(p) == (std::vector{date_source::exif_original, date_source::exif_digitized, date_source::exif_modified,
+		                     date_source::exif_gps}));
+	CHECK(p.dates[0].when == original);
+	CHECK(p.dates[3].when == utc(at(day(2020, 5, 6), 5, 7, 9)));
+	CHECK(p.created == original);
 	CHECK(p.digitized == at(day(2020, 5, 6), 7, 8, 10));
 	CHECK(p.modified == at(day(2021, 1, 2), 3, 4, 5));
 	CHECK_EQ(p.year, 2020);
-	CHECK(p.location == (libfiles::gps_position{51.5, -0.125}));
-	CHECK(p.altitude == -12.0);
 
-	// A position never stands for one EXIF does not state, and its altitude goes with it.
+	for (const auto stated : {property::title, property::keywords, property::rating, property::location, property::altitude,
+	                          property::speed, property::orientation})
+	{
+		CHECK(p.states(stated));
+	}
+
+	CHECK(!p.states(property::year) && !p.states(property::city) && !p.joins(property::keywords));
+
+	// An altitude is a reading whether or not a position is beside it; a position is never one EXIF does
+	// not state.
 	libfiles::exif_metadata no_fix;
 	no_fix.altitude = 100.0f;
 	CHECK(!libfiles::properties_from_exif(no_fix).location);
-	CHECK(!libfiles::properties_from_exif(no_fix).altitude);
-	CHECK(libfiles::properties_from_exif(no_fix) == libfiles::properties{});
+	CHECK(libfiles::properties_from_exif(no_fix).altitude == 100.0);
+	CHECK(libfiles::properties_from_exif(libfiles::exif_metadata{}) == libfiles::properties{});
 }
 
-TEST("IPTC reads into properties by the table")
+TEST("A photo's date reads in the forms cameras and editors write, and a clock never set reads as none")
+{
+	CHECK(exif_date("2006:01:14 15:51:31") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("2006-01-14 15:51:31") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("2006-01-14T15:51:31") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("20060114T155131") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("20060114155131") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("2006-01-14") == day(2006, 1, 14));
+	CHECK(exif_date("2006-jan-14") == day(2006, 1, 14));
+	CHECK(exif_date("THU OCT 26 16:46:04 2006") == at(day(2006, 10, 26), 16, 46, 4));
+	CHECK(exif_date("Mon Mar 3 09:44:56 2008") == at(day(2008, 3, 3), 9, 44, 56));
+
+	// Seconds are a real number, rounded down unless within a tenth of the next.
+	CHECK(exif_date("2006:01:14 15:51:31.5") == at(day(2006, 1, 14), 15, 51, 31));
+	CHECK(exif_date("2006:01:14 15:51:31.95") == at(day(2006, 1, 14), 15, 51, 32));
+
+	// A month or a day of 0 is none, and the date stands as the calendar takes it.
+	CHECK(exif_date("2006:00:00 10:00:00") == at(day(2006, 0, 0), 10, 0, 0));
+
+	CHECK(!exif_date("2011"));
+	CHECK(!exif_date("0000:00:00 00:00:00"));
+	CHECK(!exif_date("2006:02:30 10:00:00"));
+	CHECK(!exif_date("2006:13:01 10:00:00"));
+	CHECK(!exif_date("2006:01:14 24:00:00"));
+	CHECK(!exif_date("2006:01:14 15:51:59.95"));
+	CHECK(!exif_date("1799:12:31 23:59:59"));
+	CHECK(!exif_date("1970:01:01 12:00:00"));
+	CHECK(!exif_date("1904:01:01 00:00:00"));
+	CHECK(!exif_date("THU XYZ 26 16:46:04 2006"));
+	CHECK(exif_date("1970:01:02 00:00:00") == at(day(1970, 1, 2), 0, 0, 0));
+}
+
+TEST("IPTC reads into properties by the table, joining its keywords and by-lines")
 {
 	libfiles::iptc_fields i;
 	i.object_name = " Object ";
 	i.caption = "Caption\nsecond line";
-	i.bylines = {"One", " ", "Two"};
+	i.bylines = {"One", " ", "Two", "one"};
 	i.copyright = "IPTC copyright";
-	i.keywords = {"k1", "", "k2"};
+	i.keywords = {"k2", "", "k1"};
 	i.city = "Cardiff";
 	i.state = "Wales";
 	i.country = "UK";
@@ -182,7 +273,8 @@ TEST("IPTC reads into properties by the table")
 
 	const auto p = libfiles::properties_from_iptc(i);
 
-	CHECK_STR(p.title, "Object");
+	// Text as the dataset holds it; keywords sorted and each once; by-lines each once, whole, in their order.
+	CHECK_STR(p.title, " Object ");
 	CHECK_STR(p.description, "Caption\nsecond line");
 	CHECK_STR(p.artist, "One; Two");
 	CHECK_STR(p.copyright, "IPTC copyright");
@@ -192,79 +284,99 @@ TEST("IPTC reads into properties by the table")
 	CHECK_STR(p.country, "UK");
 	CHECK_STR(p.credit, "Agency");
 	CHECK_STR(p.source, "Archive");
+	CHECK(sources(p) == (std::vector{date_source::iptc_created, date_source::iptc_digitized}));
 	CHECK(p.created == zoned(at(day(2019, 8, 7), 10, 11, 12), 90));
 	CHECK(p.digitized == day(2019, 8, 8));
 	CHECK_EQ(p.year, 2019);
+	CHECK(p.joins(property::keywords) && p.joins(property::artist) && p.states(property::keywords));
+	CHECK(!p.joins(property::title) && p.states(property::title));
+
+	// A time with no day says nothing, and a day of other than eight digits is none.
+	libfiles::iptc_fields bad;
+	bad.time_created = "101112";
+	bad.date_created = "2019087";
+	CHECK(libfiles::properties_from_iptc(bad).dates.empty());
 }
 
-TEST("XMP reads into properties by the table")
+TEST("XMP reads into properties by the table, a property present stating it even empty")
 {
 	libfiles::xmp::meta m;
 	m.set_localized_text(ns::dc, "title", "", "x-default", "Packet title");
 	m.set_localized_text(ns::dc, "description", "", "x-default", "Packet description");
 	m.set_localized_text(ns::dc, "rights", "", "x-default", "Packet rights");
 	m.append_array_item(ns::dc, "creator", libfiles::xmp::array_is_ordered, "First");
-	m.append_array_item(ns::dc, "creator", libfiles::xmp::array_is_ordered, "Second");
+	m.append_array_item(ns::dc, "creator", libfiles::xmp::array_is_ordered, "Second Person");
 	m.append_array_item(ns::dc, "subject", libfiles::xmp::value_is_array, "red");
 	m.append_array_item(ns::dc, "subject", libfiles::xmp::value_is_array, "green");
-	m.append_array_item(ns::dc, "publisher", libfiles::xmp::value_is_array, "Label");
 	m.set_property(ns::dm, "album", "Album");
 	m.set_property(ns::dm, "albumArtist", "Band");
-	m.set_property(ns::dm, "composer", "Composer");
 	m.set_property(ns::dm, "genre", "Jazz");
+	m.set_property(ns::dm, "show", "Show");
+	m.set_property(ns::dm, "synopsis", "Synopsis");
 	m.set_property(ns::dm, "logComment", "Logged");
+	m.set_localized_text(ns::exif, "UserComment", "", "x-default", "Under the log");
 	m.set_property(ns::dm, "trackNumber", "3/12");
-	m.set_property(ns::dm, "discNumber", "1/2");
-	m.set_property(ns::dm, "releaseDate", "1999");
+	m.set_property(ns::dm, "discNumber", "1");
+	m.set_property(ns::dm, "episode", "4/10");
+	m.set_property(ns::dm, "season", "2");
 	m.set_property(ns::xmp, "Rating", "4.0");
-	m.set_property(ns::xmp, "CreatorTool", "Tool 1");
+	m.set_property(ns::xmp, "Label", "Red");
 	m.set_property(ns::xmp, "CreateDate", "2018-03-04T05:06:07Z");
 	m.set_property(ns::xmp, "ModifyDate", "2018-03-05");
 	m.set_property(ns::photoshop, "DateCreated", "2018-03-03T01:02:03.250+01:00");
-	m.set_property(ns::photoshop, "City", "Paris");
+	m.set_property(ns::photoshop, "City", " Paris ");
 	m.set_property(ns::photoshop, "State", "IDF");
 	m.set_property(ns::photoshop, "Country", "France");
 	m.set_property(ns::photoshop, "Credit", "Credit");
 	m.set_property(ns::photoshop, "Source", "Source");
+	m.set_property(ns::xmp_rights, "WebStatement", "https://example.com/rights");
 	m.set_property(ns::tiff, "Make", "Make");
 	m.set_property(ns::tiff, "Model", "Model");
 	m.set_property(ns::tiff, "Orientation", "6");
 	m.set_property(ns::exif, "GPSLatitude", "51,30.5N");
-	m.set_property(ns::exif, "GPSLongitude", "0,7,30W");
-	m.set_property(ns::exif, "GPSAltitude", "250/10");
-	m.set_property(ns::exif, "GPSAltitudeRef", "1");
+	m.set_property(ns::exif, "GPSLongitude", "0,7,30w");
 	m.set_property(ns::exif, "FNumber", "28/10");
 	m.set_property(ns::exif, "ExposureTime", "1/250");
 	m.set_property(ns::exif, "FocalLength", "50");
 	m.set_property(ns::exif, "FocalLengthIn35mmFilm", "75");
-	m.append_array_item(ns::exif, "ISOSpeedRatings", libfiles::xmp::array_is_ordered, "200");
-	m.set_property(ns::exif_ex, "LensModel", "Lens");
+	m.set_property(ns::exif_aux, "Lens", "Lens");
+	m.set_property(ns::camera_raw, "RawFileName", "IMG_1.CR2");
+	m.set_property(ns::gpano, "ProjectionType", " Equirectangular ");
 
 	const auto p = libfiles::properties_from_xmp(m);
 
 	CHECK_STR(p.title, "Packet title");
 	CHECK_STR(p.description, "Packet description");
 	CHECK_STR(p.copyright, "Packet rights");
-	CHECK_STR(p.artist, "First; Second");
+	CHECK(p.creators == (std::vector<std::string>{"First", "Second Person"}));
+	CHECK(p.artist.empty() && !p.states(property::artist));
 	CHECK(p.keywords == (std::vector<std::string>{"red", "green"}));
-	CHECK_STR(p.publisher, "Label");
 	CHECK_STR(p.album, "Album");
 	CHECK_STR(p.album_artist, "Band");
-	CHECK_STR(p.composer, "Composer");
 	CHECK_STR(p.genre, "Jazz");
+	CHECK_STR(p.show, "Show");
+	CHECK_STR(p.synopsis, "Synopsis");
 	CHECK(p.comments == (std::vector<libfiles::media_text>{{"Logged", ""}}));
-	CHECK(p.track == 3 && p.track_count == 12 && p.disc == 1 && p.disc_count == 2);
-	CHECK(p.original_release == day(1999, 0, 0));
+	CHECK(p.track == 3 && p.track_count == 12 && p.disc == 1 && p.disc_count == 0);
+	CHECK(p.episode == 4 && p.episode_count == 10 && p.season == 2);
 	CHECK(p.rating == 4);
-	CHECK_STR(p.encoder, "Tool 1");
+	CHECK_STR(p.label, "Red");
+	CHECK_STR(p.copyright_url, "https://example.com/rights");
+	CHECK_STR(p.raw_file_name, "IMG_1.CR2");
+	CHECK(p.panorama == libfiles::panorama_projection::equirectangular);
 
-	// MWG's Date Created before the packet's own creation date, which is the date digitized.
+	// Each date with its tag and the zone its text ends in; Date Created, then the packet's own creation
+	// date, which is the date digitized - and which exif:DateTimeDigitized, its alias, reads too.
+	CHECK(sources(p) == (std::vector{date_source::xmp_photoshop_created, date_source::xmp_create, date_source::xmp_modify,
+		                     date_source::xmp_exif_digitized}));
 	CHECK(p.created == zoned(at(day(2018, 3, 3), 1, 2, 3), 60));
-	CHECK(p.digitized.year == 2018 && p.digitized.day == 4 && p.digitized.zone == libfiles::date::time_zone::utc);
+	CHECK(p.digitized == utc(at(day(2018, 3, 4), 5, 6, 7)));
 	CHECK(p.modified == day(2018, 3, 5));
 	CHECK_EQ(p.year, 2018);
+	CHECK(!p.states(property::year));
 
-	CHECK_STR(p.city, "Paris");
+	// Text as the packet holds it.
+	CHECK_STR(p.city, " Paris ");
 	CHECK_STR(p.state, "IDF");
 	CHECK_STR(p.country, "France");
 	CHECK_STR(p.credit, "Credit");
@@ -273,23 +385,39 @@ TEST("XMP reads into properties by the table")
 	CHECK_STR(p.camera_model, "Model");
 	CHECK(p.orientation == 6);
 	CHECK(p.location && near(p.location->latitude, 51.5 + 0.5 / 60) && near(p.location->longitude, -(7.0 / 60 + 30.0 / 3600)));
-	CHECK(p.altitude == -25.0);
+	CHECK(!p.altitude);
 	CHECK(near(p.f_number, 2.8) && near(p.exposure_time, 0.004) && near(p.focal_length, 50.0));
 	CHECK_EQ(p.focal_length_35mm, 75);
-	CHECK_EQ(p.iso_speed, 200);
 	CHECK_STR(p.lens, "Lens");
 
-	// A recording's artist before a photo's creators.
+	// dm:artist is the artist; a property present but empty states it empty, and clears what is before it.
 	m.set_property(ns::dm, "artist", "Performer");
-	CHECK_STR(libfiles::properties_from_xmp(m).artist, "Performer");
+	m.set_property(ns::photoshop, "Country", "");
+	const auto q = libfiles::properties_from_xmp(m);
+	CHECK_STR(q.artist, "Performer");
+	CHECK(q.states(property::country) && q.country.empty());
 
-	// Without Date Created, the packet's creation date stands for it; a rating past the scale is clamped.
+	// An xmp:CreateDate that is a year alone is the year, and no date; Windows' rating is a percent read in
+	// fifths, rounded up.
 	libfiles::xmp::meta bare;
 	bare.set_property(ns::xmp, "CreateDate", "2011");
-	bare.set_property(ns::xmp, "Rating", "-1");
-	CHECK(libfiles::properties_from_xmp(bare).created == day(2011, 0, 0));
-	CHECK(libfiles::properties_from_xmp(bare).rating == -1);
+	bare.set_property(ns::microsoft_photo, "Rating", "50");
+	const auto year_alone = libfiles::properties_from_xmp(bare);
+	CHECK(year_alone.dates.empty() && !year_alone.created.valid());
+	CHECK(year_alone.states(property::year) && year_alone.year == 2011);
+	CHECK(year_alone.rating == 3);
+
+	// A panorama a writer declares without naming its projection.
+	libfiles::xmp::meta pano;
+	pano.set_property(ns::gpano, "UsePanoramaViewer", "True");
+	CHECK(libfiles::properties_from_xmp(pano).panorama == libfiles::panorama_projection::unspecified);
 	CHECK(libfiles::properties_from_xmp(libfiles::xmp::meta{}) == libfiles::properties{});
+
+	// A packet's bytes, after the signature a JPEG segment gives them.
+	const std::string text = std::string("http://ns.adobe.com/xap/1.0/\0", 29) + m.serialize();
+	const auto from_bytes = libfiles::properties_from_xmp(std::span(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
+	CHECK_STR(from_bytes.artist, "Performer");
+	CHECK(libfiles::properties_from_xmp(std::span<const std::uint8_t>{}) == libfiles::properties{});
 }
 
 TEST("A packet's property in another form than its schema gives reads as none, and the rest of the packet still reads")
@@ -297,80 +425,113 @@ TEST("A packet's property in another form than its schema gives reads as none, a
 	// A simple value where the schema has an array or alt-text, as some writers put them, and a struct where
 	// it has either.
 	libfiles::xmp::meta m;
-	m.set_property(ns::exif, "ISOSpeedRatings", "100");
+	m.set_property(ns::dc, "subject", "red");
 	m.set_property(ns::exif, "UserComment", "A simple comment");
 	m.set_composite(ns::dc, "title", libfiles::xmp::value_is_struct);
-	m.set_composite(ns::dc, "subject", libfiles::xmp::value_is_struct);
 	m.set_composite(ns::dc, "creator", libfiles::xmp::value_is_struct);
-	m.set_composite(ns::dc, "publisher", libfiles::xmp::value_is_struct);
 	m.set_property(ns::photoshop, "City", "Paris");
 	m.set_property(ns::xmp, "Rating", "3");
 
 	const auto p = libfiles::properties_from_xmp(m);
-	CHECK_EQ(p.iso_speed, 0);
-	CHECK(p.comments.empty());
-	CHECK(p.title.empty() && p.keywords.empty() && p.artist.empty() && p.publisher.empty());
+	CHECK(p.comments.empty() && !p.states(property::comments));
+	CHECK(p.title.empty() && !p.states(property::title));
+	CHECK(p.keywords.empty() && !p.states(property::keywords));
+	CHECK(p.creators.empty() && !p.states(property::creators));
 	CHECK_STR(p.city, "Paris");
 	CHECK(p.rating == 3);
 
 	// As a file holds them: an alias of an alt-text item given a struct, which parsing moves into the array as
-	// it is, as the toolkit moves it; and a simple value where the schema has an array.
+	// it is, as the toolkit moves it.
 	libfiles::xmp::meta parsed;
 	parsed.parse(R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
-		R"(<rdf:Description rdf:about="" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" xmlns:exif="http://ns.adobe.com/exif/1.0/")"
-		R"( photoshop:City="Lyon" exif:ISOSpeedRatings="100">)"
+		R"(<rdf:Description rdf:about="" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" photoshop:City="Lyon">)"
 		R"(<photoshop:Caption rdf:parseType="Resource"><photoshop:Credit>inside</photoshop:Credit></photoshop:Caption>)"
 		R"(</rdf:Description></rdf:RDF></x:xmpmeta>)");
 
 	const auto from_file = libfiles::properties_from_xmp(parsed);
-	CHECK(from_file.description.empty());
-	CHECK_EQ(from_file.iso_speed, 0);
+	CHECK(from_file.description.empty() && !from_file.states(property::description));
 	CHECK_STR(from_file.city, "Lyon");
 }
 
-TEST("A packet's number past what its property holds reads as none, and a rating past the scale as its end")
+TEST("A packet's numbers read as far as sscanf reads them, and a rating past the scale as its end")
 {
 	libfiles::xmp::meta m;
 	m.set_property(ns::exif, "FocalLengthIn35mmFilm", "1e10");
-	m.append_array_item(ns::exif, "ISOSpeedRatings", libfiles::xmp::array_is_ordered, "3000000000");
+	m.set_property(ns::exif, "FNumber", "28/10 ");
+	m.set_property(ns::exif, "FocalLength", "50/0");
+	m.set_property(ns::exif, "ExposureTime", " 1/ 4");
 	m.set_property(ns::xmp, "Rating", "1e300");
 
 	const auto large = libfiles::properties_from_xmp(m);
-	CHECK_EQ(large.focal_length_35mm, 0);
-	CHECK_EQ(large.iso_speed, 0);
-	CHECK(large.rating == 5);
+	CHECK_EQ(large.focal_length_35mm, 1);
+	CHECK(!large.states(property::f_number) && !large.states(property::focal_length));
+	CHECK(near(large.exposure_time, 0.25));
+	CHECK(large.rating == 1);
 
 	libfiles::xmp::meta negative;
 	negative.set_property(ns::exif, "FocalLengthIn35mmFilm", "-35");
-	negative.set_property(ns::xmp, "Rating", "-1e300");
+	negative.set_property(ns::xmp, "Rating", "-7");
+	negative.set_property(ns::dm, "trackNumber", "-3/12");
 
 	const auto small = libfiles::properties_from_xmp(negative);
-	CHECK_EQ(small.focal_length_35mm, 0);
+	CHECK(small.states(property::focal_length_35mm) && small.focal_length_35mm == 0);
 	CHECK(small.rating == -1);
+	CHECK(small.track == 0 && small.track_count == 12);
 }
 
-TEST("Blocks are reconciled by filling what the first lacks")
+TEST("A block read over others replaces what it states, joins what it joins, and keeps every date")
 {
 	const auto full = every_property();
 
 	libfiles::properties empty;
-	libfiles::fill_missing(empty, full);
+	libfiles::overlay(empty, full);
 	CHECK(empty == full);
 
-	// What the first states stands; its position keeps its own altitude, or none.
+	// What a later block states stands, even empty; what it does not state stays.
 	libfiles::properties first;
-	first.title = "kept";
-	first.rating = 0;
-	first.location = libfiles::gps_position{9.0, 9.0};
-	libfiles::fill_missing(first, full);
-	CHECK_STR(first.title, "kept");
+	first.title = "first title";
+	first.album = "first album";
+	first.mark_stated(property::title);
+	first.mark_stated(property::album);
+
+	libfiles::properties later;
+	later.mark_stated(property::title);
+	later.rating = 0;
+	later.mark_stated(property::rating);
+
+	libfiles::overlay(first, later);
+	CHECK(first.title.empty() && first.states(property::title));
+	CHECK_STR(first.album, "first album");
 	CHECK(first.rating == 0);
-	CHECK(first.location == (libfiles::gps_position{9.0, 9.0}));
-	CHECK(!first.altitude);
-	CHECK_STR(first.album, "album");
+
+	// IPTC's keywords join those before them, sorted and each once whatever its case; its by-lines join the
+	// artist's names, after them.
+	libfiles::exif_metadata exif;
+	exif.keywords = "beach;Holiday";
+	exif.artist = "Jane Doe";
+	exif.original = {"2010:01:02 03:04:05", "", ""};
+	libfiles::iptc_fields iptc;
+	iptc.keywords = {"holiday", "Alps"};
+	iptc.bylines = {"John Smith", "jane doe"};
+	iptc.date_created = "20110101";
+
+	auto photo = libfiles::properties_from_exif(exif);
+	libfiles::overlay(photo, libfiles::properties_from_iptc(iptc));
+	CHECK(photo.keywords == (std::vector<std::string>{"Alps", "beach", "holiday"}));
+	CHECK_STR(photo.artist, "Jane Doe; John Smith");
+
+	// Every date is kept, and created settles on the first by the ladder, not on the block read last.
+	libfiles::xmp::meta packet;
+	packet.set_property(ns::photoshop, "DateCreated", "2012-01-01T00:00:00");
+	packet.append_array_item(ns::dc, "subject", libfiles::xmp::value_is_array, "packet");
+	libfiles::overlay(photo, libfiles::properties_from_xmp(packet));
+	CHECK(sources(photo) == (std::vector{date_source::exif_original, date_source::iptc_created, date_source::xmp_photoshop_created}));
+	CHECK(photo.created == at(day(2010, 1, 2), 3, 4, 5));
+	CHECK_EQ(photo.year, 2010);
+	CHECK(photo.keywords == (std::vector<std::string>{"packet"}));
 }
 
-TEST("A file's properties are its packet's, then what it keeps outside the packet")
+TEST("A file's properties are what its EXIF and IPTC state, under what its packet states")
 {
 	// A JPEG whose edit wrote the packet and, beside it, EXIF and IPTC: each block holds one value of its own.
 	builder j;
@@ -401,7 +562,7 @@ TEST("A file's properties are its packet's, then what it keeps outside the packe
 	CHECK_STR(p.city, "Only in IPTC");
 
 	// A property the packet states in another form than its schema gives costs the file nothing else.
-	packet.set_property(ns::exif, "ISOSpeedRatings", "100");
+	packet.set_property(ns::dc, "subject", "simple");
 	packet.set_property(ns::exif, "UserComment", "A simple comment");
 	libfiles::reader again(j.b);
 	const auto mismatched_plan = libfiles::plan_update(again, u);

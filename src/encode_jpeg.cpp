@@ -361,11 +361,11 @@ namespace libfiles
 					                     : exif_signature.size() + metadata.exif.size(), "exif"sv);
 			}
 
-			if (!metadata.iptc.empty() || !metadata.photoshop_resources.empty())
+			if (!metadata.iptc.empty() || !metadata.photoshop.empty())
 			{
 				const auto iptc_resource = make_photoshop_iptc_resource(metadata.iptc);
 
-				for (const auto& record : photoshop_records(metadata.photoshop_resources))
+				for (const auto& record : photoshop_records(metadata.photoshop))
 				{
 					if (photoshop_signature.size() + record.size() > max_marker_payload)
 					{
@@ -526,9 +526,9 @@ namespace libfiles
 			write_marker_checked(&_state->cinfo, XMP_EXIF_MARKER, exif.data(), exif.size());
 		}
 
-		if (!metadata.iptc.empty() || !metadata.photoshop_resources.empty())
+		if (!metadata.iptc.empty() || !metadata.photoshop.empty())
 		{
-			write_photoshop_markers(&_state->cinfo, metadata.iptc, metadata.photoshop_resources, _state->notes);
+			write_photoshop_markers(&_state->cinfo, metadata.iptc, metadata.photoshop, _state->notes);
 		}
 
 		if (!metadata.xmp.empty())

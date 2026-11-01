@@ -224,6 +224,8 @@ namespace libfiles
 		time_zone zone = time_zone::unstated;
 		// East of UTC, when the zone is an offset.
 		int offset_minutes = 0;
+		// The fraction of the second, 0 to 999,999,999, where the file states one.
+		int nanoseconds = 0;
 
 		bool valid() const noexcept { return year != 0; }
 		// A zone the date states, UTC or an offset: what its offset_minutes are from UTC.

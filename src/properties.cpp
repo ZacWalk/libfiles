@@ -3,27 +3,24 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 // Purpose: The one table of where each block keeps each property - EXIF's tags, IPTC's datasets and the
-// XMP properties the Metadata Working Group and Adobe's media schema name - read into libfiles' properties,
-// and the rule blocks are reconciled by: the XMP packet first, then what a file keeps outside it. Dates are
-// read by the one reader's rule (parse_media_date) and coordinates by the writer's (parse_xmp_gps).
+// XMP properties the Metadata Working Group, Adobe's media schema and Google's photo sphere schema name - read
+// into libfiles' properties with what each block states, and the rule blocks are reconciled by: each read over
+// those before it. The table and the rule are Diffractor's, as are the readers of the values in them
+// (photo_internal.h), so a library files its photos where it always has.
 
 #include "libfiles/properties.h"
 
-#include "date_internal.h"
-#include "gps_internal.h"
 #include "libfiles/identify.h"
 #include "libfiles/media.h"
 #include "libfiles/scan.h"
-#include "text_internal.h"
+#include "photo_internal.h"
 
 #include <algorithm>
-#include <charconv>
-#include <cmath>
+#include <bit>
+#include <cstddef>
 #include <exception>
 #include <initializer_list>
-#include <limits>
 #include <string_view>
-#include <tuple>
 #include <utility>
 
 namespace libfiles
@@ -32,137 +29,308 @@ namespace libfiles
 	{
 		namespace ns = xmp::ns;
 
-		std::string trimmed(const std::string_view text)
+		// The last property, which the stated and joined masks hold a bit for: a property added after it moves it.
+		constexpr auto last_property = property::panorama;
+		static_assert(static_cast<unsigned>(last_property) < 64, "properties::stated holds a bit for each property");
+
+		char lower(const char c)
 		{
-			return std::string(detail::trim_text(text));
+			return c >= 'A' && c <= 'Z' ? static_cast<char>(c | 0x20) : c;
 		}
 
-		std::string joined(const std::vector<std::string>& values)
+		// Text compared without regard to the case of its ASCII letters.
+		bool ascii_less(const std::string_view a, const std::string_view b)
 		{
-			std::string out;
-
-			for (const auto& value : values)
+			return std::ranges::lexicographical_compare(a, b, [](const char x, const char y)
 			{
-				const auto text = trimmed(value);
-				if (text.empty()) continue;
-				if (!out.empty()) out += "; ";
-				out += text;
-			}
-
-			return out;
+				return static_cast<unsigned char>(lower(x)) < static_cast<unsigned char>(lower(y));
+			});
 		}
 
-		std::vector<std::string> nonempty(const std::vector<std::string>& values)
+		bool ascii_equal(const std::string_view a, const std::string_view b)
 		{
-			std::vector<std::string> out;
-
-			for (const auto& value : values)
-			{
-				if (auto text = trimmed(value); !text.empty()) out.push_back(std::move(text));
-			}
-
-			return out;
+			return std::ranges::equal(a, b, [](const char x, const char y) { return lower(x) == lower(y); });
 		}
 
-		// Windows' XPKeywords: keywords separated by semicolons.
-		std::vector<std::string> split_keywords(std::string_view text)
+		std::string_view trimmed(std::string_view text)
 		{
-			std::vector<std::string> out;
+			constexpr std::string_view white_space{" \n\r\t\f\v\0", 7};
+			const auto start = text.find_first_not_of(white_space);
+			if (start == std::string_view::npos) return {};
+			return text.substr(start, text.find_last_not_of(white_space) - start + 1);
+		}
 
-			while (!text.empty())
+		// Text as a packet holds it, but for NULs at either end.
+		std::string without_nuls(const std::string_view text)
+		{
+			const auto start = text.find_first_not_of('\0');
+			if (start == std::string_view::npos) return {};
+			return std::string(text.substr(start, text.find_last_not_of('\0') - start + 1));
+		}
+
+		// Names, each trimmed, as "; " separates them.
+		std::vector<std::string> names_in(std::string_view text)
+		{
+			std::vector<std::string> names;
+
+			while (true)
 			{
 				const auto semicolon = text.find(';');
-				if (auto keyword = trimmed(text.substr(0, semicolon)); !keyword.empty()) out.push_back(std::move(keyword));
+				if (const auto name = trimmed(text.substr(0, semicolon)); !name.empty()) names.emplace_back(name);
 				if (semicolon == std::string_view::npos) break;
 				text.remove_prefix(semicolon + 1);
 			}
 
+			return names;
+		}
+
+		// Names joined as an artist holds them, each once whatever its case, the first spelling kept.
+		std::string joined_names(const std::vector<std::string>& names)
+		{
+			std::vector<std::string_view> kept;
+
+			for (const auto& name : names)
+			{
+				const auto seen = std::ranges::any_of(kept, [&name](const std::string_view k) { return ascii_equal(k, name); });
+				if (!seen) kept.push_back(name);
+			}
+
+			std::string out;
+
+			for (const auto name : kept)
+			{
+				if (!out.empty()) out += "; ";
+				out += name;
+			}
+
 			return out;
 		}
 
-		// A number as XMP writes one: an integer, a decimal, or a rational "n/d".
-		std::optional<double> number(const std::string_view text)
+		// Keywords sorted, each once whatever its case.
+		void sort_keywords(std::vector<std::string>& keywords)
 		{
-			const auto s = trimmed(text);
-			const auto slash = s.find('/');
+			std::ranges::sort(keywords, ascii_less);
+			keywords.erase(std::ranges::unique(keywords, ascii_equal).begin(), keywords.end());
+		}
 
-			const auto parse = [](const std::string_view part) -> std::optional<double>
+		// A float as EXIF gives it, stated unless it is +0: -0 is a reading, of an altitude at a reference
+		// below sea level.
+		bool holds(const float value)
+		{
+			return std::bit_cast<std::uint32_t>(value) != 0;
+		}
+
+		// created, digitized, modified and year, from the dates: the first of each by the one ladder, the tags
+		// that record a moment directly ahead of those an editor rewrites.
+		void settle(properties& p)
+		{
+			const auto first = [&p](const std::initializer_list<date_source> ladder) -> const date*
 			{
-				auto value = 0.0;
-				const auto [end, ec] = std::from_chars(part.data(), part.data() + part.size(), value);
-				if (ec != std::errc{} || end != part.data() + part.size() || !std::isfinite(value)) return {};
-				return value;
+				for (const auto source : ladder)
+				{
+					for (const auto& d : p.dates)
+					{
+						if (d.source == source) return &d.when;
+					}
+				}
+
+				return nullptr;
 			};
 
-			if (slash == std::string::npos) return parse(s);
+			const auto* const original = first({
+				date_source::exif_original, date_source::xmp_exif_original, date_source::iptc_created,
+				date_source::xmp_photoshop_created
+			});
+			const auto* const digitized = first({
+				date_source::exif_digitized, date_source::xmp_exif_digitized, date_source::iptc_digitized,
+				date_source::xmp_create
+			});
+			const auto* const modified = first({date_source::exif_modified, date_source::xmp_modify});
 
-			const auto numerator = parse(std::string_view(s).substr(0, slash));
-			const auto denominator = parse(std::string_view(s).substr(slash + 1));
-			if (!numerator || !denominator || *denominator == 0.0) return {};
-			return *numerator / *denominator;
+			if (original) p.created = *original;
+			else if (digitized) p.created = *digitized;
+			if (digitized) p.digitized = *digitized;
+			if (modified) p.modified = *modified;
+			if (!p.states(property::year) && p.created.valid()) p.year = p.created.year;
 		}
 
-		// "3", or "3/12" with the total, as a track or disc number is written.
-		std::pair<int, int> numbered(const std::string_view text)
+		void copy(properties& into, const properties& from, const property p)
 		{
-			const auto s = trimmed(text);
-			const auto slash = s.find('/');
-			auto of = 0;
-			auto total = 0;
-
-			const auto part = std::string_view(s).substr(0, slash);
-			std::from_chars(part.data(), part.data() + part.size(), of);
-
-			if (slash != std::string::npos)
+			switch (p)
 			{
-				const auto rest = std::string_view(s).substr(slash + 1);
-				std::from_chars(rest.data(), rest.data() + rest.size(), total);
+			case property::title: into.title = from.title; break;
+			case property::artist: into.artist = from.artist; break;
+			case property::album: into.album = from.album; break;
+			case property::album_artist: into.album_artist = from.album_artist; break;
+			case property::composer: into.composer = from.composer; break;
+			case property::performer: into.performer = from.performer; break;
+			case property::genre: into.genre = from.genre; break;
+			case property::publisher: into.publisher = from.publisher; break;
+			case property::copyright: into.copyright = from.copyright; break;
+			case property::description: into.description = from.description; break;
+			case property::synopsis: into.synopsis = from.synopsis; break;
+			case property::show: into.show = from.show; break;
+			case property::encoder: into.encoder = from.encoder; break;
+			case property::camera_make: into.camera_make = from.camera_make; break;
+			case property::camera_model: into.camera_model = from.camera_model; break;
+			case property::comments: into.comments = from.comments; break;
+			case property::keywords: into.keywords = from.keywords; break;
+			case property::rating: into.rating = from.rating; break;
+			case property::year: into.year = from.year; break;
+			case property::track:
+				into.track = from.track;
+				into.track_count = from.track_count;
+				break;
+			case property::disc:
+				into.disc = from.disc;
+				into.disc_count = from.disc_count;
+				break;
+			case property::season: into.season = from.season; break;
+			case property::episode:
+				into.episode = from.episode;
+				into.episode_count = from.episode_count;
+				break;
+			case property::media_kind: into.media_kind = from.media_kind; break;
+			case property::original_release: into.original_release = from.original_release; break;
+			case property::location: into.location = from.location; break;
+			case property::altitude: into.altitude = from.altitude; break;
+			case property::speed: into.speed = from.speed; break;
+			case property::lens: into.lens = from.lens; break;
+			case property::f_number: into.f_number = from.f_number; break;
+			case property::exposure_time: into.exposure_time = from.exposure_time; break;
+			case property::focal_length: into.focal_length = from.focal_length; break;
+			case property::focal_length_35mm: into.focal_length_35mm = from.focal_length_35mm; break;
+			case property::iso_speed: into.iso_speed = from.iso_speed; break;
+			case property::orientation: into.orientation = from.orientation; break;
+			case property::city: into.city = from.city; break;
+			case property::state: into.state = from.state; break;
+			case property::country: into.country = from.country; break;
+			case property::credit: into.credit = from.credit; break;
+			case property::source: into.source = from.source; break;
+			case property::creators: into.creators = from.creators; break;
+			case property::copyright_url: into.copyright_url = from.copyright_url; break;
+			case property::label: into.label = from.label; break;
+			case property::raw_file_name: into.raw_file_name = from.raw_file_name; break;
+			case property::panorama: into.panorama = from.panorama; break;
+			}
+		}
+
+		// What a block that joins a property adds to it: IPTC's keywords to those before them, sorted; and its
+		// by-lines to the artist's names, after them.
+		void join(properties& into, const properties& from, const property p)
+		{
+			if (p == property::keywords)
+			{
+				auto keywords = from.keywords;
+				keywords.insert(keywords.end(), into.keywords.begin(), into.keywords.end());
+				sort_keywords(keywords);
+				into.keywords = std::move(keywords);
+			}
+			else if (p == property::artist)
+			{
+				auto names = names_in(into.artist);
+				for (auto& name : names_in(from.artist)) names.push_back(std::move(name));
+				into.artist = joined_names(names);
+			}
+			else
+			{
+				copy(into, from, p);
+			}
+		}
+
+		// ---- EXIF and IPTC dates -------------------------------------------------------------------------
+
+		void add_exif_date(properties& p, const exif_date& e, const date_source source)
+		{
+			if (e.text.empty()) return;
+
+			auto d = detail::parse_photo_date(e.text);
+			if (!d) return;
+
+			d->nanoseconds = detail::sub_second_nanoseconds(e.sub_second);
+			detail::read_zone(e.offset, *d);
+			p.dates.push_back({source, *d});
+		}
+
+		// GPSDateStamp's day, CCYY:MM:DD, at the time GPSTimeStamp gives in UTC: the moment of the fix.
+		void add_gps_stamp(properties& p, const exif_metadata& m)
+		{
+			if (m.gps_date.empty() || !m.gps_time) return;
+
+			auto d = detail::parse_photo_date(m.gps_date + " 00:00:00");
+			if (!d) return;
+
+			const auto& time = *m.gps_time;
+			const auto seconds = static_cast<std::uint64_t>(time[0]) * 3600 + static_cast<std::uint64_t>(time[1]) * 60 +
+				static_cast<std::uint64_t>(time[2]);
+			if (seconds >= 24 * 3600) return;
+
+			d->has_time = true;
+			d->hour = static_cast<int>(seconds / 3600);
+			d->minute = static_cast<int>(seconds / 60 % 60);
+			d->second = static_cast<int>(seconds % 60);
+			d->zone = date::time_zone::utc;
+			p.dates.push_back({date_source::exif_gps, *d});
+		}
+
+		// IPTC's CCYYMMDD, and its HHMMSS±HHMM when there is one: a day alone is midnight, as the standard means
+		// it, and a time with no day says nothing.
+		void add_iptc_date(properties& p, const std::string_view day, const std::string_view time, const date_source source)
+		{
+			if (day.size() != 8 || !detail::is_number(day)) return;
+
+			auto text = std::string(day.substr(0, 4)) + ':' + std::string(day.substr(4, 2)) + ':' + std::string(day.substr(6, 2));
+			std::string zone;
+			const auto timed = time.size() >= 6 && detail::is_number(time.substr(0, 6));
+
+			if (timed)
+			{
+				text += ' ' + std::string(time.substr(0, 2)) + ':' + std::string(time.substr(2, 2)) + ':' + std::string(time.substr(4, 2));
+
+				if (time.size() == 11 && (time[6] == '+' || time[6] == '-') && detail::is_number(time.substr(7, 4)))
+				{
+					zone = time[6] + std::string(time.substr(7, 2)) + ':' + std::string(time.substr(9, 2));
+				}
+			}
+			else
+			{
+				text += " 00:00:00";
 			}
 
-			return {of > 0 ? of : 0, total > 0 ? total : 0};
-		}
+			auto d = detail::parse_photo_date(text);
+			if (!d) return;
 
-		date exif_date_of(const exif_date& d)
-		{
-			if (d.text.empty()) return {};
-			return detail::parse_media_date(d.text + d.offset);
-		}
-
-		// IPTC's CCYYMMDD, and its HHMMSS+HHMM when there is one.
-		date iptc_date_of(const std::string& day, const std::string& time)
-		{
-			if (day.empty()) return {};
-			return detail::parse_media_date(day + time);
+			d->has_time = timed;
+			if (!zone.empty()) detail::read_zone(zone, *d);
+			p.dates.push_back({source, *d});
 		}
 
 		// ---- XMP ---------------------------------------------------------------------------------------
 
-		std::string simple(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		// A property's text, as the packet holds it: present even as an array or a struct, which hold none.
+		std::optional<std::string> held(const xmp::meta& m, const std::string_view schema, const std::string_view name)
 		{
 			std::string value;
 			if (!m.get_property(schema, name, &value)) return {};
-			return trimmed(value);
+			return value;
 		}
 
-		// Whether a property is in the form its schema gives it. One in another - a simple value where the schema
-		// has an array, as some writers put one, or a struct - reads as none, rather than as the toolkit's error.
+		// Whether a property is in the form its schema gives it.
 		bool has_form(const xmp::meta& m, const std::string_view schema, const std::string_view name, bool (*const form)(xmp::option_bits))
 		{
 			xmp::option_bits options = 0;
 			return m.get_property(schema, name, nullptr, &options) && form(options);
 		}
 
-		std::string localized(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		// An alt-text's x-default item, else its first. Alt-text whose items are not each simple with a
+		// language - as parsing leaves an alias given a struct - is refused by the toolkit, and reads as none.
+		std::optional<std::string> localized(const xmp::meta& m, const std::string_view schema, const std::string_view name)
 		{
-			if (!has_form(m, schema, name, xmp::is_alt_text)) return {};
-
-			// Alt-text whose items are not each simple with a language - as parsing leaves an alias given a struct,
-			// as the toolkit leaves it - is refused by the toolkit's accessor, and reads as none too.
 			try
 			{
 				std::string value;
 				if (!m.get_localized_text(schema, name, "", "x-default", nullptr, &value)) return {};
-				return trimmed(value);
+				return without_nuls(value);
 			}
 			catch (const xmp::error&)
 			{
@@ -170,287 +338,428 @@ namespace libfiles
 			}
 		}
 
-		std::vector<std::string> items(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		// An array's items that hold text, or nothing for one absent or not an array.
+		std::optional<std::vector<std::string>> items(const xmp::meta& m, const std::string_view schema, const std::string_view name)
 		{
-			std::vector<std::string> values;
-			if (!has_form(m, schema, name, xmp::is_array)) return values;
+			if (!has_form(m, schema, name, xmp::is_array)) return {};
 
+			std::vector<std::string> values;
 			const auto count = m.count_array_items(schema, name);
 
 			for (auto i = 1; i <= count; ++i)
 			{
 				std::string value;
-				if (m.get_array_item(schema, name, i, &value)) values.push_back(std::move(value));
+				if (m.get_array_item(schema, name, i, &value) && !value.empty()) values.push_back(std::move(value));
 			}
 
-			return nonempty(values);
+			return values;
 		}
 
-		date xmp_date(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		std::optional<double> rational(const xmp::meta& m, const std::string_view schema, const std::string_view name)
 		{
-			return detail::parse_media_date(simple(m, schema, name));
+			const auto text = held(m, schema, name);
+			if (!text) return {};
+			const auto r = detail::parse_photo_rational(*text);
+			if (!r) return {};
+			return static_cast<double>(r->first) / static_cast<double>(r->second);
 		}
 
-		// The first of the properties that holds a date.
-		date first_date(const xmp::meta& m, const std::initializer_list<std::pair<std::string_view, std::string_view>> names)
+		// What Google's photo sphere schema has the file declare, never what its shape suggests: the projection
+		// it names, or a panorama in none for a writer that names none but sets a property only one writes.
+		panorama_projection panorama_of(const xmp::meta& m)
 		{
-			for (const auto& [schema, name] : names)
+			if (const auto projection = held(m, ns::gpano, "ProjectionType"))
 			{
-				if (const auto d = xmp_date(m, schema, name); d.valid()) return d;
+				const auto text = trimmed(*projection);
+				if (ascii_equal(text, "equirectangular")) return panorama_projection::equirectangular;
+				if (ascii_equal(text, "cylindrical")) return panorama_projection::cylindrical;
+				if (!text.empty()) return panorama_projection::unspecified;
 			}
 
-			return {};
-		}
+			for (const auto declares : {"UsePanoramaViewer", "FullPanoWidthPixels", "CroppedAreaImageWidthPixels"})
+			{
+				if (m.exists(ns::gpano, declares)) return panorama_projection::unspecified;
+			}
 
-		std::optional<double> xmp_number(const xmp::meta& m, const std::string_view schema, const std::string_view name)
-		{
-			const auto text = simple(m, schema, name);
-			if (text.empty()) return {};
-			return number(text);
-		}
-
-		// A count or a length, whole: none for a number below zero or past what an int holds.
-		int whole(const std::optional<double> value)
-		{
-			constexpr auto past_int = static_cast<double>(std::numeric_limits<int>::max()) + 1.0;
-			if (!value || !(*value >= 0.0 && *value < past_int)) return 0;
-			return static_cast<int>(*value);
-		}
-
-		void take(std::string& into, const std::string& from)
-		{
-			if (into.empty()) into = from;
+			return panorama_projection::none;
 		}
 	}
 
-	properties properties_from_exif(const exif_metadata& exif)
+	properties properties_from_exif(const exif_metadata& m)
 	{
 		properties p;
-		p.title = exif.title;
-		p.artist = exif.artist;
-		p.copyright = exif.copyright;
-		p.description = exif.description;
-		if (!exif.comment.empty()) p.comments.push_back({exif.comment, {}});
-		p.keywords = split_keywords(exif.keywords);
-		if (exif.rating) p.rating = *exif.rating;
-		p.encoder = exif.software;
-		p.camera_make = exif.camera_make;
-		p.camera_model = exif.camera_model;
 
-		p.lens = exif.lens;
-		p.f_number = exif.f_number;
-		p.exposure_time = exif.exposure_time;
-		p.focal_length = exif.focal_length;
-		p.focal_length_35mm = exif.focal_length_35mm;
-		p.iso_speed = exif.iso_speed;
-		p.orientation = exif.orientation;
-
-		p.created = exif_date_of(exif.original);
-		p.digitized = exif_date_of(exif.digitized);
-		p.modified = exif_date_of(exif.modified);
-		p.year = p.created.year;
-
-		if (exif.latitude && exif.longitude)
+		const auto text = [&p](std::string& field, const std::string& value, const property id)
 		{
-			p.location = gps_position{*exif.latitude, *exif.longitude};
+			if (value.empty()) return;
+			field = value;
+			p.mark_stated(id);
+		};
 
-			// read_exif keeps no altitude apart from none, so sea level itself reads as no altitude.
-			if (exif.altitude != 0.0f) p.altitude = exif.altitude;
+		const auto number = [&p](double& field, const float value, const property id)
+		{
+			if (!holds(value)) return;
+			field = value;
+			p.mark_stated(id);
+		};
+
+		if (m.orientation)
+		{
+			p.orientation = m.orientation;
+			p.mark_stated(property::orientation);
 		}
 
+		text(p.camera_make, m.camera_make, property::camera_make);
+		text(p.camera_model, m.camera_model, property::camera_model);
+		text(p.lens, m.lens, property::lens);
+		text(p.encoder, m.software, property::encoder);
+		text(p.artist, m.artist, property::artist);
+		text(p.copyright, m.copyright, property::copyright);
+		text(p.description, m.description, property::description);
+		text(p.title, m.title, property::title);
+
+		if (!m.comment.empty())
+		{
+			p.comments.push_back({m.comment, {}});
+			p.mark_stated(property::comments);
+		}
+
+		// Windows' XPKeywords: keywords separated by semicolons.
+		if (auto keywords = names_in(m.keywords); !keywords.empty())
+		{
+			p.keywords = std::move(keywords);
+			p.mark_stated(property::keywords);
+		}
+
+		number(p.f_number, m.f_number, property::f_number);
+		number(p.exposure_time, m.exposure_time, property::exposure_time);
+		number(p.focal_length, m.focal_length, property::focal_length);
+		number(p.speed, m.speed, property::speed);
+
+		if (m.focal_length_35mm != 0)
+		{
+			p.focal_length_35mm = m.focal_length_35mm;
+			p.mark_stated(property::focal_length_35mm);
+		}
+
+		if (m.iso_speed != 0)
+		{
+			p.iso_speed = m.iso_speed;
+			p.mark_stated(property::iso_speed);
+		}
+
+		if (m.rating)
+		{
+			p.rating = *m.rating;
+			p.mark_stated(property::rating);
+		}
+
+		if (m.latitude && m.longitude)
+		{
+			p.location = gps_position{*m.latitude, *m.longitude};
+			p.mark_stated(property::location);
+		}
+
+		if (holds(m.altitude))
+		{
+			p.altitude = m.altitude;
+			p.mark_stated(property::altitude);
+		}
+
+		add_exif_date(p, m.original, date_source::exif_original);
+		add_exif_date(p, m.digitized, date_source::exif_digitized);
+		add_exif_date(p, m.modified, date_source::exif_modified);
+		add_gps_stamp(p, m);
+		settle(p);
 		return p;
 	}
 
-	properties properties_from_iptc(const iptc_fields& iptc)
+	properties properties_from_iptc(const iptc_fields& f)
 	{
 		properties p;
-		p.title = trimmed(iptc.object_name);
-		p.description = trimmed(iptc.caption);
-		p.artist = joined(iptc.bylines);
-		p.copyright = trimmed(iptc.copyright);
-		p.keywords = nonempty(iptc.keywords);
-		p.city = trimmed(iptc.city);
-		p.state = trimmed(iptc.state);
-		p.country = trimmed(iptc.country);
-		p.credit = trimmed(iptc.credit);
-		p.source = trimmed(iptc.source);
-		p.created = iptc_date_of(iptc.date_created, iptc.time_created);
-		p.digitized = iptc_date_of(iptc.digital_creation_date, iptc.digital_creation_time);
-		p.year = p.created.year;
+
+		const auto text = [&p](std::string& field, const std::string& value, const property id)
+		{
+			if (value.empty()) return;
+			field = value;
+			p.mark_stated(id);
+		};
+
+		text(p.description, f.caption, property::description);
+		text(p.title, f.object_name, property::title);
+		text(p.city, f.city, property::city);
+		text(p.state, f.state, property::state);
+		text(p.country, f.country, property::country);
+		text(p.credit, f.credit, property::credit);
+		text(p.source, f.source, property::source);
+		text(p.copyright, f.copyright, property::copyright);
+
+		add_iptc_date(p, f.date_created, f.time_created, date_source::iptc_created);
+		add_iptc_date(p, f.digital_creation_date, f.digital_creation_time, date_source::iptc_digitized);
+
+		// Sorted and each once, as the join leaves them.
+		for (const auto& keyword : f.keywords)
+		{
+			if (!keyword.empty()) p.keywords.push_back(keyword);
+		}
+
+		if (!p.keywords.empty())
+		{
+			sort_keywords(p.keywords);
+			p.mark_joined(property::keywords);
+		}
+
+		std::vector<std::string> bylines;
+
+		for (const auto& byline : f.bylines)
+		{
+			if (const auto name = trimmed(byline); !name.empty()) bylines.emplace_back(name);
+		}
+
+		if (!bylines.empty())
+		{
+			p.artist = joined_names(bylines);
+			p.mark_joined(property::artist);
+		}
+
+		settle(p);
 		return p;
 	}
 
 	properties properties_from_xmp(const xmp::meta& m)
 	{
 		properties p;
-		p.title = localized(m, ns::dc, "title");
-		p.description = localized(m, ns::dc, "description");
-		p.copyright = localized(m, ns::dc, "rights");
 
-		// A recording's artist, else the creators of a photo.
-		p.artist = simple(m, ns::dm, "artist");
-		if (p.artist.empty()) p.artist = joined(items(m, ns::dc, "creator"));
-
-		p.album = simple(m, ns::dm, "album");
-		p.album_artist = simple(m, ns::dm, "albumArtist");
-		p.composer = simple(m, ns::dm, "composer");
-		p.genre = simple(m, ns::dm, "genre");
-		p.publisher = joined(items(m, ns::dc, "publisher"));
-		p.synopsis = simple(m, ns::dm, "synopsis");
-		p.show = simple(m, ns::dm, "show");
-		p.encoder = simple(m, ns::xmp, "CreatorTool");
-		p.camera_make = simple(m, ns::tiff, "Make");
-		p.camera_model = simple(m, ns::tiff, "Model");
-		p.keywords = items(m, ns::dc, "subject");
-
-		auto comment = simple(m, ns::dm, "logComment");
-		if (comment.empty()) comment = localized(m, ns::exif, "UserComment");
-		if (!comment.empty()) p.comments.push_back({std::move(comment), {}});
-
-		if (const auto rating = xmp_number(m, ns::xmp, "Rating"))
+		const auto text = [&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
 		{
-			p.rating = static_cast<int>(std::lround(std::clamp(*rating, -1.0, 5.0)));
+			const auto value = held(m, schema, name);
+			if (!value) return;
+			field = without_nuls(*value);
+			p.mark_stated(id);
+		};
+
+		const auto alt_text = [&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
+		{
+			auto value = localized(m, schema, name);
+			if (!value) return;
+			field = std::move(*value);
+			p.mark_stated(id);
+		};
+
+		// A date with the zone its text ends in; the text of one that holds no date, for xmp:CreateDate's year.
+		const auto date_of = [&p, &m](const std::string_view schema, const std::string_view name, const date_source source)
+		{
+			auto value = held(m, schema, name);
+			if (!value) return std::optional<std::string>{};
+
+			if (auto d = detail::parse_photo_date(*value))
+			{
+				detail::read_zone(*value, *d);
+				p.dates.push_back({source, *d});
+				return std::optional<std::string>{};
+			}
+
+			return value;
+		};
+
+		date_of(ns::photoshop, "DateCreated", date_source::xmp_photoshop_created);
+
+		if (const auto year = date_of(ns::xmp, "CreateDate", date_source::xmp_create); year && detail::is_number(*year))
+		{
+			p.year = detail::leading_int(*year);
+			p.mark_stated(property::year);
 		}
 
-		std::tie(p.track, p.track_count) = numbered(simple(m, ns::dm, "trackNumber"));
-		std::tie(p.disc, p.disc_count) = numbered(simple(m, ns::dm, "discNumber"));
-		p.season = numbered(simple(m, ns::dm, "season")).first;
-		p.episode = numbered(simple(m, ns::dm, "episode")).first;
+		date_of(ns::xmp, "ModifyDate", date_source::xmp_modify);
+		date_of(ns::exif, "DateTimeDigitized", date_source::xmp_exif_digitized);
+		date_of(ns::exif, "DateTimeOriginal", date_source::xmp_exif_original);
 
-		// MWG's Date Created, which a recording keeps as its creation date; then Date Digitized and Date
-		// Modified, each with its EXIF copy in the packet.
-		p.created = first_date(m, {{ns::photoshop, "DateCreated"}, {ns::exif, "DateTimeOriginal"}, {ns::xmp, "CreateDate"}});
-		p.digitized = first_date(m, {{ns::xmp, "CreateDate"}, {ns::exif, "DateTimeDigitized"}});
-		p.modified = first_date(m, {{ns::xmp, "ModifyDate"}, {ns::tiff, "DateTime"}});
-		p.original_release = xmp_date(m, ns::dm, "releaseDate");
-		p.year = p.created.year;
+		// A coordinate as a pair, or not at all: one half alone would pin the photo to a place neither block
+		// states.
+		const auto latitude = held(m, ns::exif, "GPSLatitude");
+		const auto longitude = held(m, ns::exif, "GPSLongitude");
+		const auto lat = latitude ? detail::parse_photo_coordinate(*latitude, true) : std::nullopt;
+		const auto lon = longitude ? detail::parse_photo_coordinate(*longitude, false) : std::nullopt;
 
-		const auto latitude = detail::parse_xmp_gps(simple(m, ns::exif, "GPSLatitude"));
-		const auto longitude = detail::parse_xmp_gps(simple(m, ns::exif, "GPSLongitude"));
-
-		if (latitude && longitude)
+		if (lat && lon)
 		{
-			const gps_position position{detail::gps_degrees(*latitude), detail::gps_degrees(*longitude)};
+			p.location = gps_position{*lat, *lon};
+			p.mark_stated(property::location);
+		}
 
-			// What a receiver with no fix writes, as read_exif refuses it.
-			if (position.latitude != 0.0 || position.longitude != 0.0)
+		text(p.city, ns::photoshop, "City", property::city);
+		text(p.state, ns::photoshop, "State", property::state);
+		text(p.country, ns::photoshop, "Country", property::country);
+		text(p.credit, ns::photoshop, "Credit", property::credit);
+		text(p.copyright_url, ns::xmp_rights, "WebStatement", property::copyright_url);
+		text(p.source, ns::photoshop, "Source", property::source);
+
+		if (auto creators = items(m, ns::dc, "creator"); creators && !creators->empty())
+		{
+			p.creators = std::move(*creators);
+			p.mark_stated(property::creators);
+		}
+
+		alt_text(p.copyright, ns::dc, "rights", property::copyright);
+		alt_text(p.title, ns::dc, "title", property::title);
+
+		// exif:UserComment, or dm:logComment over it.
+		std::optional<std::string> comment = localized(m, ns::exif, "UserComment");
+		if (const auto log = held(m, ns::dm, "logComment")) comment = without_nuls(*log);
+
+		if (comment)
+		{
+			p.comments.push_back({std::move(*comment), {}});
+			p.mark_stated(property::comments);
+		}
+
+		text(p.synopsis, ns::dm, "synopsis", property::synopsis);
+		alt_text(p.description, ns::dc, "description", property::description);
+
+		// xmp:Rating, -1 to 5; else Windows' MicrosoftPhoto:Rating, a percent read in fifths rounded up.
+		if (const auto rating = held(m, ns::xmp, "Rating"))
+		{
+			p.rating = std::clamp(detail::leading_int(*rating), -1, 5);
+			p.mark_stated(property::rating);
+		}
+		else if (const auto percent = held(m, ns::microsoft_photo, "Rating"))
+		{
+			const auto value = detail::leading_int(*percent);
+			p.rating = std::clamp(value % 20 ? value / 20 + 1 : value / 20, -1, 5);
+			p.mark_stated(property::rating);
+		}
+
+		text(p.label, ns::xmp, "Label", property::label);
+
+		// An empty dc:subject is the file stating it has no keywords, as a writer that clears them leaves it.
+		if (auto keywords = items(m, ns::dc, "subject"))
+		{
+			p.keywords = std::move(*keywords);
+			p.mark_stated(property::keywords);
+		}
+
+		text(p.camera_make, ns::tiff, "Make", property::camera_make);
+		text(p.camera_model, ns::tiff, "Model", property::camera_model);
+		text(p.album, ns::dm, "album", property::album);
+		text(p.album_artist, ns::dm, "albumArtist", property::album_artist);
+		text(p.artist, ns::dm, "artist", property::artist);
+		text(p.genre, ns::dm, "genre", property::genre);
+		text(p.show, ns::dm, "show", property::show);
+
+		const auto numbered = [&p, &m](int& of, int& total, const std::string_view name, const property id)
+		{
+			const auto value = held(m, ns::dm, name);
+			if (!value) return;
+			const auto [n, count] = detail::parse_number_pair(*value);
+			of = std::max(n, 0);
+			total = std::max(count, 0);
+			p.mark_stated(id);
+		};
+
+		numbered(p.track, p.track_count, "trackNumber", property::track);
+		numbered(p.disc, p.disc_count, "discNumber", property::disc);
+		numbered(p.episode, p.episode_count, "episode", property::episode);
+
+		if (const auto season = held(m, ns::dm, "season"))
+		{
+			p.season = detail::leading_int(*season);
+			p.mark_stated(property::season);
+		}
+
+		// Whole millimetres, rounded half away from zero; none below zero, as one past an int's range rounds to.
+		if (const auto focal35 = rational(m, ns::exif, "FocalLengthIn35mmFilm"))
+		{
+			p.focal_length_35mm = std::max(detail::round_to_int(*focal35), 0);
+			p.mark_stated(property::focal_length_35mm);
+		}
+
+		const auto real = [&p, &m](double& field, const std::string_view name, const property id)
+		{
+			const auto value = rational(m, ns::exif, name);
+			if (!value) return;
+			field = *value;
+			p.mark_stated(id);
+		};
+
+		real(p.f_number, "FNumber", property::f_number);
+		real(p.focal_length, "FocalLength", property::focal_length);
+		real(p.exposure_time, "ExposureTime", property::exposure_time);
+
+		if (const auto orientation = held(m, ns::tiff, "Orientation"))
+		{
+			if (const auto o = detail::leading_int(*orientation); o >= 1 && o <= 8)
 			{
-				p.location = position;
-
-				if (const auto altitude = xmp_number(m, ns::exif, "GPSAltitude"))
-				{
-					p.altitude = simple(m, ns::exif, "GPSAltitudeRef") == "1" ? -*altitude : *altitude;
-				}
+				p.orientation = static_cast<std::uint16_t>(o);
+				p.mark_stated(property::orientation);
 			}
 		}
 
-		p.lens = simple(m, ns::exif_ex, "LensModel");
-		if (p.lens.empty()) p.lens = simple(m, ns::exif_aux, "Lens");
-		p.f_number = xmp_number(m, ns::exif, "FNumber").value_or(0.0);
-		p.exposure_time = xmp_number(m, ns::exif, "ExposureTime").value_or(0.0);
-		p.focal_length = xmp_number(m, ns::exif, "FocalLength").value_or(0.0);
-		p.focal_length_35mm = whole(xmp_number(m, ns::exif, "FocalLengthIn35mmFilm"));
+		text(p.lens, ns::exif_aux, "Lens", property::lens);
+		text(p.raw_file_name, ns::camera_raw, "RawFileName", property::raw_file_name);
 
-		const auto iso = items(m, ns::exif, "ISOSpeedRatings");
-		if (!iso.empty()) p.iso_speed = whole(number(iso.front()));
-
-		if (const auto orientation = xmp_number(m, ns::tiff, "Orientation"); orientation && *orientation >= 1 && *orientation <= 8)
+		if (const auto panorama = panorama_of(m); panorama != panorama_projection::none)
 		{
-			p.orientation = static_cast<std::uint16_t>(*orientation);
+			p.panorama = panorama;
+			p.mark_stated(property::panorama);
 		}
 
-		p.city = simple(m, ns::photoshop, "City");
-		p.state = simple(m, ns::photoshop, "State");
-		p.country = simple(m, ns::photoshop, "Country");
-		p.credit = simple(m, ns::photoshop, "Credit");
-		p.source = simple(m, ns::photoshop, "Source");
+		settle(p);
 		return p;
 	}
 
-	void fill_missing(properties& into, const properties& from)
+	properties properties_from_xmp(const std::span<const std::uint8_t> packet)
 	{
-		take(into.title, from.title);
-		take(into.artist, from.artist);
-		take(into.album, from.album);
-		take(into.album_artist, from.album_artist);
-		take(into.composer, from.composer);
-		take(into.performer, from.performer);
-		take(into.genre, from.genre);
-		take(into.publisher, from.publisher);
-		take(into.copyright, from.copyright);
-		take(into.description, from.description);
-		take(into.synopsis, from.synopsis);
-		take(into.show, from.show);
-		take(into.encoder, from.encoder);
-		take(into.camera_make, from.camera_make);
-		take(into.camera_model, from.camera_model);
-		if (into.comments.empty()) into.comments = from.comments;
-		if (into.keywords.empty()) into.keywords = from.keywords;
-		if (!into.rating) into.rating = from.rating;
-		if (!into.media_kind) into.media_kind = from.media_kind;
-
-		const std::pair<int*, int> numbers[] = {
-			{&into.year, from.year}, {&into.track, from.track}, {&into.track_count, from.track_count}, {&into.disc, from.disc},
-			{&into.disc_count, from.disc_count}, {&into.season, from.season}, {&into.episode, from.episode},
-			{&into.focal_length_35mm, from.focal_length_35mm}, {&into.iso_speed, from.iso_speed},
-		};
-
-		for (const auto& [mine, theirs] : numbers)
+		try
 		{
-			if (*mine == 0) *mine = theirs;
+			if (packet.empty()) return {};
+
+			// A JPEG APP1 segment's signature, which ends in the NUL that ends the segment's header.
+			constexpr std::string_view signature{"http://ns.adobe.com/xap/1.0/\0", 29};
+			std::string_view text(reinterpret_cast<const char*>(packet.data()), packet.size());
+			if (text.size() > signature.size() && text.starts_with(signature)) text.remove_prefix(signature.size());
+
+			xmp::meta m;
+			m.parse(text);
+			return properties_from_xmp(m);
+		}
+		catch (const std::exception&)
+		{
+			return {};
+		}
+	}
+
+	void overlay(properties& into, const properties& from)
+	{
+		for (auto i = 0u; i <= static_cast<unsigned>(last_property); ++i)
+		{
+			const auto p = static_cast<property>(i);
+			if (!from.states(p)) continue;
+
+			if (from.joins(p)) join(into, from, p);
+			else copy(into, from, p);
+
+			into.mark_stated(p);
 		}
 
-		const std::pair<date*, const date*> dates[] = {
-			{&into.created, &from.created}, {&into.original_release, &from.original_release}, {&into.digitized, &from.digitized},
-			{&into.modified, &from.modified},
-		};
-
-		for (const auto& [mine, theirs] : dates)
-		{
-			if (!mine->valid()) *mine = *theirs;
-		}
-
-		if (!into.location)
-		{
-			into.location = from.location;
-			if (!into.altitude) into.altitude = from.altitude;
-		}
-
-		take(into.lens, from.lens);
-		if (into.f_number == 0.0) into.f_number = from.f_number;
-		if (into.exposure_time == 0.0) into.exposure_time = from.exposure_time;
-		if (into.focal_length == 0.0) into.focal_length = from.focal_length;
-		if (!into.orientation) into.orientation = from.orientation;
-		take(into.city, from.city);
-		take(into.state, from.state);
-		take(into.country, from.country);
-		take(into.credit, from.credit);
-		take(into.source, from.source);
+		into.dates.insert(into.dates.end(), from.dates.begin(), from.dates.end());
+		settle(into);
 	}
 
 	properties read_properties(reader& r, const scan_limits& limits)
 	{
 		properties result;
 
-		// Each block reconciled into what the blocks before it gave. One that cannot be read gives nothing, and
-		// costs the others nothing.
+		// Each block read over what the blocks before it gave. One that cannot be read gives nothing, and costs
+		// the others nothing.
 		const auto add = [&result](const auto& read)
 		{
 			try
 			{
-				fill_missing(result, read());
+				overlay(result, read());
 			}
 			catch (const std::exception&)
 			{
 			}
-		};
-
-		const auto packet = [](const std::vector<std::uint8_t>& bytes)
-		{
-			if (bytes.empty()) return properties{};
-			xmp::meta m;
-			m.parse({reinterpret_cast<const char*>(bytes.data()), bytes.size()});
-			return properties_from_xmp(m);
 		};
 
 		try
@@ -464,18 +773,20 @@ namespace libfiles
 				const auto scanned = scan_media(r, scan_intent::index, limits);
 				if (!scanned.error.empty()) return result;
 
-				add([&] { return packet(scanned.xmp); });
-				fill_missing(result, scanned.properties);
+				// A recording's own year stands against the dates its packet gives.
+				result = scanned.properties;
+				if (result.year != 0) result.mark_stated(property::year);
+				add([&] { return properties_from_xmp(scanned.xmp); });
 			}
 			else if (can_scan(type.image))
 			{
 				const auto scanned = scan(r, scan_intent::index, limits);
 				if (!scanned.error.empty()) return result;
 
-				add([&] { return packet(scanned.metadata.xmp); });
 				if (scanned.tiff_metadata) add([&] { return properties_from_exif(*scanned.tiff_metadata); });
 				else if (!scanned.metadata.exif.empty()) add([&] { return properties_from_exif(read_exif(scanned.metadata.exif)); });
 				if (!scanned.metadata.iptc.empty()) add([&] { return properties_from_iptc(read_iptc(scanned.metadata.iptc)); });
+				add([&] { return properties_from_xmp(scanned.metadata.xmp); });
 
 				// A JPEG XL codestream's own orientation, where no block states one.
 				if (!result.orientation) result.orientation = scanned.orientation;

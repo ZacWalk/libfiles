@@ -559,6 +559,42 @@ namespace libfiles
 			return row;
 		}
 
+		icc_summary summarize(const profile& p)
+		{
+			icc_summary s;
+
+			const std::pair<std::uint32_t, std::string*> named[] = {
+				{tag_desc, &s.name},
+				{tag_dmdd, &s.device_model},
+				{tag_dmnd, &s.device_manufacturer},
+				{tag_cprt, &s.copyright}
+			};
+
+			for (const auto& [sig, field] : named)
+			{
+				const auto found = p.tags.find(sig);
+
+				if (found != p.tags.end())
+				{
+					const auto decoded = decode_text(found->second);
+					*field = strip_nuls(decoded);
+				}
+			}
+
+			s.colour_space = signature_named(p.colour_space, space_name(p.colour_space));
+			s.primaries = primaries_name(p);
+
+			const auto curve = p.tags.find(tag_red_curve);
+			if (curve != p.tags.end()) s.tone_response = describe_curve(curve->second);
+
+			xyz white;
+			if (tag_xyz(p, tag_wtpt, white)) s.white_point = describe_chromaticity(white);
+
+			const auto intent = intent_name(p.intent);
+			s.rendering_intent = intent.empty() ? std::format("{}", p.intent) : std::string(intent);
+			return s;
+		}
+
 		std::vector<structure_row> list(const profile& p)
 		{
 			std::vector<structure_row> rows;
@@ -567,42 +603,25 @@ namespace libfiles
 			// rather than presented as more of the file's own content.
 			add_container(rows, "Summary", "icc.summary");
 
-			const std::pair<std::uint32_t, std::string_view> named[] = {
-				{tag_desc, "Profile"},
-				{tag_dmdd, "Device model"},
-				{tag_dmnd, "Device manufacturer"},
-				{tag_cprt, "Copyright"}
+			const auto s = summarize(p);
+			const std::pair<std::string_view, const std::string*> summary[] = {
+				{"Profile", &s.name},
+				{"Device model", &s.device_model},
+				{"Device manufacturer", &s.device_manufacturer},
+				{"Copyright", &s.copyright},
+				{"Colour space", &s.colour_space},
+				{"Primaries", &s.primaries},
+				{"Tone response", &s.tone_response},
+				{"White point", &s.white_point},
+				{"Rendering intent", &s.rendering_intent},
 			};
 
-			for (const auto& [sig, name] : named)
+			for (const auto& [name, value] : summary)
 			{
-				const auto found = p.tags.find(sig);
-
-				if (found != p.tags.end())
-				{
-					const auto decoded = decode_text(found->second);
-					const auto text = strip_nuls(decoded);
-					if (!text.empty()) add_row(rows, std::string(name), std::string(text), 1);
-				}
+				if (!value->empty()) add_row(rows, std::string(name), *value, 1);
 			}
-
-			add_row(rows, "Colour space", signature_named(p.colour_space, space_name(p.colour_space)), 1);
-
-			const auto primaries = primaries_name(p);
-			if (!primaries.empty()) add_row(rows, "Primaries", primaries, 1);
-
-			const auto curve = p.tags.find(tag_red_curve);
-			if (curve != p.tags.end())
-			{
-				const auto described = describe_curve(curve->second);
-				if (!described.empty()) add_row(rows, "Tone response", described, 1);
-			}
-
-			xyz white;
-			if (tag_xyz(p, tag_wtpt, white)) add_row(rows, "White point", describe_chromaticity(white), 1);
 
 			const auto intent = intent_name(p.intent);
-			add_row(rows, "Rendering intent", intent.empty() ? std::format("{}", p.intent) : std::string(intent), 1);
 
 			// The header is fixed content the file really carries, so it is listed whole.
 			add_container(rows, "Header", "icc.header");
@@ -775,5 +794,12 @@ namespace libfiles
 		profile p;
 		if (!load(p, data)) return {};
 		return list(p);
+	}
+
+	std::optional<icc_summary> summarize_icc(const std::span<const std::uint8_t> data)
+	{
+		profile p;
+		if (!load(p, data)) return {};
+		return summarize(p);
 	}
 }

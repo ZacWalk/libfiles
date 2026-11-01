@@ -117,6 +117,40 @@ TEST("icc summary names a profile, its space and primaries, tone response, white
 	for (const auto& row : summary) CHECK_EQ(row.depth, 1);
 }
 
+TEST("icc summary reads as the listing's summary, field by field")
+{
+	for (const auto which : {srgb, display_p3, adobe_rgb, greyscale, press, odd_text})
+	{
+		const auto& profile = corpus(which);
+		const auto summary = libfiles::summarize_icc(profile);
+		CHECK(summary.has_value());
+		if (!summary) continue;
+
+		// The listing leaves out what the summary leaves empty.
+		const auto listed = section(list_icc(profile), "icc.summary");
+		const auto value = [&listed](const std::string_view key)
+		{
+			const auto v = value_of(listed, key);
+			return v == "(absent)" ? std::string{} : v;
+		};
+		CHECK_STR(summary->name, value("Profile"));
+		CHECK_STR(summary->device_model, value("Device model"));
+		CHECK_STR(summary->device_manufacturer, value("Device manufacturer"));
+		CHECK_STR(summary->copyright, value("Copyright"));
+		CHECK_STR(summary->colour_space, value("Colour space"));
+		CHECK_STR(summary->primaries, value("Primaries"));
+		CHECK_STR(summary->tone_response, value("Tone response"));
+		CHECK_STR(summary->white_point, value("White point"));
+		CHECK_STR(summary->rendering_intent, value("Rendering intent"));
+	}
+
+	CHECK_STR(libfiles::summarize_icc(corpus(srgb))->name, "sRGB IEC61966-2.1");
+	CHECK_STR(libfiles::summarize_icc(corpus(srgb))->primaries, "approximately sRGB");
+	CHECK(!libfiles::summarize_icc({}).has_value());
+	CHECK(!libfiles::summarize_icc(corpus(short_block)).has_value());
+	CHECK(!libfiles::summarize_icc(corpus(unsigned_header)).has_value());
+}
+
 TEST("icc header is listed whole, each signature with its meaning")
 {
 	const auto header = section(list_icc(corpus(srgb)), "icc.header");

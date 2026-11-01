@@ -118,13 +118,14 @@ const auto info = libfiles::scan(r);           // never throws for malformed inp
 ```
 
 The properties an organizer files by read the same way from a photo or a
-recording - the XMP packet first, then EXIF and IPTC or the container's tags:
+recording - a photo's EXIF, its IPTC and then its XMP packet, each over the last,
+or a recording's tags and then its packet - with what each block states:
 
 ```cpp
 #include "libfiles/properties.h"
 
 const auto p = libfiles::read_properties(r);   // empty for a file libfiles does not read
-// p.title, p.artist, p.keywords, p.rating, p.created, p.location, p.camera_model, ...
+// p.title, p.artist, p.keywords, p.rating, p.created, p.dates, p.location, p.camera_model, ...
 ```
 
 An EXIF block - `info.metadata.exif`, or one found elsewhere - reads into what an

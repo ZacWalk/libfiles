@@ -45,7 +45,8 @@ namespace libfiles
 	// Reads only the header; image data may be absent. No result means an invalid or incomplete header.
 	std::optional<webp_header> probe_webp_header(reader& input);
 
-	// Metadata payloads as the file stores them, with the container's framing removed.
+	// Metadata payloads as the file stores them, with the container's framing removed. A block can run to
+	// megabytes, so the set moves rather than copies; clone() is the copy, spelled out.
 	struct metadata_blocks
 	{
 		std::vector<std::uint8_t> exif; // a TIFF stream, from its byte-order mark
@@ -53,6 +54,23 @@ namespace libfiles
 		std::vector<std::uint8_t> iptc; // IPTC-IIM records
 		std::vector<std::uint8_t> icc; // the colour profile
 		std::vector<std::uint8_t> photoshop; // other Photoshop image resources, as '8BIM' blocks
+
+		metadata_blocks() = default;
+		metadata_blocks(const metadata_blocks&) = delete;
+		metadata_blocks& operator=(const metadata_blocks&) = delete;
+		metadata_blocks(metadata_blocks&&) noexcept = default;
+		metadata_blocks& operator=(metadata_blocks&&) noexcept = default;
+
+		metadata_blocks clone() const
+		{
+			metadata_blocks result;
+			result.exif = exif;
+			result.xmp = xmp;
+			result.iptc = iptc;
+			result.icc = icc;
+			result.photoshop = photoshop;
+			return result;
+		}
 	};
 
 	struct scan_result

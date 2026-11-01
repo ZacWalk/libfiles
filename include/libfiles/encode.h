@@ -42,7 +42,8 @@ namespace libfiles
 		bool limited_range = false;
 	};
 
-	// What an encoder embeds beside the pixels. Any can be empty.
+	// What an encoder embeds beside the pixels: views of the blocks, which must outlive the encode. Any can
+	// be empty.
 	struct embedded_metadata
 	{
 		// A TIFF stream, with or without the "Exif\0\0" signature a JPEG's APP1 begins with.
@@ -52,7 +53,15 @@ namespace libfiles
 		std::span<const std::uint8_t> iptc;
 		std::span<const std::uint8_t> icc;
 		// Photoshop image resources other than the IPTC one, as 8BIM records.
-		std::span<const std::uint8_t> photoshop_resources;
+		std::span<const std::uint8_t> photoshop;
+
+		embedded_metadata() = default;
+
+		// The blocks a scan read, or a caller assembled, embedded as they are.
+		embedded_metadata(const metadata_blocks& blocks) noexcept :
+			exif(blocks.exif), xmp(blocks.xmp), iptc(blocks.iptc), icc(blocks.icc), photoshop(blocks.photoshop)
+		{
+		}
 	};
 
 	// An image encoded, with what the encoder noted on the way.
@@ -166,6 +175,21 @@ namespace libfiles
 		std::unique_ptr<state> _state;
 	};
 
+	// A re-encoded JPEG with the descriptive segments of the JPEG it was made from in place of its own:
+	// EXIF, XMP, IPTC, comments, vendor segments and an RGB ICC profile, copied byte for byte but for what
+	// re-encoding invalidated - the EXIF and XMP orientation becomes 1, for the new pixels are upright, the
+	// EXIF pixel dimensions become width by height, and the EXIF and JFIF thumbnails are dropped. Segments
+	// describing the old encoding - Adobe's colour transform, the tables - or pointing into the old file - a
+	// multi-picture index - are dropped, and so is an EXIF block too malformed to correct. source need hold
+	// only its header, as read_jpeg_header gives it. Empty when either is not a well-formed JPEG. Needs no
+	// codec.
+	std::vector<std::uint8_t> carry_jpeg_metadata(std::span<const std::uint8_t> source,
+	                                              std::span<const std::uint8_t> encoded, int width, int height);
+
+	// SOI and the marker segments before a JPEG's first scan, read no further. Empty when the stream is not
+	// a JPEG, or its header is malformed or larger than a photo's (32 MiB).
+	std::vector<std::uint8_t> read_jpeg_header(reader& input);
+
 	// Encodes bgrx8 as an RGB PNG and anything else as RGBA - straight alpha, bgra8 - with the ICC
 	// profile, the XMP and the EXIF, or an EXIF holding only the orientation when there is none and the
 	// orientation is not 1. Throws encode_error.
@@ -179,6 +203,12 @@ namespace libfiles
 		bool lossy_alpha = false;
 		// Trades a few percent of size for a several-times cheaper encode, for output nothing reads back.
 		bool fast = false;
+		// Keeps the colour under fully transparent pixels, which libwebp otherwise may change to compress
+		// better.
+		bool exact = false;
+		// libwebp's effort, 0 to 6, with lossless at the quality given; or -1 for libfiles' own: 6, or 2
+		// when fast, and lossless from libwebp's preset.
+		int method = -1;
 	};
 
 	// Encodes bgrx8 or bgra8, or nv12 lossily when its sides are even, as a WebP, with the ICC profile,

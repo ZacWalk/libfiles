@@ -326,6 +326,32 @@ TEST("Should keep an EXIF that already carries its signature as it is")
 	CHECK(found);
 }
 
+TEST("Should embed the blocks a scan read as they are, and keep them through a clone")
+{
+	libfiles::metadata_blocks written;
+	written.exif = {'I', 'I', 0x2A, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	written.xmp = {'<', 'x', '/', '>'};
+	written.iptc = {0x1C, 0x02, 0x05, 0x00, 0x03, 'c', 'a', 't'};
+	written.icc.assign(300, 0x42);
+
+	const auto jpeg = encode_jpeg(gradient(16, 16), 1, written);
+	libfiles::reader r(jpeg);
+	auto scanned = libfiles::scan(r);
+	CHECK(scanned.success);
+	CHECK(scanned.metadata.exif == written.exif);
+	CHECK(scanned.metadata.xmp == written.xmp);
+	CHECK(scanned.metadata.iptc == written.iptc);
+	CHECK(scanned.metadata.icc == written.icc);
+
+	// The clone owns copies; the original moves out whole.
+	const auto copy = scanned.metadata.clone();
+	CHECK(copy.icc == written.icc);
+	CHECK(copy.icc.data() != scanned.metadata.icc.data());
+	const auto moved = std::move(scanned.metadata);
+	CHECK(moved.xmp == written.xmp);
+	CHECK(copy.xmp == written.xmp);
+}
+
 TEST("Should write an EXIF holding only the orientation when a JPEG has no other")
 {
 	capture_sink turned;
@@ -399,7 +425,7 @@ TEST("Should drop a Photoshop resource too large for any marker, and note it")
 	resources.insert(resources.end(), kept.begin(), kept.end());
 
 	libfiles::embedded_metadata metadata;
-	metadata.photoshop_resources = resources;
+	metadata.photoshop = resources;
 
 	libfiles::jpeg_encoder encoder;
 	const auto p = gradient(16, 16);
@@ -427,7 +453,7 @@ TEST("Should end the Photoshop resources at one whose length reaches 4 GiB, on e
 	resources.insert(resources.end(), next.begin(), next.end());
 
 	libfiles::embedded_metadata metadata;
-	metadata.photoshop_resources = resources;
+	metadata.photoshop = resources;
 
 	const auto segments = jpeg_segments(encode_jpeg(gradient(16, 16), 1, metadata));
 	CHECK(std::ranges::none_of(segments, [](const auto& s) { return s.first == 0xED; }));
@@ -438,7 +464,7 @@ TEST("Should write a last Photoshop resource that lacks its pad byte with it")
 	const bytes resources = {'8', 'B', 'I', 'M', 0x03, 0xED, 0, 0, 0, 0, 0, 3, 'r', 'e', 's'};
 
 	libfiles::embedded_metadata metadata;
-	metadata.photoshop_resources = resources;
+	metadata.photoshop = resources;
 
 	bytes expected = {'P', 'h', 'o', 't', 'o', 's', 'h', 'o', 'p', ' ', '3', '.', '0', 0};
 	expected.insert(expected.end(), resources.begin(), resources.end());
@@ -757,6 +783,28 @@ TEST("Should encode a WebP losslessly, alpha and all")
 	CHECK_EQ(largest_difference(p, sink), 0);
 }
 
+TEST("Should keep the colour under a WebP's transparent pixels when asked to, at the effort asked")
+{
+	auto p = gradient(16, 8, libfiles::pixel_format::bgra8);
+	for (std::uint32_t y = 0; y < p.height; ++y) p.pixels[y * p.stride + 3] = 0;
+
+	libfiles::webp_options options;
+	options.lossless = true;
+	options.exact = true;
+	options.method = 4;
+	options.quality = 100;
+	const auto webp = libfiles::encode_webp(p.view(), 1, {}, options);
+	CHECK(!webp.data.empty());
+
+	capture_sink sink;
+	CHECK(decode_bytes(webp.data, sink).success);
+
+	for (std::uint32_t y = 0; y < p.height; ++y)
+	{
+		CHECK(std::equal(sink.at(0, y), sink.at(0, y) + 4, p.pixels.data() + y * p.stride));
+	}
+}
+
 TEST("Should encode a WebP lossily from packed pixels and from even NV12")
 {
 	const auto packed = gradient(32, 32);
@@ -1034,3 +1082,71 @@ TEST("Should refuse a JPEG XL of a pixel format it does not encode, or of no pix
 }
 
 #endif
+
+TEST("Should carry a JPEG's descriptive segments into its re-encoding, upright and of its new size")
+{
+	using namespace std::string_view_literals;
+
+	const auto segment = [](bytes& out, const std::uint8_t marker, const std::string_view payload)
+	{
+		const auto length = payload.size() + 2;
+		out.insert(out.end(), {0xFF, marker, static_cast<std::uint8_t>(length >> 8), static_cast<std::uint8_t>(length)});
+		out.insert(out.end(), payload.begin(), payload.end());
+	};
+
+	// Orientation 6, in IFD0 alone; and XMP stating it twice over.
+	const auto exif = "Exif\0\0II*\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0\x06\0\0\0\0\0\0\0"sv;
+	const auto xmp = "http://ns.adobe.com/xap/1.0/\0<x:xmpmeta tiff:Orientation=\"6\"><tiff:Orientation>8</tiff:Orientation></x:xmpmeta>"sv;
+
+	bytes source{0xFF, 0xD8};
+	segment(source, 0xE0, "JFIF\0\x01\x02\x01\0\x48\0\x48\x02\x01RGBRGB"sv);
+	segment(source, 0xE1, exif);
+	segment(source, 0xE1, xmp);
+	segment(source, 0xE2, "MPF\0index"sv);
+	segment(source, 0xEE, "Adobe\0\x64"sv);
+	segment(source, 0xFE, "A comment"sv);
+	segment(source, 0xDB, "old tables"sv);
+	const bytes source_scan{0xFF, 0xDA, 0x00, 0x02, 0x11, 0x22, 0xFF, 0xD9};
+	source.insert(source.end(), source_scan.begin(), source_scan.end());
+
+	bytes encoded{0xFF, 0xD8};
+	segment(encoded, 0xE0, "JFIF\0\x01\x01\0\0\x01\0\x01\0\0"sv);
+	segment(encoded, 0xDB, "new tables"sv);
+	segment(encoded, 0xC0, "frame"sv);
+	const bytes scan{0xFF, 0xDA, 0x00, 0x02, 0x33, 0x44, 0xFF, 0xD9};
+	encoded.insert(encoded.end(), scan.begin(), scan.end());
+
+	// The header alone, read no further than the scan.
+	libfiles::reader r{std::span<const std::uint8_t>(source)};
+	const auto header = libfiles::read_jpeg_header(r);
+	CHECK(header == bytes(source.begin(), source.end() - static_cast<std::ptrdiff_t>(source_scan.size())));
+
+	// The source's segments - JFIF without its thumbnail, EXIF and XMP upright, the comment - and the encoding's
+	// own tables, frame and scan; the old encoding's Adobe segment and tables, and the multi-picture index, gone.
+	auto upright = std::string(exif);
+	upright[24] = 1;
+	auto upright_xmp = std::string(xmp);
+	upright_xmp.replace(upright_xmp.find("\"6\""), 3, "\"1\"");
+	upright_xmp.replace(upright_xmp.find(">8<"), 3, ">1<");
+
+	bytes expected{0xFF, 0xD8};
+	segment(expected, 0xE0, "JFIF\0\x01\x02\x01\0\x48\0\x48\0\0"sv);
+	segment(expected, 0xE1, upright);
+	segment(expected, 0xE1, upright_xmp);
+	segment(expected, 0xFE, "A comment"sv);
+	segment(expected, 0xDB, "new tables"sv);
+	segment(expected, 0xC0, "frame"sv);
+	expected.insert(expected.end(), scan.begin(), scan.end());
+
+	CHECK(libfiles::carry_jpeg_metadata(header, encoded, 640, 480) == expected);
+	CHECK(libfiles::carry_jpeg_metadata(source, encoded, 640, 480) == expected);
+
+	// Not JPEGs, a header cut short, and no size: nothing.
+	CHECK(libfiles::carry_jpeg_metadata(header, scan, 640, 480).empty());
+	CHECK(libfiles::carry_jpeg_metadata(header, encoded, 0, 480).empty());
+	const bytes cut(source.begin(), source.begin() + 30);
+	libfiles::reader short_reader{std::span<const std::uint8_t>(cut)};
+	CHECK(libfiles::read_jpeg_header(short_reader).empty());
+	libfiles::reader not_jpeg{std::span<const std::uint8_t>(scan)};
+	CHECK(libfiles::read_jpeg_header(not_jpeg).empty());
+}

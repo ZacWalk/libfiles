@@ -128,9 +128,9 @@ namespace test_build
 
 		const auto scanned = libfiles::scan(r);
 		libfiles::properties p;
-		if (scanned.tiff_metadata) libfiles::fill_missing(p, libfiles::properties_from_exif(*scanned.tiff_metadata));
-		else if (!scanned.metadata.exif.empty()) libfiles::fill_missing(p, libfiles::properties_from_exif(libfiles::read_exif(scanned.metadata.exif)));
-		if (!scanned.metadata.iptc.empty()) libfiles::fill_missing(p, libfiles::properties_from_iptc(libfiles::read_iptc(scanned.metadata.iptc)));
+		if (scanned.tiff_metadata) p = libfiles::properties_from_exif(*scanned.tiff_metadata);
+		else if (!scanned.metadata.exif.empty()) p = libfiles::properties_from_exif(libfiles::read_exif(scanned.metadata.exif));
+		if (!scanned.metadata.iptc.empty()) libfiles::overlay(p, libfiles::properties_from_iptc(libfiles::read_iptc(scanned.metadata.iptc)));
 		return p;
 	}
 

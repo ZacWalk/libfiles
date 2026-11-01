@@ -42,8 +42,10 @@ writer of the same field agree:
 - **Values.** `types.h` holds what every area shares - dates, ratings, places,
   picture formats, orientation, embedded images and the scans' own types - and
   each conversion has one rule, which readers and writers both use: Windows'
-  rating percent; the reader's date rule (`parse_media_date`) and the
-  writer's (`parse_xmp_date`); XMP's GPS text (`gps.cpp`); text decoding
+  rating percent; a container tag's date rule (`parse_media_date`), a photo
+  block's (`parse_photo_date`, with the zones, fractions, rationals and
+  coordinates of `photo_internal.h`) and the writer's (`parse_xmp_date`);
+  XMP's GPS text for the writer (`gps.cpp`); text decoding
   (`text.cpp`). Tags are named once: TIFF's and EXIF's numbers in
   `tiff_internal.h`, ID3's, RIFF INFO's and ASF's names in
   `vocabulary_internal.h`.
@@ -55,8 +57,8 @@ writer of the same field agree:
 - **Properties.** `properties.h` reads what an organizer files a file by from
   each block by one table - `properties_from_exif`, `properties_from_iptc`,
   `properties_from_xmp`, and a recording's container tags in `scan_media` -
-  and reconciles the blocks by one rule: the packet first, then what the file
-  keeps outside it (`read_properties`).
+  marking what each block states, and reconciles the blocks by one rule,
+  `overlay`: each block over those before it (`read_properties`).
 - **Writers.** `plan_update` writes the packet, and each legacy field where the
   format keeps it, by the tables the readers read; every writable format is
   held to reading back what it wrote.
@@ -98,30 +100,46 @@ reader.
 
 ### Properties
 
-Each property is read from the places below, the packet's first. A recording's
-container tags fill the properties FFmpeg's demuxers file them under (see
-[How it reads](#how-it-reads)). A packet's property in another form than its
-schema gives - a simple value where the schema has an array, a struct where it
-has text - reads as none, where the toolkit's accessors would refuse it, and a
-block that cannot be read costs the others nothing.
+A still's blocks are read EXIF, then IPTC, then the packet, each over what
+those before it gave (`overlay`): what a block states replaces theirs - EXIF and
+IPTC state a property by holding text, a number or a date for it, the packet by
+holding the property at all, so a property present but empty clears one - but
+IPTC's keywords join the keywords before them, sorted and each once, and its
+by-lines join the artist's names, whole and each once, after them; and every
+date is kept with its tag. A recording's container tags come first, filling the
+properties FFmpeg's demuxers file them under (see [How it reads](#how-it-reads)),
+and its packet over them. The table, the rule and the readers of the values in
+them - dates as cameras and editors write them, rationals, numbers and
+coordinates as sscanf reads them (`photo_internal.h`) - are Diffractor's, which
+its property and EXIF records hold libfiles to. A packet's property in another
+form than its schema gives - a simple value where the schema has an array or
+alt-text - reads as none, and the rest of the packet still reads; a block that
+cannot be read costs the others nothing. Text is as the block holds it.
 
 | Property | XMP | EXIF | IPTC |
 |---|---|---|---|
 | title | `dc:title` | XPTitle | Object Name |
 | description | `dc:description` | ImageDescription, else XPSubject | Caption |
-| artist | `xmpDM:artist`, else `dc:creator`, joined with "; " | Artist, else XPAuthor | By-line, joined |
-| copyright | `dc:rights` | Copyright | Copyright Notice |
-| keywords | `dc:subject` | XPKeywords, split at ";" | Keywords |
-| rating | `xmp:Rating` | Rating, or RatingPercent by Windows' rule | |
-| created - when taken or recorded | `photoshop:DateCreated`, `exif:DateTimeOriginal`, else `xmp:CreateDate` | DateTimeOriginal and its offset | Date and Time Created |
-| digitized | `xmp:CreateDate`, `exif:DateTimeDigitized` | DateTimeDigitized | Digital Creation Date and Time |
-| modified | `xmp:ModifyDate`, `tiff:DateTime` | DateTime | |
-| location, altitude | `exif:GPSLatitude`, `GPSLongitude`, `GPSAltitude` | the GPS directory | |
-| camera, lens, exposure, orientation | `tiff:Make`, `Model`, `Orientation`; `exifEX:LensModel`; `exif:FNumber` and the rest | their tags | |
+| artist | `xmpDM:artist` | Artist, else XPAuthor | By-lines, joining the artist's names |
+| creators | `dc:creator` | | |
+| copyright, its URL | `dc:rights`; `xmpRights:WebStatement` | Copyright | Copyright Notice |
+| keywords | `dc:subject`, even empty | XPKeywords, split at ";" | Keywords, joining those before them |
+| rating | `xmp:Rating`, else `MicrosoftPhoto:Rating` in fifths rounded up | Rating, or RatingPercent by Windows' rule | |
+| label | `xmp:Label` | | |
+| dates, each with its tag | `photoshop:DateCreated`; `xmp:CreateDate`, or the year when it is one alone; `xmp:ModifyDate`; `exif:DateTimeDigitized`; `exif:DateTimeOriginal` | DateTimeOriginal, DateTimeDigitized and DateTime, each with its offset and fraction; the GPS stamp, in UTC | Date Created and Digital Creation Date, each with its time |
+| location | `exif:GPSLatitude` and `GPSLongitude`, as a pair | the GPS directory, with its altitude and speed | |
+| camera, lens, exposure, orientation | `tiff:Make`, `Model`, `Orientation`; `aux:Lens`; `exif:FNumber`, `ExposureTime`, `FocalLength`, `FocalLengthIn35mmFilm` | their tags, and Software as the encoder | |
 | city, state, country, credit, source | `photoshop:` of each name | | each dataset |
-| album, album artist, composer, genre, track, disc | `xmpDM:` of each name | | |
+| album, album artist, genre, show, synopsis, track, disc, season, episode | `xmpDM:` of each name | | |
 | comment | `xmpDM:logComment`, else `exif:UserComment` | UserComment, else XPComment | |
+| raw file, panorama | `crs:RawFileName`; `GPano:ProjectionType`, or a panorama property alone | | |
 
+`created` is the first of DateTimeOriginal, `exif:DateTimeOriginal`, Date
+Created and `photoshop:DateCreated`, else the date digitized; `digitized` the
+first of DateTimeDigitized, `exif:DateTimeDigitized`, Digital Creation Date and
+`xmp:CreateDate`; and `modified` DateTime, else `xmp:ModifyDate`. A photo's date
+before 1800, or on the first of January 1970 or 1904 - a clock never set - is
+none.
 ### What each writable format keeps outside its packet
 
 An update writes each legacy field the edit sets where the format keeps it.
@@ -703,6 +721,14 @@ application decides how to present or retain it. The sink owns the output and
 its total memory budget. `maximum_working_bytes` bounds decoder scratch
 rasters and strips separately; it is not a process-wide memory limit.
 
+Decoded into a `decoded_document` instead, a document is kept whole - each
+frame's rows, palette and timing, and each metadata block, owned, so that a copy
+stands apart from it - by `document_keeper`, the sink that keeps everything.
+`pixel_rows` borrows rows in any document storage, top-down as a decoder gives
+them or bottom-up as a Windows bitmap holds them, and `copy_bgra` reads them as
+BGRA: indexed storage through its palette, with the transparent index's alpha
+cleared, and storage without alpha opaque.
+
 JPEG, PNG and PSD share their codec/parser implementation with the display
 path while preserving the native sample policy: grayscale/BGR JPEG with its
 original DCT settings, PNG without display gamma conversion and with packed
@@ -711,11 +737,12 @@ keep complete frames/pages before a damaged later record when their legacy
 reader did. PCX and WPG read through bounded cursors; a WPG's first raster
 streams directly and subsequent rasters are staged until complete.
 
-ImageWalker's adapter keeps statistics, its metadata presentation, encoded
-blobs needed for lossless saves and its orientation policy. Memory streams
+ImageWalker's loaders keep statistics, its metadata presentation, encoded
+blobs needed for lossless saves and its orientation policy, and give what they
+read to ImageWalker as a `decoded_document`. Memory streams
 lend their bytes instead of being copied through another stream. Windows
 codecs, compressed BMP/DIB rendering, metafiles and OLE previews remain with
-the host. Native encoders in `libiw` are not moved by this reader migration.
+the host. Of its encoders, WebP's - kept exact under transparent pixels, at libwebp's effort 4 - and the carrying of a photo's segments into its re-encoding (`carry_jpeg_metadata`, from `read_jpeg_header`) are libfiles'; its other native encoders stay with it.
 Inherited native limits remain, including TIFF's rejected grayscale-strip
 path and disabled JPEG compression; TIFF tiles and its RGBA fallback work as
 before. Native PSD accepts 8-bit samples and 1-bit bitmap mode.
@@ -745,12 +772,25 @@ a packet must not change when the toolkit is replaced:
   actual properties; `exif:UserComment`, `xmpDM:copyright`, GPS time stamps and
   broken alt-text arrays are repaired the same way.
 - **The API.** Paths, localized-text selection, array rules, iteration order and
-  the namespace table, with its numbered prefixes, are the toolkit's.
+  the namespace table, with its numbered prefixes, are the toolkit's - but for
+  two namespaces the table knows from the start, which the toolkit's does not:
+  Windows' `MicrosoftPhoto` and Google's `GPano`, which the property table reads.
+  A packet that declares either under another prefix is written with these.
 - **Serialization.** The toolkit's layouts, wrapper and padding, so a packet can
   be rewritten where it lies.
 
 Where libfiles differs on purpose:
 
+- A photo's properties read as Diffractor's readers read them, but for three
+  things they read whole. XPKeywords are keywords separated by semicolons, each
+  kept whole, where Diffractor split them at spaces and commas too, so that
+  "New York;Paris" was three tags. IPTC's by-lines join the artist as whole
+  names, each once and separated by "; ", where Diffractor joined them to an EXIF
+  Artist's separate words with spaces, which its artist search does not split
+  at. And a packet's property in another form than its schema gives reads as
+  none while the rest of the packet still reads, where Diffractor's reader
+  stopped at it: of its 2,869 readings of the fixtures and the packet corpus,
+  12 now read a later property.
 - HEIF and AVIF decoding follows libheif 1.23.7's damaged-input recovery:
   some images previously discarded by 1.23.5 recover pixels, and some
   undecodable images still report their source dimensions. Complete-file

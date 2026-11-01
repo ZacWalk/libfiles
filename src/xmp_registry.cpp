@@ -110,6 +110,7 @@ namespace libfiles::xmp::detail
 					{ns::ix, "iX"},
 					{ns::ixml, "iXML"},
 					{ns::microsoft_photo, "MicrosoftPhoto"},
+					{ns::gpano, "GPano"},
 				};
 
 				for (const auto& [uri, prefix] : standard)

@@ -310,3 +310,92 @@ TEST("native TIFF decodes strips and keeps complete pages before a damaged direc
 	CHECK(!result.success && !result.error.empty());
 }
 #endif
+
+TEST("a document decoded whole keeps each frame's rows and palette, and a copy stands apart from it")
+{
+	libfiles::memory_stream stream(monochrome_pcx());
+	libfiles::reader reader(stream);
+	libfiles::decoded_document document;
+	const auto result = libfiles::decode_document(reader, libfiles::image_format::pcx, document);
+	CHECK(result.success);
+	CHECK(document.info == result.info && document.info.frames == 1);
+	CHECK(document.frames.size() == 1);
+	if (document.frames.size() != 1) return;
+
+	const auto& frame = document.frames.front();
+	CHECK(frame.width == 3 && frame.height == 2 && frame.stride == 4);
+	CHECK(frame.storage == libfiles::document_storage::indexed1);
+	CHECK(frame.palette == std::vector<std::uint32_t>({0xff000000, 0xffffffff}));
+	CHECK(frame.pixels == std::vector<std::uint8_t>({0xa0, 0, 0, 0, 0x40, 0, 0, 0}));
+
+	std::vector<std::uint32_t> bgra(6);
+	libfiles::copy_bgra(frame.rows(), bgra, 3, false);
+	CHECK(bgra == std::vector<std::uint32_t>({0xffffffff, 0xff000000, 0xffffffff, 0xff000000, 0xffffffff, 0xff000000}));
+
+	auto copy = document;
+	CHECK(copy == document);
+	copy.frames.front().pixels[0] = 0;
+	CHECK(document.frames.front().pixels[0] == 0xa0);
+}
+
+TEST("copy_bgra reads every storage as BGRA, indexed through its palette and the rest opaque but bgra32")
+{
+	const auto read = [](const libfiles::document_storage storage, const std::vector<std::uint8_t>& row, const std::uint32_t width,
+	                     const std::vector<std::uint32_t>& palette = {}, const std::optional<std::uint32_t> transparent = {})
+	{
+		auto padded = row;
+		padded.resize((row.size() + 3) / 4 * 4);
+		libfiles::pixel_rows rows;
+		rows.width = width;
+		rows.height = 1;
+		rows.storage = storage;
+		rows.stride = padded.size();
+		rows.pixels = padded;
+		rows.palette = palette;
+		rows.transparent = transparent;
+		std::vector<std::uint32_t> out(width);
+		libfiles::copy_bgra(rows, out, width, false);
+		return out;
+	};
+
+	using s = libfiles::document_storage;
+	const std::vector<std::uint32_t> four = {0xff000001, 0xff000002, 0xff000003, 0x80000004};
+	CHECK(read(s::indexed2, {0xe4}, 4, four) == std::vector<std::uint32_t>({0x80000004, 0xff000003, 0xff000002, 0xff000001}));
+	std::vector<std::uint32_t> sixteen(16, 0xff000000);
+	sixteen[1] = 0xff111111;
+	sixteen[15] = 0xffffffff;
+	CHECK(read(s::indexed4, {0x1f}, 2, sixteen) == std::vector<std::uint32_t>({0xff111111, 0xffffffff}));
+	CHECK(read(s::indexed8, {1, 2}, 2, four, 2) == std::vector<std::uint32_t>({0xff000002, 0x00000003}));
+	CHECK(read(s::gray8, {0x80}, 1) == std::vector<std::uint32_t>({0xff808080}));
+	CHECK(read(s::bgr555, {0xff, 0x7f, 0x1f, 0x00}, 2) == std::vector<std::uint32_t>({0xfff8f8f8, 0xff0000f8}));
+	CHECK(read(s::bgr565, {0x00, 0xf8, 0xe0, 0x07}, 2) == std::vector<std::uint32_t>({0xfff80000, 0xff00fc00}));
+	CHECK(read(s::bgr24, {1, 2, 3}, 1) == std::vector<std::uint32_t>({0xff030201}));
+	CHECK(read(s::bgrx32, {1, 2, 3, 0}, 1) == std::vector<std::uint32_t>({0xff030201}));
+	CHECK(read(s::bgra32, {1, 2, 3, 4}, 1) == std::vector<std::uint32_t>({0x04030201}));
+
+	// Rows bottom-up, as a Windows bitmap holds them, come out top-down; and either way about.
+	const std::vector<std::uint8_t> two_rows = {1, 0, 0, 0, 2, 0, 0, 0};
+	libfiles::pixel_rows rows;
+	rows.width = 1;
+	rows.height = 2;
+	rows.storage = s::gray8;
+	rows.stride = 4;
+	rows.bottom_up = true;
+	rows.pixels = two_rows;
+	std::vector<std::uint32_t> out(2);
+	libfiles::copy_bgra(rows, out, 1, false);
+	CHECK(out == std::vector<std::uint32_t>({0xff020202, 0xff010101}));
+	libfiles::copy_bgra(rows, out, 1, true);
+	CHECK(out == std::vector<std::uint32_t>({0xff010101, 0xff020202}));
+
+	// An index past the palette, a destination too small, rows that do not hold what they describe, and a
+	// storage libfiles does not name.
+	CHECK_THROWS(read(s::indexed8, {4}, 1, four));
+	std::vector<std::uint32_t> small(1);
+	CHECK_THROWS(libfiles::copy_bgra(rows, small, 1, false));
+	auto unnamed = rows;
+	unnamed.storage = static_cast<s>(200);
+	CHECK_THROWS(libfiles::copy_bgra(unnamed, out, 1, false));
+	rows.stride = 2;
+	CHECK_THROWS(libfiles::copy_bgra(rows, out, 1, false));
+}

@@ -78,6 +78,8 @@ namespace libfiles::xmp
 		inline constexpr std::string_view plus = "http://ns.useplus.org/ldf/xmp/1.0/";
 		inline constexpr std::string_view ix = "http://ns.adobe.com/iX/1.0/";
 		inline constexpr std::string_view microsoft_photo = "http://ns.microsoft.com/photo/1.0/";
+		// Google's photo sphere schema, which phones' panorama modes and most stitchers write.
+		inline constexpr std::string_view gpano = "http://ns.google.com/photos/1.0/panorama/";
 	}
 
 	// Option bits describing a node. The values are those of the XMP Toolkit, so code written
