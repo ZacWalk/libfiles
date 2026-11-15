@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to MPEG audio files - MP3, MP2 and MPA - through their ID3v2 tag. The packet
 // lives where the toolkit kept it, in a PRIV frame owned by "XMP"; the edit's other fields go to the text
@@ -100,7 +100,8 @@ namespace libfiles::detail
 					f.raw = r.read(found->offset, found->header_size + static_cast<std::size_t>(found->size));
 
 					const auto layout = id3_layout_of(*h, *found);
-					const auto by_data = is_id3_private_frame(f.id) || f.id == "POPM" || f.id == "POP" || f.id == "COMM" || f.id == "COM";
+					const auto by_data = is_id3_private_frame(f.id) || f.id == "POPM" || f.id == "POP" ||
+					                     f.id == "COMM" || f.id == "COM";
 					std::optional<bytes> decoded;
 
 					if (by_data && !(layout.plain() && layout.prefix == 0))
@@ -143,7 +144,8 @@ namespace libfiles::detail
 			const auto d = b.subspan(4);
 			if (b[0] == 0 || b[0] == 3) return d[0] == 0;
 			if (d.size() >= 2 && d[0] == 0 && d[1] == 0) return true;
-			return d.size() >= 4 && ((d[0] == 0xFF && d[1] == 0xFE) || (d[0] == 0xFE && d[1] == 0xFF)) && d[2] == 0 && d[3] == 0;
+			return d.size() >= 4 && ((d[0] == 0xFF && d[1] == 0xFE) || (d[0] == 0xFE && d[1] == 0xFF)) && d[2] == 0 &&
+			       d[3] == 0;
 		}
 
 		bool is_ascii(const std::string_view text)
@@ -239,7 +241,10 @@ namespace libfiles::detail
 
 			const auto by_id = [](std::vector<std::string> ids)
 			{
-				return [ids = std::move(ids)](const frame& f) { return std::ranges::find(ids, f.id) != ids.end(); };
+				return [ids = std::move(ids)](const frame& f)
+				{
+					return std::ranges::find(ids, f.id) != ids.end();
+				};
 			};
 
 			const auto text = [&](const std::optional<std::string>& value, const vocabulary::id3_frame_name& name)
@@ -253,7 +258,10 @@ namespace libfiles::detail
 			if (update.xmp)
 			{
 				const auto frame_id = w.id("PRV", "PRIV");
-				const auto owns = [frame_id](const frame& f) { return f.id == frame_id && owned_by(f, "XMP"); };
+				const auto owns = [frame_id](const frame& f)
+				{
+					return f.id == frame_id && owned_by(f, "XMP");
+				};
 
 				// Sized to what the old packet took, so an edit that fits leaves every other frame where it is.
 				std::uint64_t old_length = 0;
@@ -329,21 +337,30 @@ namespace libfiles::detail
 			if (date && date->year > 0 && date->year <= 9999)
 			{
 				const auto year = std::to_string(date->year);
-				field f{by_id(w.version == 2 ? std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month), w.id(vocabulary::id3_time)}
-				                             : std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month), w.id(vocabulary::id3_time), std::string(vocabulary::id3_recording_time)}), {}};
+				field f{by_id(
+							w.version == 2
+								? std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month),
+				                                           w.id(vocabulary::id3_time)}
+								: std::vector<std::string>{w.id(vocabulary::id3_year), w.id(vocabulary::id3_day_month),
+				                                           w.id(vocabulary::id3_time),
+				                                           std::string(vocabulary::id3_recording_time)}),
+				        {}};
 
 				if (w.version == 4)
 				{
 					auto value = std::string(4 - std::min<std::size_t>(4, year.size()), '0') + year;
 					if (date->month > 0) value += '-' + two(date->month) + '-' + two(date->day);
-					if (date->month > 0 && date->has_time) value += 'T' + two(date->hour) + ':' + two(date->minute) + ':' + two(date->second);
+					if (date->month > 0 && date->has_time)
+						value += 'T' + two(date->hour) + ':' + two(date->minute) + ':' + two(date->second);
 					f.frames.push_back(w.text(std::string(vocabulary::id3_recording_time), value));
 				}
 				else
 				{
 					f.frames.push_back(w.text(w.id(vocabulary::id3_year), year));
-					if (date->month > 0) f.frames.push_back(w.text(w.id(vocabulary::id3_day_month), two(date->day) + two(date->month)));
-					if (date->month > 0 && date->has_time) f.frames.push_back(w.text(w.id(vocabulary::id3_time), two(date->hour) + two(date->minute)));
+					if (date->month > 0)
+						f.frames.push_back(w.text(w.id(vocabulary::id3_day_month), two(date->day) + two(date->month)));
+					if (date->month > 0 && date->has_time)
+						f.frames.push_back(w.text(w.id(vocabulary::id3_time), two(date->hour) + two(date->minute)));
 				}
 
 				fields.push_back(std::move(f));
@@ -359,7 +376,8 @@ namespace libfiles::detail
 		if (head.size() < 4 || head[0] != 0xFF || (head[1] & 0xE0) != 0xE0) return false;
 
 		// A frame header: a known version and layer, and a bit rate and sample rate that exist.
-		return ((head[1] >> 3) & 3) != 1 && ((head[1] >> 1) & 3) != 0 && (head[2] >> 4) != 15 && ((head[2] >> 2) & 3) != 3;
+		return ((head[1] >> 3) & 3) != 1 && ((head[1] >> 1) & 3) != 0 && (head[2] >> 4) != 15 &&
+		       ((head[2] >> 2) & 3) != 3;
 	}
 
 	void read_mp3_packet(reader& r, packet_reading& out)

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The JPEG XL scanner, for a bare codestream and the box container, the read of a JPEG XL file's
 // XMP packet, and of where its boxes lie for its writer. The codestream's headers - its size header and
@@ -10,6 +10,7 @@
 // the decoder moves on past it, so a fault anywhere ends the boxes there, and the last of each kind wins.
 
 #include "bmff_internal.h"
+#include "hdr_internal.h"
 #include "scan_internal.h"
 
 #include <algorithm>
@@ -76,9 +77,7 @@ namespace libfiles::detail
 		class bit_reader
 		{
 		public:
-			explicit bit_reader(const std::span<const std::uint8_t> data) : _data(data)
-			{
-			}
+			explicit bit_reader(const std::span<const std::uint8_t> data) : _data(data) {}
 
 			std::uint64_t read(const unsigned count)
 			{
@@ -92,7 +91,9 @@ namespace libfiles::detail
 
 					if (byte < _data.size())
 					{
-						value |= static_cast<std::uint64_t>(_data[static_cast<std::size_t>(byte)] >> shift & ((1u << take) - 1u)) << done;
+						value |= static_cast<std::uint64_t>(_data[static_cast<std::size_t>(byte)] >> shift &
+						                                    ((1u << take) - 1u))
+						         << done;
 					}
 
 					done += take;
@@ -105,8 +106,8 @@ namespace libfiles::detail
 			void skip(const std::uint64_t count)
 			{
 				_position = count > std::numeric_limits<std::uint64_t>::max() - _position
-					            ? std::numeric_limits<std::uint64_t>::max()
-					            : _position + count;
+				                ? std::numeric_limits<std::uint64_t>::max()
+				                : _position + count;
 			}
 
 			bool within_bounds() const { return _position <= static_cast<std::uint64_t>(_data.size()) * 8; }
@@ -134,17 +135,24 @@ namespace libfiles::detail
 			bool direct = true;
 		};
 
-		constexpr distribution val(const std::uint32_t value) { return {value, 0, true}; }
-		constexpr distribution bits_offset(const unsigned bits, const std::uint32_t offset) { return {offset, bits, false}; }
-		constexpr distribution bits_only(const unsigned bits) { return {0, bits, false}; }
+		constexpr distribution val(const std::uint32_t value)
+		{
+			return {value, 0, true};
+		}
+		constexpr distribution bits_offset(const unsigned bits, const std::uint32_t offset)
+		{
+			return {offset, bits, false};
+		}
+		constexpr distribution bits_only(const unsigned bits)
+		{
+			return {0, bits, false};
+		}
 
 		// The visitor libjxl's Bundle::Read applies, for the field encodings the headers use.
 		class field_reader
 		{
 		public:
-			explicit field_reader(bit_reader& bits) : _bits(bits)
-			{
-			}
+			explicit field_reader(bit_reader& bits) : _bits(bits) {}
 
 			std::uint32_t bits(const unsigned count)
 			{
@@ -155,7 +163,8 @@ namespace libfiles::detail
 
 			bool flag() { return bits(1) == 1; }
 
-			std::uint32_t u32(const distribution d0, const distribution d1, const distribution d2, const distribution d3)
+			std::uint32_t u32(const distribution d0, const distribution d1, const distribution d2,
+			                  const distribution d3)
 			{
 				const distribution d[4] = {d0, d1, d2, d3};
 				const auto& chosen = d[bits(2)];
@@ -260,7 +269,10 @@ namespace libfiles::detail
 			bool _f16_failed = false;
 		};
 
-		constexpr std::uint64_t bit(const unsigned n) { return 1ull << n; }
+		constexpr std::uint64_t bit(const unsigned n)
+		{
+			return 1ull << n;
+		}
 
 		// The colour spaces, white points, primaries, transfer functions and rendering intents
 		// libjxl's enums allow.
@@ -269,7 +281,8 @@ namespace libfiles::detail
 		constexpr auto valid_primaries = bit(1) | bit(2) | bit(9) | bit(11);
 		constexpr auto valid_transfer_functions = bit(1) | bit(2) | bit(8) | bit(13) | bit(16) | bit(17) | bit(18);
 		constexpr auto valid_rendering_intents = bit(0) | bit(1) | bit(2) | bit(3);
-		constexpr auto valid_extra_channels = bit(0) | bit(1) | bit(2) | bit(3) | bit(4) | bit(5) | bit(6) | bit(15) | bit(16);
+		constexpr auto valid_extra_channels = bit(0) | bit(1) | bit(2) | bit(3) | bit(4) | bit(5) | bit(6) | bit(15) |
+		                                      bit(16);
 
 		constexpr std::uint32_t colour_space_grey = 1;
 		constexpr std::uint32_t colour_space_xyb = 2;
@@ -295,12 +308,22 @@ namespace libfiles::detail
 			bool want_icc = false;
 			bool have_preview = false;
 			bool have_animation = false;
+			// The colour the codestream describes, where it carries no ICC profile, by libjxl's enums: the white
+			// point and primaries (2 for custom ones), and the transfer function - H.273's code points for both -
+			// or a gamma, when transfer is 0. Defaults are sRGB's.
+			std::uint32_t white_point = 1;
+			std::uint32_t primaries = 1;
+			std::uint32_t transfer = 13;
+			double gamma = 0;
+			// The tone mapping's intensity target: the nits the image's 1.0 stands for.
+			float intensity_target = 255.0f;
 		};
 
 		std::uint32_t aspect_width(const std::uint32_t ratio, const std::uint32_t height)
 		{
 			static constexpr std::uint32_t ratios[7][2] = {{1, 1}, {12, 10}, {4, 3}, {3, 2}, {16, 9}, {5, 4}, {2, 1}};
-			return static_cast<std::uint32_t>(static_cast<std::uint64_t>(height) * ratios[ratio - 1][0] / ratios[ratio - 1][1]);
+			return static_cast<std::uint32_t>(static_cast<std::uint64_t>(height) * ratios[ratio - 1][0] /
+			                                  ratios[ratio - 1][1]);
 		}
 
 		void read_size_header(field_reader& f, std::uint32_t& width, std::uint32_t& height)
@@ -403,8 +426,10 @@ namespace libfiles::detail
 
 		std::int64_t custom_xy(field_reader& f)
 		{
-			const auto packed = f.u32(bits_only(19), bits_offset(19, 524288), bits_offset(20, 1048576), bits_offset(21, 2097152));
-			return (packed & 1u) ? -static_cast<std::int64_t>((packed + 1u) / 2) : static_cast<std::int64_t>(packed / 2);
+			const auto packed = f.u32(bits_only(19), bits_offset(19, 524288), bits_offset(20, 1048576),
+			                          bits_offset(21, 2097152));
+			return (packed & 1u) ? -static_cast<std::int64_t>((packed + 1u) / 2)
+			                     : static_cast<std::int64_t>(packed / 2);
 		}
 
 		void read_colour_encoding(field_reader& f, basic_info& info)
@@ -420,6 +445,7 @@ namespace libfiles::detail
 			if (space != colour_space_xyb)
 			{
 				const auto white_point = f.enumeration(valid_white_points);
+				info.white_point = white_point;
 
 				if (white_point == 2)
 				{
@@ -431,7 +457,9 @@ namespace libfiles::detail
 
 			if (space != colour_space_grey && space != colour_space_xyb)
 			{
-				if (f.enumeration(valid_primaries) == 2)
+				info.primaries = f.enumeration(valid_primaries);
+
+				if (info.primaries == 2)
 				{
 					for (auto i = 0; i < 6; ++i) custom_xy(f);
 				}
@@ -445,11 +473,15 @@ namespace libfiles::detail
 				{
 					// The gamma, in ten-millionths: from 1/8192 to 1.
 					const auto gamma = f.bits(24);
-					if (gamma > 10000000u || static_cast<std::uint64_t>(gamma) * 8192 < 10000000u) throw invalid_header{};
+					if (gamma > 10000000u || static_cast<std::uint64_t>(gamma) * 8192 < 10000000u)
+						throw invalid_header{};
+					info.transfer = 0;
+					info.gamma = static_cast<double>(gamma) / 10000000.0;
 				}
 				else
 				{
-					transfer_unknown = f.enumeration(valid_transfer_functions) == 2;
+					info.transfer = f.enumeration(valid_transfer_functions);
+					transfer_unknown = info.transfer == 2;
 				}
 			}
 
@@ -461,12 +493,13 @@ namespace libfiles::detail
 			if (space == colour_space_xyb && intent != 0) throw invalid_header{};
 		}
 
-		void read_tone_mapping(field_reader& f)
+		void read_tone_mapping(field_reader& f, basic_info& info)
 		{
 			if (f.flag()) return;
 
 			const auto intensity_target = f.f16(255.0f);
 			if (intensity_target <= 0.0f) throw invalid_header{};
+			info.intensity_target = intensity_target;
 
 			const auto min_nits = f.f16(0.0f);
 			if (min_nits < 0.0f || min_nits > intensity_target) throw invalid_header{};
@@ -476,14 +509,39 @@ namespace libfiles::detail
 			if (linear_below < 0.0f || (relative && linear_below > 1.0f)) throw invalid_header{};
 		}
 
-		void read_image_metadata(field_reader& f, basic_info& info)
+		// Where the fields an orientation edit rewrites lie: bit positions after the codestream's signature.
+		struct metadata_sites
 		{
-			if (f.flag()) return;
+			std::uint64_t all_default = 0;
+			bool defaulted = false;
+			std::uint64_t extra_fields = 0;
+			bool extra = false;
+			std::uint64_t orientation = 0;
+			// After the colour encoding: where the tone mapping is, when there are extra fields.
+			std::uint64_t colour_end = 0;
+		};
 
+		void read_image_metadata(field_reader& f, basic_info& info, metadata_sites* const sites = nullptr)
+		{
+			if (sites) sites->all_default = f.position();
+
+			if (f.flag())
+			{
+				if (sites) sites->defaulted = true;
+				return;
+			}
+
+			if (sites) sites->extra_fields = f.position();
 			const auto extra_fields = f.flag();
 
 			if (extra_fields)
 			{
+				if (sites)
+				{
+					sites->extra = true;
+					sites->orientation = f.position();
+				}
+
 				info.orientation = f.bits(3) + 1;
 
 				if (f.flag())
@@ -510,7 +568,8 @@ namespace libfiles::detail
 
 			info.xyb_encoded = f.flag();
 			read_colour_encoding(f, info);
-			if (extra_fields) read_tone_mapping(f);
+			if (sites) sites->colour_end = f.position();
+			if (extra_fields) read_tone_mapping(f, info);
 			f.extensions();
 		}
 
@@ -524,9 +583,12 @@ namespace libfiles::detail
 			}
 
 			const auto weights = f.bits(3);
-			if (weights & 1u) for (auto i = 0; i < 15; ++i) f.f16(0);
-			if (weights & 2u) for (auto i = 0; i < 55; ++i) f.f16(0);
-			if (weights & 4u) for (auto i = 0; i < 210; ++i) f.f16(0);
+			if (weights & 1u)
+				for (auto i = 0; i < 15; ++i) f.f16(0);
+			if (weights & 2u)
+				for (auto i = 0; i < 55; ++i) f.f16(0);
+			if (weights & 4u)
+				for (auto i = 0; i < 210; ++i) f.f16(0);
 		}
 
 		enum class header_status : std::uint8_t
@@ -681,7 +743,9 @@ namespace libfiles::detail
 						return _last;
 					}
 
-					read_more(r, std::max<std::uint64_t>({header_read_step, _bytes.size(), _last.needed > _bytes.size() ? _last.needed - _bytes.size() : 0}));
+					read_more(r, std::max<std::uint64_t>(
+									 {header_read_step, _bytes.size(),
+					                  _last.needed > _bytes.size() ? _last.needed - _bytes.size() : 0}));
 				}
 			}
 
@@ -759,6 +823,10 @@ namespace libfiles::detail
 			std::optional<std::uint64_t> first_exif_box;
 			bool jpeg_reconstruction = false;
 			std::optional<std::uint64_t> codestream_box;
+			std::uint64_t codestream_data = 0;
+			std::uint64_t codestream_part = 0;
+			bool codestream_first = false;
+			bool frame_index = false;
 		};
 
 		// Reads the file as libjxl decodes it for a caller that wants its basic info and every box, with
@@ -775,13 +843,16 @@ namespace libfiles::detail
 				bare.add(0, file_size);
 				const auto h = bare.headers(r);
 				if (h.basic == header_status::ok) out.info = h.info;
+				out.codestream_part = file_size;
+				out.codestream_first = true;
 				out.complete = true;
 				return out;
 			}
 
 			out.container = true;
 			if (file_size < sizeof(container_signature) ||
-				std::memcmp(r.view(0, sizeof(container_signature)).data(), container_signature, sizeof(container_signature)) != 0)
+			    std::memcmp(r.view(0, sizeof(container_signature)).data(), container_signature,
+			                sizeof(container_signature)) != 0)
 			{
 				throw format_error("invalid JPEG XL signature");
 			}
@@ -907,6 +978,7 @@ namespace libfiles::detail
 
 				// libjxl gives back a JPEG from a 'jbrd' box as written, never from a compressed one.
 				if (type == box_jbrd) out.jpeg_reconstruction = true;
+				if (type == fourcc("jxli")) out.frame_index = true;
 
 				if (type == box_ftyp)
 				{
@@ -922,7 +994,8 @@ namespace libfiles::detail
 
 				if (type == box_jxlc || type == box_jxlp)
 				{
-					if (!out.codestream_box) out.codestream_box = pos;
+					const auto first_box = !out.codestream_box;
+					if (first_box) out.codestream_box = pos;
 					auto data = contents;
 
 					if (type == box_jxlp)
@@ -935,12 +1008,20 @@ namespace libfiles::detail
 						const auto last = (index & 0x80000000u) != 0;
 						data = contents + 4;
 
+						if (first_box)
+						{
+							out.codestream_data = data;
+							out.codestream_part = end - data;
+							out.codestream_first = counter == 0;
+						}
+
 						if (counter < next_index) return out;
 
 						if (counter != next_index)
 						{
 							// Out of order: version 1 files may, and libjxl holds the part until its turn.
-							if (version < 1 || buffered.size() >= max_buffered_parts || buffered.contains(counter)) return out;
+							if (version < 1 || buffered.size() >= max_buffered_parts || buffered.contains(counter))
+								return out;
 							if (unbounded || truncated) return out;
 
 							buffered[counter] = {data, end - data, last};
@@ -955,6 +1036,13 @@ namespace libfiles::detail
 					else
 					{
 						last_codestream_seen = true;
+
+						if (first_box)
+						{
+							out.codestream_data = data;
+							out.codestream_part = end - data;
+							out.codestream_first = true;
+						}
 					}
 
 					if (!finished)
@@ -1087,6 +1175,23 @@ namespace libfiles::detail
 			}
 		}
 
+		// The colour a codestream describes, in the words the other formats' listings use.
+		std::string colour_text(const basic_info& info)
+		{
+			// libjxl's P3 primaries are Display P3's with a D65 white, DCI-P3's with DCI's.
+			const auto primaries = info.grey              ? std::string("grey")
+			                       : info.primaries == 2  ? std::string("custom primaries")
+			                       : info.primaries == 11 ? colour_primaries_text(info.white_point == 1 ? 12 : 11)
+			                                              : colour_primaries_text(static_cast<int>(info.primaries));
+			const auto transfer = info.transfer == 0 ? std::format("gamma {:.2f} transfer", 1.0 / info.gamma)
+			                                         : transfer_text(static_cast<int>(info.transfer));
+			const auto white = info.white_point == 2                            ? ", custom white point"
+			                   : info.white_point == 10                         ? ", white point E"
+			                   : info.white_point == 11 && info.primaries != 11 ? ", DCI white point"
+			                                                                    : "";
+			return std::format("{}, {}{}", primaries, transfer, white);
+		}
+
 		// A box inventory and the codestream's header fields. The boxes are walked by their headers
 		// alone, to the first that does not fit the file.
 		std::vector<structure_row> jxl_structure(reader& r, const jxl_read& read)
@@ -1104,16 +1209,23 @@ namespace libfiles::detail
 				add_structure_row(rows, "Dimensions", std::format("{} x {}", info.width, info.height));
 				add_structure_row(rows, "Orientation", std::to_string(info.orientation));
 				add_structure_row(rows, "Bits per sample",
-				                  info.floating_point ? std::format("{}, floating point", info.bits_per_sample) : std::to_string(info.bits_per_sample));
+				                  info.floating_point ? std::format("{}, floating point", info.bits_per_sample)
+				                                      : std::to_string(info.bits_per_sample));
 				add_structure_row(rows, "Colour channels", info.grey ? "1, grey" : "3");
-				add_structure_row(rows, "Alpha channel", info.alpha_bits == 0
-					                                         ? std::string("none")
-					                                         : std::format("{} bits{}", info.alpha_bits,
-					                                                       info.alpha_premultiplied ? ", premultiplied" : ""));
+				add_structure_row(rows, "Alpha channel",
+				                  info.alpha_bits == 0
+				                      ? std::string("none")
+				                      : std::format("{} bits{}", info.alpha_bits,
+				                                    info.alpha_premultiplied ? ", premultiplied" : ""));
 
-				if (info.extra_channels > 0) add_structure_row(rows, "Extra channels", std::to_string(info.extra_channels));
+				if (info.extra_channels > 0)
+					add_structure_row(rows, "Extra channels", std::to_string(info.extra_channels));
 
-				add_structure_row(rows, "Colour profile", info.want_icc ? "ICC, in the codestream" : "described by the codestream");
+				add_structure_row(rows, "Colour profile",
+				                  info.want_icc ? "ICC, in the codestream" : "described by the codestream");
+				if (!info.want_icc) add_structure_row(rows, "Colour", colour_text(info));
+				if (info.intensity_target != 255.0f || hdr_transfer_of(static_cast<int>(info.transfer)))
+					add_structure_row(rows, "Intensity target", nits_text(info.intensity_target));
 				add_structure_row(rows, "Coding", info.xyb_encoded ? "XYB (lossy)" : "original colour space");
 				if (info.have_preview) add_structure_row(rows, "Preview", "present");
 				if (info.have_animation) add_structure_row(rows, "Animation", "present");
@@ -1157,7 +1269,8 @@ namespace libfiles::detail
 				else if (type == box_jxlp && size >= header + 4)
 				{
 					const auto index = r.be32(offset + header);
-					description = std::format("partial codestream {}{}", index & 0x7FFFFFFFu, (index & 0x80000000u) ? ", the last" : "");
+					description = std::format("partial codestream {}{}", index & 0x7FFFFFFFu,
+					                          (index & 0x80000000u) ? ", the last" : "");
 				}
 
 				auto value = std::format("offset {}, {} bytes", offset, size);
@@ -1180,7 +1293,7 @@ namespace libfiles::detail
 #ifdef LIBFILES_JXL
 		static const brotli_decompressor decoder =
 			[](const std::span<const std::uint8_t> compressed, const std::string_view box_type,
-			   const std::size_t max_size) -> std::optional<std::vector<std::uint8_t>>
+		       const std::size_t max_size) -> std::optional<std::vector<std::uint8_t>>
 		{
 			(void)box_type;
 			if (max_size == 0) return std::nullopt;
@@ -1193,7 +1306,10 @@ namespace libfiles::detail
 			struct state_guard
 			{
 				BrotliDecoderState* value;
-				~state_guard() { if (value) BrotliDecoderDestroyInstance(value); }
+				~state_guard()
+				{
+					if (value) BrotliDecoderDestroyInstance(value);
+				}
 			} guard{state};
 
 			constexpr std::size_t initial = 64u * 1024u;
@@ -1209,18 +1325,16 @@ namespace libfiles::detail
 				if (output_left == 0)
 				{
 					if (output.size() == max_size) return std::nullopt;
-					const auto grown = std::min(max_size,
-						std::max(output.size() * 2, output.size() + initial));
+					const auto grown = std::min(max_size, std::max(output.size() * 2, output.size() + initial));
 					output.resize(grown);
 					output_next = output.data() + produced;
 					output_left = output.size() - produced;
 				}
-				const auto result = BrotliDecoderDecompressStream(state, &input_left, &input_next,
-				                                                 &output_left, &output_next, nullptr);
+				const auto result = BrotliDecoderDecompressStream(state, &input_left, &input_next, &output_left,
+				                                                  &output_next, nullptr);
 				if (result == BROTLI_DECODER_RESULT_SUCCESS)
 				{
-					if (input_left != 0)
-						return std::nullopt;
+					if (input_left != 0) return std::nullopt;
 					output.resize(output.size() - output_left);
 					return output;
 				}
@@ -1228,8 +1342,7 @@ namespace libfiles::detail
 				produced = output.size() - output_left;
 				// NEEDS_MORE_INPUT with no input left is a truncated stream. Otherwise continue
 				// until the decoder reports success, an over-budget output, or a malformed stream.
-				if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT && input_left == 0)
-					return std::nullopt;
+				if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT && input_left == 0) return std::nullopt;
 			}
 		};
 		return &decoder;
@@ -1252,10 +1365,9 @@ namespace libfiles::detail
 			result.height = read.info->height;
 			result.orientation = static_cast<std::uint16_t>(read.info->orientation);
 			result.pixel_format = read.info->grey ? "grayscale" : read.info->alpha_bits > 0 ? "rgba" : "rgb";
-			result.picture = {
-				read.info->grey ? chroma_format::gray : chroma_format::rgb, static_cast<std::uint8_t>(read.info->bits_per_sample),
-				read.info->alpha_bits > 0
-			};
+			result.picture = {read.info->grey ? chroma_format::gray : chroma_format::rgb,
+			                  static_cast<std::uint8_t>(read.info->bits_per_sample), read.info->alpha_bits > 0};
+			result.animated = read.info->have_animation;
 		}
 
 		if (read.exif)
@@ -1297,7 +1409,128 @@ namespace libfiles::detail
 		out.first_exif_box = read.first_exif_box;
 		out.jpeg_reconstruction = read.jpeg_reconstruction;
 		out.codestream_box = read.codestream_box.value_or(0);
+		out.codestream_data = read.codestream_data;
+		out.codestream_part = read.codestream_part;
+		out.codestream_first = read.codestream_first;
+		out.frame_index = read.frame_index;
 		return out;
+	}
+
+	std::optional<jxl_header_edit> jxl_orientation_edit(const std::span<const std::uint8_t> codestream,
+	                                                    const std::uint32_t orientation)
+	{
+		if (orientation < 1 || orientation > 8) return {};
+		if (codestream.size() < 2 || codestream[0] != 0xFF || codestream[1] != 0x0A) return {};
+
+		const auto body = codestream.subspan(2);
+		bit_reader bits(body);
+		metadata_sites at;
+		basic_info info;
+
+		try
+		{
+			field_reader size(bits);
+			read_size_header(size, info.width, info.height);
+			field_reader metadata(bits);
+			read_image_metadata(metadata, info, &at);
+			if (metadata.f16_failed()) return {};
+		}
+		catch (const need_more&)
+		{
+			return {};
+		}
+		catch (const invalid_header&)
+		{
+			return {};
+		}
+
+		const auto value = orientation - 1;
+		// A header without the extra fields has the default orientation, 1, already.
+		if (!at.extra && value == 0) return jxl_header_edit{};
+
+		std::vector<std::uint8_t> out(codestream.begin(), codestream.begin() + 2);
+		std::uint64_t written = 0;
+
+		// Bits written as libjxl reads them, least significant first.
+		const auto put = [&out, &written](const std::uint64_t value, const unsigned count)
+		{
+			for (unsigned i = 0; i < count; ++i, ++written)
+			{
+				if (written % 8 == 0) out.push_back(0);
+				out.back() = static_cast<std::uint8_t>(out.back() | (value >> i & 1u) << (written % 8));
+			}
+		};
+
+		const auto bit_of = [&body](const std::uint64_t i)
+		{
+			return static_cast<std::uint64_t>(body[static_cast<std::size_t>(i / 8)] >> (i % 8) & 1u);
+		};
+
+		const auto copy = [&](const std::uint64_t from, const std::uint64_t to)
+		{
+			for (auto i = from; i < to; ++i) put(bit_of(i), 1);
+		};
+
+		// Where the bits after the edit resume.
+		std::uint64_t resume = 0;
+
+		if (at.extra)
+		{
+			copy(0, at.orientation);
+			put(value, 3);
+			resume = at.orientation + 3;
+		}
+		else if (!at.defaulted)
+		{
+			// The extra fields: the orientation, and no intrinsic size, preview or animation. With them comes the tone
+			// mapping, written out at its defaults - 255 nits, 0, not relative, 0 - which makes 56 bits added.
+			copy(0, at.extra_fields);
+			put(1, 1);
+			put(value, 3);
+			put(0, 3);
+			copy(at.extra_fields + 1, at.colour_end);
+			put(0, 1);
+			put(0x5BF8, 16);
+			put(0, 16);
+			put(0, 1);
+			put(0, 16);
+			resume = at.colour_end;
+		}
+		else
+		{
+			// What all_default stood for, written out with the extra fields: 8 bits a sample - in the field's widest
+			// form - 16-bit buffers, no extra channels, XYB, sRGB, the default tone mapping and no extensions, which
+			// makes 24 bits added.
+			copy(0, at.all_default);
+			put(0, 1);
+			put(1, 1);
+			put(value, 3);
+			put(0, 3);
+			put(0, 1);
+			put(3, 2);
+			put(7, 6);
+			put(1, 1);
+			put(0, 2);
+			put(1, 1);
+			put(1, 1);
+			put(1, 1);
+			put(0, 2);
+			resume = at.all_default + 1;
+		}
+
+		// What is added is whole bytes, so the original's bits run on until both reach a byte boundary.
+		while (written % 8 != 0)
+		{
+			if (resume >= std::uint64_t{body.size()} * 8) return {};
+			put(bit_of(resume++), 1);
+		}
+
+		if (resume % 8 != 0) return {};
+
+		jxl_header_edit edit;
+		edit.replaced = 2 + static_cast<std::size_t>(resume / 8);
+		edit.bytes = std::move(out);
+		return edit;
 	}
 
 	std::size_t jxl_parts_held(reader& r)

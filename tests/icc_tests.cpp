@@ -1,17 +1,21 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the ICC listing: what it says of a profile, the text it decodes, the tags it shares
 // and refuses, what it lists nothing for, and its outcome over the corpus, whole, cut short and corrupted,
-// held to the record Diffractor's listing left before it moved here.
+// held to the record Diffractor's listing left before it moved here. And of mapping the colours a profile
+// describes to sRGB, and an edit of that rendition back into them.
 
 #include "test.h"
 #include "icc_corpus.h"
 
 #include "libfiles/icc.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,9 +27,26 @@ namespace
 	// The corpus' profiles, by their place in icc_corpus::profiles().
 	enum corpus_profile : std::size_t
 	{
-		srgb, display_p3, adobe_rgb, rec2020, prophoto, unrecognised, greyscale, press, odd_text, lying_directory,
-		overlapping_regions, overcounted_directory, short_block, small_size, large_size, unsigned_header,
-		header_only, too_many_tags, a_thousand_tags, no_tags
+		srgb,
+		display_p3,
+		adobe_rgb,
+		rec2020,
+		prophoto,
+		unrecognised,
+		greyscale,
+		press,
+		odd_text,
+		lying_directory,
+		overlapping_regions,
+		overcounted_directory,
+		short_block,
+		small_size,
+		large_size,
+		unsigned_header,
+		header_only,
+		too_many_tags,
+		a_thousand_tags,
+		no_tags
 	};
 
 	const icc_corpus::bytes& corpus(const corpus_profile which)
@@ -51,20 +72,23 @@ namespace
 
 	std::string value_of(const std::vector<structure_row>& rows, const std::string_view key)
 	{
-		for (const auto& row : rows) if (row.key == key) return row.value;
+		for (const auto& row : rows)
+			if (row.key == key) return row.value;
 		return "(absent)";
 	}
 
 	const structure_row* find_id(const std::vector<structure_row>& rows, const std::string_view id)
 	{
-		for (const auto& row : rows) if (row.id == id) return &row;
+		for (const auto& row : rows)
+			if (row.id == id) return &row;
 		return nullptr;
 	}
 
 	int count_ids(const std::vector<structure_row>& rows, const std::string_view prefix)
 	{
 		auto n = 0;
-		for (const auto& row : rows) if (row.id.starts_with(prefix)) ++n;
+		for (const auto& row : rows)
+			if (row.id.starts_with(prefix)) ++n;
 		return n;
 	}
 
@@ -101,8 +125,7 @@ TEST("icc RGB declaration is bounded and distinct from whole-profile validation"
 	CHECK(icc_declares_rgb(corpus(srgb)));
 	CHECK(!icc_declares_rgb(corpus(press)));
 	CHECK(!icc_declares_rgb(corpus(greyscale)));
-	for (std::size_t length = 0; length < 20; ++length)
-		CHECK(!icc_declares_rgb(std::span(corpus(srgb)).first(length)));
+	for (std::size_t length = 0; length < 20; ++length) CHECK(!icc_declares_rgb(std::span(corpus(srgb)).first(length)));
 	CHECK(icc_declares_rgb(std::span(corpus(srgb)).first(20)));
 }
 
@@ -290,10 +313,8 @@ TEST("icc decodes text tags exactly, whatever their length")
 	const std::string long_profile(512, 'P');
 	const std::string long_copyright(512, 'C');
 	icc_corpus::header h;
-	const auto rows = list_icc(icc_corpus::profile(h, {
-		{0x64657363u, icc_corpus::desc(long_profile)},
-		{0x63707274u, icc_corpus::text(long_copyright)}
-	}));
+	const auto rows = list_icc(icc_corpus::profile(h, {{0x64657363u, icc_corpus::desc(long_profile)},
+	                                                   {0x63707274u, icc_corpus::text(long_copyright)}}));
 
 	const auto summary = section(rows, "icc.summary");
 	CHECK_STR(value_of(summary, "Profile"), long_profile);
@@ -316,17 +337,20 @@ TEST("icc text tags read to their first NUL, and a tag without text lists by its
 	CHECK_STR(value_of(tags, "desc"), "binary, 17 bytes"); // a count of nothing
 	CHECK_STR(value_of(tags, "cprt"), "binary, 22 bytes"); // a count beyond the tag
 	CHECK_STR(value_of(tags, "dmnd"), "binary, 21 bytes"); // a NUL first
-	CHECK_STR(value_of(tags, "dmdd"), "Model"); // no NUL at all
+	CHECK_STR(value_of(tags, "dmdd"), "Model");            // no NUL at all
 	CHECK_STR(value_of(tags, "tst1"), "binary, 12 bytes"); // nothing but NULs
-	CHECK_STR(value_of(tags, "tst7"), "Inner"); // a NUL inside
-	CHECK_STR(value_of(tags, "tst<"), "binary, 8 bytes"); // a desc too short for its count
-	CHECK_STR(value_of(tags, "tst="), "binary, 8 bytes"); // an mluc too short for its records
+	CHECK_STR(value_of(tags, "tst7"), "Inner");            // a NUL inside
+	CHECK_STR(value_of(tags, "tst<"), "binary, 8 bytes");  // a desc too short for its count
+	CHECK_STR(value_of(tags, "tst="), "binary, 8 bytes");  // an mluc too short for its records
 }
 
 TEST("icc decodes UTF-16 text by each record's offset")
 {
 	icc_corpus::header h;
-	const auto profile_of = [&h](icc_corpus::bytes tag) { return list_icc(icc_corpus::profile(h, {{0x64657363u, std::move(tag)}})); };
+	const auto profile_of = [&h](icc_corpus::bytes tag)
+	{
+		return list_icc(icc_corpus::profile(h, {{0x64657363u, std::move(tag)}}));
+	};
 
 	{
 		const auto rows = profile_of(icc_corpus::mluc({u"AB"}));
@@ -335,8 +359,10 @@ TEST("icc decodes UTF-16 text by each record's offset")
 	}
 
 	const std::u16string long_text(300, u'L');
-	CHECK_STR(value_of(section(profile_of(icc_corpus::mluc({long_text})), "icc.summary"), "Profile"), std::string(300, 'L'));
-	CHECK_STR(value_of(section(profile_of(icc_corpus::mluc({u"First", u"Second"})), "icc.summary"), "Profile"), "First");
+	CHECK_STR(value_of(section(profile_of(icc_corpus::mluc({long_text})), "icc.summary"), "Profile"),
+	          std::string(300, 'L'));
+	CHECK_STR(value_of(section(profile_of(icc_corpus::mluc({u"First", u"Second"})), "icc.summary"), "Profile"),
+	          "First");
 
 	{
 		auto odd = icc_corpus::mluc({u"Odd"});
@@ -351,13 +377,14 @@ TEST("icc decodes UTF-16 text by each record's offset")
 	}
 
 	const auto tags = section(list_icc(corpus(odd_text)), "icc.tags");
-	CHECK_STR(value_of(tags, "tst2"), "A\xEF\xBF\xBD" "B"); // a lead surrogate alone
-	CHECK_STR(value_of(tags, "tst3"), "\xEF\xBF\xBDx"); // a trail surrogate alone
+	CHECK_STR(value_of(tags, "tst2"), "A\xEF\xBF\xBD"
+	                                  "B");                      // a lead surrogate alone
+	CHECK_STR(value_of(tags, "tst3"), "\xEF\xBF\xBDx");          // a trail surrogate alone
 	CHECK_STR(value_of(tags, "tst4"), "\xF0\x9F\x98\x80 smile"); // a pair
-	CHECK_STR(value_of(tags, "tst5"), "Wide"); // records larger than the minimum
-	CHECK_STR(value_of(tags, "tst6"), "binary, 24 bytes"); // records smaller than it
-	CHECK_STR(value_of(tags, "tst9"), "Later"); // the first record's offset inside its header
-	CHECK_STR(value_of(tags, "tst;"), "binary, 36 bytes"); // more records than the tag holds
+	CHECK_STR(value_of(tags, "tst5"), "Wide");                   // records larger than the minimum
+	CHECK_STR(value_of(tags, "tst6"), "binary, 24 bytes");       // records smaller than it
+	CHECK_STR(value_of(tags, "tst9"), "Later");                  // the first record's offset inside its header
+	CHECK_STR(value_of(tags, "tst;"), "binary, 36 bytes");       // more records than the tag holds
 }
 
 // A tag names a region of the profile, and several tags may name the same one: the sRGB profile most
@@ -510,4 +537,177 @@ TEST("icc listing holds to Diffractor's record whole, cut short and corrupted")
 	CHECK_EQ(print.listings(), std::size_t{7480});
 	CHECK_EQ(print.rows(), std::size_t{94993});
 	CHECK_EQ(print.value(), std::uint64_t{4300244743721149556ull});
+}
+
+namespace
+{
+	using rgb = std::array<int, 3>;
+
+	// One row of bgrx8 pixels, each given red first, with a fourth byte a mapping must leave as it is.
+	std::vector<std::uint8_t> bgrx_row(const std::vector<rgb>& colours)
+	{
+		std::vector<std::uint8_t> row;
+
+		for (const auto& [r, g, b] : colours)
+		{
+			row.insert(row.end(), {static_cast<std::uint8_t>(b), static_cast<std::uint8_t>(g),
+			                       static_cast<std::uint8_t>(r), std::uint8_t{0x11}});
+		}
+
+		return row;
+	}
+
+	image_view row_view(const std::vector<std::uint8_t>& row)
+	{
+		return {row.data(), row.size(), static_cast<std::uint32_t>(row.size() / 4), 1, pixel_format::bgrx8};
+	}
+
+	pixel_buffer row_buffer(std::vector<std::uint8_t>& row)
+	{
+		return {row.data(), row.size()};
+	}
+
+	rgb colour_at(const std::vector<std::uint8_t>& row, const std::size_t x)
+	{
+		return {row[x * 4 + 2], row[x * 4 + 1], row[x * 4]};
+	}
+
+	bool near(const rgb& a, const rgb& b, const int levels)
+	{
+		for (auto c = 0; c < 3; ++c)
+		{
+			if (std::abs(a[c] - b[c]) > levels) return false;
+		}
+
+		return true;
+	}
+}
+
+TEST("icc mapping to sRGB is for colours other than sRGB's, of a profile of colorants and curves or a grey curve")
+{
+	CHECK(!icc_maps_to_srgb(icc_corpus::srgb_parametric()));
+	CHECK(icc_maps_to_srgb(corpus(display_p3)));
+	CHECK(icc_maps_to_srgb(corpus(adobe_rgb)));
+	CHECK(icc_maps_to_srgb(corpus(rec2020)));
+	CHECK(icc_maps_to_srgb(corpus(prophoto)));
+	CHECK(icc_maps_to_srgb(corpus(greyscale)));
+
+	// A press's CMYK tables, a Lab connection space, and what is no profile.
+	CHECK(!icc_maps_to_srgb(corpus(press)));
+	CHECK(!icc_maps_to_srgb(corpus(unrecognised)));
+	CHECK(!icc_maps_to_srgb(corpus(header_only)));
+	CHECK(!icc_maps_to_srgb({}));
+
+	// sRGB's own colours need no mapping, which is not the same as a profile that cannot be mapped.
+	CHECK(icc_srgb_mapping(icc_corpus::srgb_parametric()) == srgb_mapping::srgb);
+	CHECK(icc_srgb_mapping(corpus(display_p3)) == srgb_mapping::mapped);
+	CHECK(icc_srgb_mapping(corpus(press)) == srgb_mapping::unmapped);
+	CHECK(icc_srgb_mapping({}) == srgb_mapping::unmapped);
+
+	// What needs no mapping is refused, and nothing written.
+	const auto row = bgrx_row({{187, 105, 62}});
+	std::vector<std::uint8_t> out(row.size(), 0xAB);
+	CHECK(!map_icc_to_srgb(row_view(row), icc_corpus::srgb_parametric(), row_buffer(out)));
+	CHECK(out == std::vector<std::uint8_t>(row.size(), 0xAB));
+
+	// Every profile of the corpus, whole, cut short and corrupted, is answered without a fault, and mapped where
+	// it says it can be.
+	auto mapped_all = true;
+
+	for (const auto& profile : icc_corpus::profiles())
+	{
+		for (const auto& variant : icc_corpus::variants(profile, 8))
+		{
+			if (!icc_maps_to_srgb(variant)) continue;
+			auto pixels = bgrx_row({{0, 0, 0}, {128, 64, 200}, {255, 255, 255}});
+			mapped_all = mapped_all && map_icc_to_srgb(row_view(pixels), variant, row_buffer(pixels));
+		}
+	}
+
+	CHECK(mapped_all);
+}
+
+TEST("icc mapping takes Display P3's colours to sRGB's, white to white, and clips what sRGB cannot show")
+{
+	const auto& p3 = corpus(display_p3);
+
+	// P3's (187, 105, 62) is sRGB's (200, 100, 50). P3's red is past sRGB's, which it clips to, as colour-managed
+	// viewers show it, rather than paling towards grey.
+	auto row = bgrx_row({{255, 255, 255}, {0, 0, 0}, {128, 128, 128}, {187, 105, 62}, {255, 0, 0}});
+	std::vector<std::uint8_t> out(row.size(), 0xAB);
+	CHECK(map_icc_to_srgb(row_view(row), p3, row_buffer(out)));
+
+	CHECK(colour_at(out, 0) == rgb({255, 255, 255}));
+	CHECK(colour_at(out, 1) == rgb({0, 0, 0}));
+	CHECK(near(colour_at(out, 2), {128, 128, 128}, 1));
+	CHECK(near(colour_at(out, 3), {200, 100, 50}, 2));
+	CHECK(colour_at(out, 4) == rgb({255, 0, 0}));
+	CHECK(out[3] == 0x11 && out[19] == 0x11);
+
+	// In place, to the same.
+	CHECK(map_icc_to_srgb(row_view(row), p3, row_buffer(row)));
+	CHECK(row == out);
+}
+
+TEST("icc mapping keeps sixteen bits a channel, and takes a grey profile's curve to sRGB's")
+{
+	std::vector<std::uint16_t> wide = {65535, 65535, 65535, 7, 187 * 257, 105 * 257, 62 * 257, 9};
+	const image_view view{reinterpret_cast<const std::uint8_t*>(wide.data()), 16, 2, 1, pixel_format::rgbx16};
+	CHECK(map_icc_to_srgb(view, corpus(display_p3), {reinterpret_cast<std::uint8_t*>(wide.data()), 16}));
+
+	CHECK(wide[0] == 65535 && wide[1] == 65535 && wide[2] == 65535 && wide[3] == 7 && wide[7] == 9);
+	CHECK(near({wide[4] / 257, wide[5] / 257, wide[6] / 257}, {200, 100, 50}, 2));
+	// Sixteen bits are kept: not every channel lands on a multiple of 257.
+	CHECK(wide[4] % 257 != 0 || wide[5] % 257 != 0 || wide[6] % 257 != 0);
+
+	// Gray Gamma 2.2 is darker than sRGB in the shadows, and as light at white.
+	auto grey = bgrx_row({{0, 0, 0}, {10, 10, 10}, {128, 128, 128}, {255, 255, 255}});
+	CHECK(map_icc_to_srgb(row_view(grey), corpus(greyscale), row_buffer(grey)));
+	CHECK(colour_at(grey, 0) == rgb({0, 0, 0}));
+	CHECK(colour_at(grey, 1) == rgb({3, 3, 3}));
+	CHECK(colour_at(grey, 2) == rgb({129, 129, 129}));
+	CHECK(colour_at(grey, 3) == rgb({255, 255, 255}));
+}
+
+TEST("icc carrying an sRGB edit into a profile's colours keeps what it left, and shows what it made")
+{
+	const auto& p3 = corpus(display_p3);
+
+	// Colours of modest saturation, inside sRGB once mapped, so the rendition loses nothing of them.
+	std::vector<rgb> colours;
+	for (auto i = 0; i < 16; ++i) colours.push_back({100 + i * 5, 90 + i * 4, 120 - i * 3});
+
+	const auto original = bgrx_row(colours);
+	auto before = original;
+	CHECK(map_icc_to_srgb(row_view(original), p3, row_buffer(before)));
+
+	// The edit darkens the first eight pixels of the rendition and leaves the rest.
+	auto after = before;
+	for (std::size_t i = 0; i < 8 * 4; ++i)
+	{
+		if (i % 4 != 3) after[i] = static_cast<std::uint8_t>(after[i] * 3 / 4);
+	}
+
+	auto carried = original;
+	CHECK(carry_srgb_edit(row_view(original), p3, row_view(before), row_view(after), row_buffer(carried)));
+	CHECK(std::equal(carried.begin() + 32, carried.end(), original.begin() + 32));
+	CHECK(colour_at(carried, 0)[0] < colour_at(original, 0)[0]);
+
+	auto shown = carried;
+	CHECK(map_icc_to_srgb(row_view(carried), p3, row_buffer(shown)));
+	auto as_edited = true;
+	for (std::size_t x = 0; x < 8; ++x) as_edited = as_edited && near(colour_at(shown, x), colour_at(after, x), 2);
+	CHECK(as_edited);
+
+	// Sixteen-bit pixels take an edit of an 8-bit rendition alike.
+	std::vector<std::uint16_t> wide;
+	for (const auto& [r, g, b] : colours)
+		wide.insert(wide.end(), {std::uint16_t(r * 257 + 3), std::uint16_t(g * 257), std::uint16_t(b * 257), 0xFFFF});
+	const image_view wide_view{reinterpret_cast<const std::uint8_t*>(wide.data()), wide.size() * 2, 16, 1,
+	                           pixel_format::rgbx16};
+	auto wide_carried = wide;
+	CHECK(carry_srgb_edit(wide_view, p3, row_view(before), row_view(after),
+	                      {reinterpret_cast<std::uint8_t*>(wide_carried.data()), wide.size() * 2}));
+	CHECK(std::equal(wide_carried.begin() + 32, wide_carried.end(), wide.begin() + 32));
+	CHECK(wide_carried[0] < wide[0]);
 }

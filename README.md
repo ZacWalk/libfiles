@@ -8,24 +8,10 @@ updates to images, audio and video. It uses only the standard library and the
 codecs it fetches - no OS or UI dependency. The application supplies a
 positional stream and receives pixels in its own memory.
 
-libfiles is the shared file layer of [Diffractor](https://github.com/ZacWalk/diffractor)
+libfiles is the file layer of [Diffractor](https://github.com/ZacWalk/diffractor)
 and [ImageWalker](https://github.com/ZacWalk/imagewalker), so a fix to a format
-lands in both.
-
-- **Diffractor** scans and decodes its photos through it, scans its audio and
-  video, and writes metadata to photos, video and audio with it: the scans, XMP,
-  EXIF and IPTC, the decoders and encoders, camera raw and the Commodore 64
-  listings.
-- **ImageWalker** links native documents, readers, encoders, metadata and
-  lossless JPEG transforms directly. Its shared application headers retain
-  release adapters and editing workflows; Windows imaging services come from
-  libdesktop.
-- **fast-draw** and **zpilot** use its PNG encoder and shared codec recipes.
-
-Reading is the hot path - a scan reads only the structure it needs, a few block
-reads over a network share - and writing is safe: an edit is either patched in
-place, ordered to survive interruption, or written in one pass to a destination
-the caller stages.
+lands in both; [fast-draw](https://github.com/ZacWalk/fast-draw) and
+[zpilot](https://github.com/ZacWalk/zpilot) use its PNG encoder.
 
 ## What it covers
 
@@ -39,45 +25,41 @@ the caller stages.
 | XMP data model: parse, query, edit, iterate, serialize, as Adobe's XMP Toolkit does | XMP packets and sidecars | [xmp.h](include/libfiles/xmp.h) |
 | EXIF: read, write a fresh block, patch numbers in place, list every entry with maker notes | EXIF blocks from any container | [exif.h](include/libfiles/exif.h), [exif_listing.h](include/libfiles/exif_listing.h) |
 | IPTC-IIM: read the fields an organizer files, and list every dataset | IPTC blocks | [iptc.h](include/libfiles/iptc.h) |
-| ICC colour profiles: list the name, gamut, curve and white point, the header and every tag | Profiles from any container | [icc.h](include/libfiles/icc.h) |
-| Metadata updates: XMP, with EXIF, IPTC and container tags reconciled | JPEG, TIFF, PSD, PNG, GIF, WebP, JPEG XL, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
-| Decoding into caller memory as BGRX, BGRA or NV12, reduced while decoding | JPEG, PNG, WebP, PSD, HEIF and AVIF, JPEG XL | [decode.h](include/libfiles/decode.h) |
+| ICC colour profiles: list the name, gamut, curve and white point, the header and every tag; map the colours one describes to sRGB, and an edit of that rendition back | Profiles from any container | [icc.h](include/libfiles/icc.h) |
+| Metadata updates: XMP, with EXIF, IPTC and container tags reconciled, and a turn written where HEIF and JPEG XL keep one | JPEG, TIFF, PSD, PNG, GIF, WebP, JPEG XL, HEIF and AVIF, MP4 and QuickTime, WMV and WMA, WAV and AVI, MP3 and MP2, FLV | [write.h](include/libfiles/write.h) |
+| Decoding into caller memory as BGRX, BGRA or NV12, reduced while decoding; sixteen bits, an HDR picture's signal and a HEIF's gain map for a caller that takes them | JPEG, PNG, WebP, PSD, HEIF and AVIF, JPEG XL | [decode.h](include/libfiles/decode.h) |
+| HDR pictures and gain maps: a signal mapped to SDR, an SDR edit carried into it, a gain map made for it, ISO 21496-1 metadata, Apple's gain map | HDR HEIF, AVIF, JPEG XL and PNG; gain maps in JPEG, HEIF and AVIF | [hdr.h](include/libfiles/hdr.h) |
 | Native documents: palettes, packed and grayscale storage, pages and frames | BMP, GIF, JPEG, PNG, TIFF, PCX, PSD, WPG | [document.h](include/libfiles/document.h) |
-| Encoding with metadata, native documents and lossless JPEG transforms | BMP, GIF, JPEG, PNG, TIFF, WebP, JPEG XL | [encode.h](include/libfiles/encode.h) |
+| Encoding with metadata, an HDR picture's description and an AVIF's gain map, native documents, lossless JPEG transforms, a JPEG repacked as a JPEG XL and given back, and how a WebP or JPEG XL was compressed | BMP, GIF, JPEG, PNG, TIFF, WebP, JPEG XL, AVIF | [encode.h](include/libfiles/encode.h) |
 | Camera raw: largest preview or developed raw data, scan and listing, by path or through a stream | Every format LibRaw and the DNG SDK read | [raw.h](include/libfiles/raw.h) |
 | Commodore 64 media: list and draw in the C64's characters | D64, D71, D81, T64, CRT, P00, PRG | [commodore.h](include/libfiles/commodore.h) |
 
 ## Building
 
-Windows with MSVC and Linux with GCC, on x64, x86 and ARM64. The CRT is the
-consumer's choice. Build and test with the vendored
-[dd](https://github.com/ZacWalk/dd):
+The library builds with MSVC on Windows and GCC on Linux, for x64, x86 and
+ARM64. The vendored [dd](https://github.com/ZacWalk/dd) builds and tests it for
+x64:
 
 ```pwsh
 .\dd.ps1 build            # Debug and Release
 .\dd.ps1 test             # the libfiles suite in both
 ```
 
-Each codec is optional, on by default, fetched from its upstream release
-archive pinned by SHA-256 in [cmake/dd-dependencies.json](cmake/dd-dependencies.json),
-and built unmodified by libfiles' own recipe in `cmake/`. Consumers link the
-codec targets too, so an application has one copy of each:
+Each codec is optional and on by default. It is fetched from upstream at its pin
+in [cmake/dd-dependencies.json](cmake/dd-dependencies.json) and built unmodified
+by libfiles' own recipe in `cmake/`. Consumers link the codec targets too, so an
+application has one copy of each. The CRT is the consumer's choice.
+[docs/design.md](docs/design.md#codecs) says how each codec is configured.
 
 | Option | Builds | Targets |
 |---|---|---|
-| `LIBFILES_JPEG` | libjpeg-turbo 3.2.1 | `libfiles::jpeg` |
-| `LIBFILES_PNG` | libpng 1.6.59, zlib-ng 2.3.3 | `libfiles::png`, `libfiles::zlib` |
-| `LIBFILES_WEBP` | libwebp 1.6.0 | `libfiles::webp` |
-| `LIBFILES_HEIF` | libheif 1.23.7, libde265 1.1.3, dav1d 1.5.4 | `libfiles::heif`, `libfiles::de265`, `libfiles::dav1d` |
-| `LIBFILES_JXL` | libjxl 0.12.0, Highway 1.4.0, Brotli 1.2.1, skcms | `libfiles::jxl`, `libfiles::highway`, `libfiles::brotli`, `libfiles::skcms` |
-| `LIBFILES_RAW` | LibRaw 0.22.3, Adobe DNG SDK 1.7.1 build 2768 | `libfiles::raw`, `libfiles::dng` |
-| `LIBFILES_GIF`, `LIBFILES_TIFF` | giflib 6.1.3, libtiff 4.7.2 | `libfiles::gif`, `libfiles::tiff` |
-
-NASM is found on the path, or fetched by SHA-256 on Windows; without it, and on
-ARM64, the codecs build their C paths. libheif's FFmpeg decoder is not built:
-an application with FFmpeg builds `plugins/decoder_ffmpeg.cc` from the fetched
-libheif and registers it, as Diffractor does.
-[docs/design.md](docs/design.md#codecs) has each codec's configuration.
+| `LIBFILES_JPEG` | libjpeg-turbo | `libfiles::jpeg` |
+| `LIBFILES_PNG` | libpng, zlib-ng | `libfiles::png`, `libfiles::zlib` |
+| `LIBFILES_WEBP` | libwebp | `libfiles::webp` |
+| `LIBFILES_HEIF` | libheif, libde265, dav1d, libaom | `libfiles::heif`, `libfiles::de265`, `libfiles::dav1d`, `libfiles::aom` |
+| `LIBFILES_JXL` | libjxl, Highway, Brotli, skcms | `libfiles::jxl`, `libfiles::highway`, `libfiles::brotli`, `libfiles::skcms` |
+| `LIBFILES_RAW` | LibRaw, Adobe DNG SDK | `libfiles::raw`, `libfiles::dng` |
+| `LIBFILES_GIF`, `LIBFILES_TIFF` | giflib, libtiff | `libfiles::gif`, `libfiles::tiff` |
 
 ## Using it
 
@@ -90,15 +72,14 @@ FetchContent_MakeAvailable(libfiles)
 target_link_libraries(app PRIVATE libfiles::libfiles)
 ```
 
-Diffractor and ImageWalker declare libfiles this way at a pinned commit, and
-build a sibling `../libfiles` checkout instead when one exists, whatever its
-HEAD. CI and a fresh clone use the pin.
+Setting `FETCHCONTENT_SOURCE_DIR_LIBFILES` to a local checkout builds it in
+place of the pinned commit.
 
 ```cpp
 #include "libfiles/xmp.h"
 
 libfiles::xmp::meta meta;
-meta.parse(packet);   // never throws for malformed input
+meta.parse(packet);   // a malformed packet keeps what precedes its first fault
 
 std::string title;
 meta.get_localized_text(libfiles::xmp::ns::dc, "title", "", "x-default", nullptr, &title);
@@ -115,8 +96,8 @@ its own file handle, or straight from memory:
 libfiles::reader r(my_stream);                 // or libfiles::reader r(bytes);
 const auto info = libfiles::scan(r);           // never throws for malformed input
 // info.width, info.height, info.picture (chroma, bit depth, alpha; name() such as "yuv420 10bit"),
-// info.orientation, info.container_transform, info.metadata.exif / xmp / iptc / icc / photoshop,
-// and libfiles::thumbnails(info)
+// info.orientation, info.container_transform, info.animated, info.hdr, info.gain_map, info.colour_primaries,
+// info.colour_transfer, info.metadata.exif / xmp / iptc / icc / photoshop, and libfiles::thumbnails(info)
 ```
 
 The properties an organizer files by read the same way from a photo or a
@@ -163,25 +144,29 @@ const auto decoded = decoder.decode(r, sink, {.target_width = 256, .target_heigh
 
 ## Documentation
 
-- [docs/design.md](docs/design.md) - how libfiles is layered, what each format
-  is read and written as, and where it deliberately differs from the XMP
-  Toolkit and the readers it replaced.
-- [docs/todo.md](docs/todo.md) - open work.
+- [docs/design.md](docs/design.md) - how libfiles is layered, how each format is
+  read, written and decoded, and where it differs on purpose from the XMP
+  Toolkit, FFmpeg, libheif and libjxl.
 - [AGENTS.md](AGENTS.md) - rules for contributors and coding agents.
 
 ## Licence
 
-LGPL-2.1-or-later; see [LICENSE](LICENSE). A program that links libfiles
-statically must let its users relink it against a modified libfiles.
+MPL-2.0; see [LICENSE](LICENSE). A program that links libfiles statically may be
+under any licence. Changes to libfiles' own files stay under the MPL-2.0, and
+anyone distributing a program that includes libfiles must tell its recipients
+where to get libfiles' source code. Each fetched codec keeps its own licence and
+notices, and the vendored dd build driver (`dd.ps1`, `.dd/`) is MIT.
 
-The native ImageWalker readers and their sample conversions retain Zac Walker's
-1998-2026 copyright and MIT permission notice in
-[LICENSE.imagewalker](LICENSE.imagewalker). The combined library remains
-LGPL-2.1-or-later. Each fetched codec retains its own licence and notices.
+These files keep the LGPL of the code they were ported from, as
+LGPL-2.1-or-later, whose text is in [licences/LGPL-2.1.txt](licences/LGPL-2.1.txt):
 
-`src/libexif_*` and the loading rules in `src/exif_listing.cpp` are derived from
-[libexif](https://github.com/libexif/libexif), Copyright (c) 2001-2022 Lutz
-Mueller and the libexif contributors, under LGPL-2.0-or-later; their notices
-stay with the code. The IPTC dataset table in `src/iptc.cpp` is
-[libiptcdata](https://github.com/ianw/libiptcdata)'s, Copyright (c) 2005 David
-Moore, under LGPL-2.0-or-later.
+- `src/libexif_*`, the loading rules in `src/exif_listing.cpp`, and
+  `tools/port_libexif.py`, which writes the `libexif_*` files, are derived from
+  [libexif](https://github.com/libexif/libexif), Copyright (c) 2001-2022 Lutz
+  Mueller and the libexif contributors, under LGPL-2.0-or-later.
+- `src/iptc.cpp` holds [libiptcdata](https://github.com/ianw/libiptcdata)'s IPTC
+  dataset table, Copyright (c) 2005 David Moore, under LGPL-2.0-or-later.
+
+The linker brings them into a program that lists EXIF or reads IPTC. Anyone
+distributing such a program must also let its users relink it with modified
+versions of those files (LGPL-2.1 section 6).

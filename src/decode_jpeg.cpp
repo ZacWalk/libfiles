@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Decoding a JPEG with libjpeg-turbo - baseline, extended and progressive, lossless up to 16
 // bits, in YCbCr, RGB, grayscale, CMYK and YCCK - reduced by 2, 4 or 8 while it decodes when the caller
@@ -103,7 +103,8 @@ namespace libfiles::detail
 
 			if (s.file && s.next < s.file->size())
 			{
-				const auto n = static_cast<std::size_t>(std::min<std::uint64_t>(s.block.size(), s.file->size() - s.next));
+				const auto n = static_cast<std::size_t>(
+					std::min<std::uint64_t>(s.block.size(), s.file->size() - s.next));
 				s.file->read(s.next, s.block.data(), n);
 				s.next += n;
 				d->src->next_input_byte = s.block.data();
@@ -129,7 +130,8 @@ namespace libfiles::detail
 			d->src->bytes_in_buffer -= in_buffer;
 
 			// A skip past the block continues in the file.
-			if (s.file && skip > in_buffer) s.next = std::min<std::uint64_t>(s.file->size(), s.next + (skip - in_buffer));
+			if (s.file && skip > in_buffer)
+				s.next = std::min<std::uint64_t>(s.file->size(), s.next + (skip - in_buffer));
 		}
 
 		jpeg_state_ptr make_state()
@@ -169,7 +171,8 @@ namespace libfiles::detail
 		// refuses one shorter than an iMCU row, so a vertical sampling factor above 2 decodes as BGRX.
 		bool can_write_nv12(const jpeg_decompress_struct& d)
 		{
-			if (d.jpeg_color_space != JCS_YCbCr || d.num_components != 3 || d.data_precision != 8 || d.comp_info == nullptr)
+			if (d.jpeg_color_space != JCS_YCbCr || d.num_components != 3 || d.data_precision != 8 ||
+			    d.comp_info == nullptr)
 			{
 				return false;
 			}
@@ -182,7 +185,7 @@ namespace libfiles::detail
 			if (luma.v_samp_factor * DCTSIZE > static_cast<int>(max_chunk)) return false;
 
 			return (luma.h_samp_factor == cb.h_samp_factor || luma.h_samp_factor == cb.h_samp_factor * 2) &&
-				(luma.v_samp_factor == cb.v_samp_factor || luma.v_samp_factor == cb.v_samp_factor * 2);
+			       (luma.v_samp_factor == cb.v_samp_factor || luma.v_samp_factor == cb.v_samp_factor * 2);
 		}
 
 		// What one whole-image coefficient array holds for the stream whose header has been read: always
@@ -204,7 +207,8 @@ namespace libfiles::detail
 			{
 				const auto& comp = d.comp_info[ci];
 				result += round_up(comp.width_in_blocks, static_cast<std::uint64_t>(comp.h_samp_factor)) *
-					round_up(comp.height_in_blocks, static_cast<std::uint64_t>(comp.v_samp_factor)) * sizeof(JBLOCK);
+				          round_up(comp.height_in_blocks, static_cast<std::uint64_t>(comp.v_samp_factor)) *
+				          sizeof(JBLOCK);
 			}
 
 			return result;
@@ -224,14 +228,16 @@ namespace libfiles::detail
 
 			for (const auto* m = d.marker_list; m != nullptr; m = m->next)
 			{
-				if (m->marker != app1_marker || m->data_length < 6 || std::memcmp(m->data, "Exif\0\0", 6) != 0) continue;
+				if (m->marker != app1_marker || m->data_length < 6 || std::memcmp(m->data, "Exif\0\0", 6) != 0)
+					continue;
 				block = {m->data + 6, m->data_length - 6};
 			}
 
 			return block;
 		}
 
-		void clear_rows(const pixel_buffer& out, const std::uint32_t first, const std::uint32_t end, const std::size_t row_bytes)
+		void clear_rows(const pixel_buffer& out, const std::uint32_t first, const std::uint32_t end,
+		                const std::size_t row_bytes)
 		{
 			for (auto y = first; y < end; ++y) std::memset(out.pixels + out.stride * y, 0, row_bytes);
 		}
@@ -267,11 +273,11 @@ namespace libfiles::detail
 
 				if (wide)
 				{
-					for (auto i = 0u; i < chunk; i++) wide_rows[i] = scratch.data() + static_cast<std::size_t>(row_samples) * i;
+					for (auto i = 0u; i < chunk; i++)
+						wide_rows[i] = scratch.data() + static_cast<std::size_t>(row_samples) * i;
 
-					read = precision <= 12
-						       ? jpeg12_read_scanlines(&d, reinterpret_cast<J12SAMPARRAY>(wide_rows), chunk)
-						       : jpeg16_read_scanlines(&d, wide_rows, chunk);
+					read = precision <= 12 ? jpeg12_read_scanlines(&d, reinterpret_cast<J12SAMPARRAY>(wide_rows), chunk)
+					                       : jpeg16_read_scanlines(&d, wide_rows, chunk);
 
 					for (auto i = 0u; i < read; i++)
 					{
@@ -515,7 +521,8 @@ namespace libfiles::detail
 #endif
 	}
 
-	void decode_jpeg(reader& r, image_sink& sink, const decode_options& options, jpeg_state_ptr& state, decode_result& result)
+	void decode_jpeg(reader& r, image_sink& sink, const decode_options& options, jpeg_state_ptr& state,
+	                 decode_result& result)
 	{
 		if (!state) state = make_state();
 
@@ -577,7 +584,8 @@ namespace libfiles::detail
 			frame.source_width = d.image_width;
 			frame.source_height = d.image_height;
 			frame.orientation = summarize_exif(exif).orientation.value_or(1);
-			frame.scale_denominator = scale_denominator_for(d.image_width, d.image_height, options.target_width, options.target_height);
+			frame.scale_denominator = scale_denominator_for(d.image_width, d.image_height, options.target_width,
+			                                                options.target_height);
 			frame.working_bytes = buffers_whole_image(d) ? coefficient_bytes(d) : 0;
 
 			const auto scale = frame.scale_denominator;
@@ -715,8 +723,7 @@ namespace libfiles::detail
 			for (int marker = 0; marker < 16; ++marker) jpeg_save_markers(&d, JPEG_APP0 + marker, 0);
 			jpeg_save_markers(&d, JPEG_COM, 0);
 			for (const int marker : {1, 2, 13}) jpeg_save_markers(&d, JPEG_APP0 + marker, 0xffff);
-			if (jpeg_read_header(&d, TRUE) != JPEG_HEADER_OK ||
-				d.image_width > 32767 || d.image_height > 32767)
+			if (jpeg_read_header(&d, TRUE) != JPEG_HEADER_OK || d.image_width > 32767 || d.image_height > 32767)
 				decode.fail("invalid JPEG dimensions or header");
 			const auto thumbnail = decode.options.thumbnail_width && decode.options.thumbnail_height;
 			d.scale_denom = 1;
@@ -725,7 +732,7 @@ namespace libfiles::detail
 				for (const auto divisor : {8u, 4u, 2u})
 				{
 					if (d.image_width > static_cast<std::uint64_t>(decode.options.thumbnail_width) * divisor &&
-						d.image_height > static_cast<std::uint64_t>(decode.options.thumbnail_height) * divisor)
+					    d.image_height > static_cast<std::uint64_t>(decode.options.thumbnail_height) * divisor)
 					{
 						d.scale_denom = divisor;
 						break;
@@ -735,8 +742,9 @@ namespace libfiles::detail
 			d.dither_mode = JDITHER_NONE;
 			d.two_pass_quantize = FALSE;
 			d.quantize_colors = FALSE;
-			d.out_color_space = d.jpeg_color_space == JCS_GRAYSCALE ? JCS_GRAYSCALE :
-				(d.jpeg_color_space == JCS_CMYK || d.jpeg_color_space == JCS_YCCK) ? JCS_CMYK : JCS_RGB;
+			d.out_color_space = d.jpeg_color_space == JCS_GRAYSCALE                                  ? JCS_GRAYSCALE
+			                    : (d.jpeg_color_space == JCS_CMYK || d.jpeg_color_space == JCS_YCCK) ? JCS_CMYK
+			                                                                                         : JCS_RGB;
 			d.dct_method = thumbnail ? JDCT_FASTEST : JDCT_FLOAT;
 			d.do_fancy_upsampling = thumbnail ? FALSE : TRUE;
 			d.do_block_smoothing = thumbnail ? FALSE : TRUE;
@@ -761,14 +769,15 @@ namespace libfiles::detail
 						decode.output.metadata(document_metadata::exif, bytes);
 				}
 				else if (marker->marker == JPEG_APP0 + 13 && bytes.size() > 24 &&
-					std::memcmp(bytes.data(), photoshop_id, sizeof(photoshop_id)) == 0)
+				         std::memcmp(bytes.data(), photoshop_id, sizeof(photoshop_id)) == 0)
 				{
-					if (photoshop.empty()) photoshop.insert(photoshop.end(), bytes.begin(), bytes.begin() + sizeof(photoshop_id));
+					if (photoshop.empty())
+						photoshop.insert(photoshop.end(), bytes.begin(), bytes.begin() + sizeof(photoshop_id));
 					photoshop.insert(photoshop.end(), bytes.begin() + sizeof(photoshop_id), bytes.end());
 					decode.working_bytes(photoshop.size());
 				}
 				else if (marker->marker == JPEG_APP0 + 2 && bytes.size() > sizeof(icc_id) + 2 &&
-					std::memcmp(bytes.data(), icc_id, sizeof(icc_id)) == 0)
+				         std::memcmp(bytes.data(), icc_id, sizeof(icc_id)) == 0)
 				{
 					icc[bytes[sizeof(icc_id)]] = bytes.subspan(sizeof(icc_id) + 2);
 				}
@@ -789,7 +798,8 @@ namespace libfiles::detail
 			info.height = d.image_height;
 			info.storage = d.jpeg_color_space == JCS_GRAYSCALE ? document_storage::gray8 : document_storage::bgr24;
 			info.bits_per_pixel = storage_bits(info.storage);
-			if (d.saw_JFIF_marker) info.version = static_cast<std::uint16_t>((d.JFIF_major_version << 8) | d.JFIF_minor_version);
+			if (d.saw_JFIF_marker)
+				info.version = static_cast<std::uint16_t>((d.JFIF_major_version << 8) | d.JFIF_minor_version);
 			info.has_resolution = d.density_unit == 1 || d.density_unit == 2;
 			if (d.density_unit == 1)
 			{
@@ -817,8 +827,8 @@ namespace libfiles::detail
 			decode.working_bytes(line_bytes * 4 + std::max(stride, line_bytes));
 			pixels.resize(line_bytes * 4);
 			row.resize(std::max(stride, line_bytes), 0);
-			JSAMPROW lines[] = {pixels.data(), pixels.data() + line_bytes,
-				pixels.data() + line_bytes * 2, pixels.data() + line_bytes * 3};
+			JSAMPROW lines[] = {pixels.data(), pixels.data() + line_bytes, pixels.data() + line_bytes * 2,
+			                    pixels.data() + line_bytes * 3};
 			const auto width = d.output_width;
 			const auto color_space = d.out_color_space;
 			const bool inverted = d.saw_Adobe_marker != 0;
@@ -830,8 +840,7 @@ namespace libfiles::detail
 				for (unsigned y = 0; y < count; ++y)
 				{
 					const auto* source = lines[y];
-					if (color_space == JCS_GRAYSCALE)
-						std::memcpy(row.data(), source, line_bytes);
+					if (color_space == JCS_GRAYSCALE) std::memcpy(row.data(), source, line_bytes);
 					else if (color_space == JCS_CMYK)
 					{
 						for (unsigned x = 0; x < width; ++x)
@@ -840,7 +849,8 @@ namespace libfiles::detail
 							for (unsigned color = 0; color < 3; ++color)
 							{
 								const auto ink = source[x * 4 + 2 - color];
-								row[x * 3 + color] = static_cast<std::uint8_t>((inverted ? ink : 255u - ink) * black / 255);
+								row[x * 3 + color] = static_cast<std::uint8_t>((inverted ? ink : 255u - ink) * black /
+								                                               255);
 							}
 						}
 					}

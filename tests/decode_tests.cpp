@@ -1,13 +1,15 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding: PSD composite images in each colour mode, raw and PackBits, decoded into
-// memory a test sink provides, and what decode() reports when it cannot.
+// memory a test sink provides - their profile's colours mapped to sRGB when asked - and what decode() reports
+// when it cannot.
 
 #include "test.h"
 
 #include "builders.h"
+#include "icc_corpus.h"
 #include "libfiles/decode.h"
 #include "libfiles/document.h"
 
@@ -38,10 +40,7 @@ namespace
 			return {memory.data(), stride};
 		}
 
-		bool cancelled() override
-		{
-			return ++polls > cancel_after;
-		}
+		bool cancelled() override { return ++polls > cancel_after; }
 
 		libfiles::frame_info told;
 		int polls = 0;
@@ -65,8 +64,19 @@ namespace
 		// One per channel: its rows, one after another.
 		std::vector<bytes> planes;
 		bytes colour_table;
+		// The image resources section's records, laid out as resource() lays one out.
+		bytes resources;
 		bool packbits = false;
 	};
+
+	// An image resource: its signature, id, an empty name and its data, padded to an even length.
+	bytes resource(const unsigned id, const bytes& data)
+	{
+		builder r;
+		r.raw("8BIM").be16(id).be16(0).be32(static_cast<std::uint32_t>(data.size())).raw(data);
+		if (data.size() % 2 != 0) r.b.push_back(0);
+		return r.b;
+	}
 
 	// A row as PackBits literal runs, 128 bytes at most each.
 	bytes packbits_row(const std::uint8_t* const row, const std::size_t n)
@@ -87,7 +97,7 @@ namespace
 		p.raw("8BPS").be16(1).zeros(6).be16(static_cast<unsigned>(s.planes.size())).be32(s.height).be32(s.width);
 		p.be16(s.depth).be16(s.mode);
 		p.be32(static_cast<std::uint32_t>(s.colour_table.size())).raw(s.colour_table);
-		p.be32(0);
+		p.be32(static_cast<std::uint32_t>(s.resources.size())).raw(s.resources);
 		p.be32(0);
 		p.be16(s.packbits ? 1 : 0);
 
@@ -98,7 +108,8 @@ namespace
 			std::vector<bytes> runs;
 			for (const auto& plane : s.planes)
 			{
-				for (std::uint32_t y = 0; y < s.height; ++y) runs.push_back(packbits_row(plane.data() + y * row_bytes, row_bytes));
+				for (std::uint32_t y = 0; y < s.height; ++y)
+					runs.push_back(packbits_row(plane.data() + y * row_bytes, row_bytes));
 			}
 			for (const auto& run : runs) p.be16(static_cast<unsigned>(run.size()));
 			for (const auto& run : runs) p.raw(run);
@@ -238,6 +249,31 @@ TEST("a psd's channels after the third share the fourth byte")
 	CHECK(sink.pixel(0, 0) == pixel({3, 2, 1, 0xFF}));
 }
 
+TEST("a psd whose profile resource is not srgb's comes mapped to srgb when asked, and as it was otherwise")
+{
+	// Display P3's (187, 105, 62), which is sRGB's (200, 100, 50), and its red, past sRGB's, which clips to it.
+	psd_spec s;
+	s.height = 1;
+	s.planes = {{187, 255}, {105, 0}, {62, 0}};
+	s.resources = resource(0x040F, icc_corpus::display_p3());
+	const auto file = make_psd(s);
+
+	libfiles::decode_options mapping;
+	mapping.map_to_srgb = true;
+	test_sink mapped;
+	libfiles::reader r(file);
+	const auto result = libfiles::decode(r, mapped, mapping);
+	CHECK(result.success && result.frame.profile_mapped);
+	const auto first = mapped.pixel(0, 0);
+	CHECK(first[0] >= 48 && first[0] <= 52 && first[1] >= 98 && first[1] <= 102 && first[2] >= 198 && first[2] <= 202);
+	CHECK(mapped.pixel(1, 0) == pixel({0, 0, 255, 0}));
+
+	test_sink plain;
+	const auto unmapped = decode_bytes(file, plain);
+	CHECK(unmapped.success && !unmapped.frame.profile_mapped);
+	CHECK(plain.pixel(0, 0) == pixel({62, 105, 187, 0}));
+}
+
 TEST("grayscale, duotone, bitmap, indexed and multichannel psds map from their one plane")
 {
 	psd_spec gray;
@@ -331,7 +367,8 @@ TEST("a decode writes each row's pixels and nothing past them")
 
 	for (std::size_t y = 0; y < 2; ++y)
 	{
-		for (std::size_t i = 8; i < sink.stride; ++i) CHECK_EQ(static_cast<unsigned>(sink.memory[y * sink.stride + i]), 0xABu);
+		for (std::size_t i = 8; i < sink.stride; ++i)
+			CHECK_EQ(static_cast<unsigned>(sink.memory[y * sink.stride + i]), 0xABu);
 	}
 
 	CHECK(sink.pixel(1, 1) == pixel({12, 8, 4, 0}));

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The round trip every writable format is held to. Every edit libfiles writes outside the packet is
 // written to a file of the format, patched where it lies and rewritten whole, and the properties the
@@ -67,8 +67,8 @@ namespace test_build
 	inline bool same_moment(const libfiles::date& d, const int year, const int month, const int day, const int hour,
 	                        const int minute, const int second)
 	{
-		return d.year == year && d.month == month && d.day == day && d.has_time && d.hour == hour && d.minute == minute &&
-			d.second == second;
+		return d.year == year && d.month == month && d.day == day && d.has_time && d.hour == hour &&
+		       d.minute == minute && d.second == second;
 	}
 
 	inline const std::vector<round_trip_field>& round_trip_fields()
@@ -88,13 +88,12 @@ namespace test_build
 			{"recorded", [](const p& x) { return same_moment(x.created, 2021, 6, 16, 11, 21, 31); }},
 			// A year alone gives way to the date the edit gives in full.
 			{"year", [](const p& x) { return x.year == 2021; }},
-			{
-				"location", [](const p& x)
-				{
-					return x.location && std::abs(x.location->latitude - (51.0 + 30.5 / 60)) < 1e-6 &&
-						std::abs(x.location->longitude + 7.5 / 60) < 1e-6;
-				}
-			},
+			{"location",
+		     [](const p& x)
+		{
+			return x.location && std::abs(x.location->latitude - (51.0 + 30.5 / 60)) < 1e-6 &&
+			       std::abs(x.location->longitude + 7.5 / 60) < 1e-6;
+		}},
 			{"orientation", [](const p& x) { return x.orientation == 6; }},
 			{"city", [](const p& x) { return x.city == "Trip city"; }},
 			{"state", [](const p& x) { return x.state == "Trip state"; }},
@@ -104,12 +103,12 @@ namespace test_build
 			{"album", [](const p& x) { return x.album == "Trip album"; }},
 			{"album artist", [](const p& x) { return x.album_artist == "Trip album artist"; }},
 			{"genre", [](const p& x) { return x.genre == "Trip genre"; }},
-			{
-				"comment", [](const p& x)
-				{
-					return std::ranges::any_of(x.comments, [](const libfiles::media_text& c) { return c.text == "Trip comment"; });
-				}
-			},
+			{"comment",
+		     [](const p& x)
+		{
+			return std::ranges::any_of(x.comments,
+			                           [](const libfiles::media_text& c) { return c.text == "Trip comment"; });
+		}},
 			{"track", [](const p& x) { return x.track == 3 && x.track_count == 12; }},
 			{"disc", [](const p& x) { return x.disc == 1 && x.disc_count == 2; }},
 		};
@@ -129,8 +128,10 @@ namespace test_build
 		const auto scanned = libfiles::scan(r);
 		libfiles::properties p;
 		if (scanned.tiff_metadata) p = libfiles::properties_from_exif(*scanned.tiff_metadata);
-		else if (!scanned.metadata.exif.empty()) p = libfiles::properties_from_exif(libfiles::read_exif(scanned.metadata.exif));
-		if (!scanned.metadata.iptc.empty()) libfiles::overlay(p, libfiles::properties_from_iptc(libfiles::read_iptc(scanned.metadata.iptc)));
+		else if (!scanned.metadata.exif.empty())
+			p = libfiles::properties_from_exif(libfiles::read_exif(scanned.metadata.exif));
+		if (!scanned.metadata.iptc.empty())
+			libfiles::overlay(p, libfiles::properties_from_iptc(libfiles::read_iptc(scanned.metadata.iptc)));
 		return p;
 	}
 
@@ -213,9 +214,13 @@ namespace test_build
 	// Writes every edit to the file, both ways, and checks that its own blocks hold exactly the fields named
 	// - no fewer, and none read back as something else - and that the file's properties take the packet's
 	// title over its own. The file must scan whole, before and after, or the trip proves nothing.
-	inline void check_round_trip(const std::string_view label, const bytes& original, const std::set<std::string_view>& kept)
+	inline void check_round_trip(const std::string_view label, const bytes& original,
+	                             const std::set<std::string_view>& kept)
 	{
-		const auto named = [label](const std::string& text) { return std::string(label) + ": " + text; };
+		const auto named = [label](const std::string& text)
+		{
+			return std::string(label) + ": " + text;
+		};
 
 		CHECK_STR(named(scan_fault(original)), named(""));
 

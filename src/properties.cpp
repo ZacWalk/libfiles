@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The one table of where each block keeps each property - EXIF's tags, IPTC's datasets and the
 // XMP properties the Metadata Working Group, Adobe's media schema and Google's photo sphere schema name - read
@@ -42,9 +42,7 @@ namespace libfiles
 		bool ascii_less(const std::string_view a, const std::string_view b)
 		{
 			return std::ranges::lexicographical_compare(a, b, [](const char x, const char y)
-			{
-				return static_cast<unsigned char>(lower(x)) < static_cast<unsigned char>(lower(y));
-			});
+			{ return static_cast<unsigned char>(lower(x)) < static_cast<unsigned char>(lower(y)); });
 		}
 
 		bool ascii_equal(const std::string_view a, const std::string_view b)
@@ -91,7 +89,8 @@ namespace libfiles
 
 			for (const auto& name : names)
 			{
-				const auto seen = std::ranges::any_of(kept, [&name](const std::string_view k) { return ascii_equal(k, name); });
+				const auto seen = std::ranges::any_of(kept, [&name](const std::string_view k)
+				{ return ascii_equal(k, name); });
 				if (!seen) kept.push_back(name);
 			}
 
@@ -137,14 +136,10 @@ namespace libfiles
 				return nullptr;
 			};
 
-			const auto* const original = first({
-				date_source::exif_original, date_source::xmp_exif_original, date_source::iptc_created,
-				date_source::xmp_photoshop_created
-			});
-			const auto* const digitized = first({
-				date_source::exif_digitized, date_source::xmp_exif_digitized, date_source::iptc_digitized,
-				date_source::xmp_create
-			});
+			const auto* const original = first({date_source::exif_original, date_source::xmp_exif_original,
+			                                    date_source::iptc_created, date_source::xmp_photoshop_created});
+			const auto* const digitized = first({date_source::exif_digitized, date_source::xmp_exif_digitized,
+			                                     date_source::iptc_digitized, date_source::xmp_create});
 			const auto* const modified = first({date_source::exif_modified, date_source::xmp_modify});
 
 			if (original) p.created = *original;
@@ -262,7 +257,7 @@ namespace libfiles
 
 			const auto& time = *m.gps_time;
 			const auto seconds = static_cast<std::uint64_t>(time[0]) * 3600 + static_cast<std::uint64_t>(time[1]) * 60 +
-				static_cast<std::uint64_t>(time[2]);
+			                     static_cast<std::uint64_t>(time[2]);
 			if (seconds >= 24 * 3600) return;
 
 			d->has_time = true;
@@ -275,17 +270,20 @@ namespace libfiles
 
 		// IPTC's CCYYMMDD, and its HHMMSS±HHMM when there is one: a day alone is midnight, as the standard means
 		// it, and a time with no day says nothing.
-		void add_iptc_date(properties& p, const std::string_view day, const std::string_view time, const date_source source)
+		void add_iptc_date(properties& p, const std::string_view day, const std::string_view time,
+		                   const date_source source)
 		{
 			if (day.size() != 8 || !detail::is_number(day)) return;
 
-			auto text = std::string(day.substr(0, 4)) + ':' + std::string(day.substr(4, 2)) + ':' + std::string(day.substr(6, 2));
+			auto text = std::string(day.substr(0, 4)) + ':' + std::string(day.substr(4, 2)) + ':' +
+			            std::string(day.substr(6, 2));
 			std::string zone;
 			const auto timed = time.size() >= 6 && detail::is_number(time.substr(0, 6));
 
 			if (timed)
 			{
-				text += ' ' + std::string(time.substr(0, 2)) + ':' + std::string(time.substr(2, 2)) + ':' + std::string(time.substr(4, 2));
+				text += ' ' + std::string(time.substr(0, 2)) + ':' + std::string(time.substr(2, 2)) + ':' +
+				        std::string(time.substr(4, 2));
 
 				if (time.size() == 11 && (time[6] == '+' || time[6] == '-') && detail::is_number(time.substr(7, 4)))
 				{
@@ -316,7 +314,8 @@ namespace libfiles
 		}
 
 		// Whether a property is in the form its schema gives it.
-		bool has_form(const xmp::meta& m, const std::string_view schema, const std::string_view name, bool (*const form)(xmp::option_bits))
+		bool has_form(const xmp::meta& m, const std::string_view schema, const std::string_view name,
+		              bool (*const form)(xmp::option_bits))
 		{
 			xmp::option_bits options = 0;
 			return m.get_property(schema, name, nullptr, &options) && form(options);
@@ -324,7 +323,8 @@ namespace libfiles
 
 		// An alt-text's x-default item, else its first. Alt-text whose items are not each simple with a
 		// language - as parsing leaves an alias given a struct - is refused by the toolkit, and reads as none.
-		std::optional<std::string> localized(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		std::optional<std::string> localized(const xmp::meta& m, const std::string_view schema,
+		                                     const std::string_view name)
 		{
 			try
 			{
@@ -339,7 +339,8 @@ namespace libfiles
 		}
 
 		// An array's items that hold text, or nothing for one absent or not an array.
-		std::optional<std::vector<std::string>> items(const xmp::meta& m, const std::string_view schema, const std::string_view name)
+		std::optional<std::vector<std::string>> items(const xmp::meta& m, const std::string_view schema,
+		                                              const std::string_view name)
 		{
 			if (!has_form(m, schema, name, xmp::is_array)) return {};
 
@@ -530,7 +531,8 @@ namespace libfiles
 	{
 		properties p;
 
-		const auto text = [&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
+		const auto text =
+			[&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
 		{
 			const auto value = held(m, schema, name);
 			if (!value) return;
@@ -538,7 +540,8 @@ namespace libfiles
 			p.mark_stated(id);
 		};
 
-		const auto alt_text = [&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
+		const auto alt_text =
+			[&p, &m](std::string& field, const std::string_view schema, const std::string_view name, const property id)
 		{
 			auto value = localized(m, schema, name);
 			if (!value) return;
@@ -547,7 +550,8 @@ namespace libfiles
 		};
 
 		// A date with the zone its text ends in; the text of one that holds no date, for xmp:CreateDate's year.
-		const auto date_of = [&p, &m](const std::string_view schema, const std::string_view name, const date_source source)
+		const auto date_of =
+			[&p, &m](const std::string_view schema, const std::string_view name, const date_source source)
 		{
 			auto value = held(m, schema, name);
 			if (!value) return std::optional<std::string>{};
@@ -784,8 +788,10 @@ namespace libfiles
 				if (!scanned.error.empty()) return result;
 
 				if (scanned.tiff_metadata) add([&] { return properties_from_exif(*scanned.tiff_metadata); });
-				else if (!scanned.metadata.exif.empty()) add([&] { return properties_from_exif(read_exif(scanned.metadata.exif)); });
-				if (!scanned.metadata.iptc.empty()) add([&] { return properties_from_iptc(read_iptc(scanned.metadata.iptc)); });
+				else if (!scanned.metadata.exif.empty())
+					add([&] { return properties_from_exif(read_exif(scanned.metadata.exif)); });
+				if (!scanned.metadata.iptc.empty())
+					add([&] { return properties_from_iptc(read_iptc(scanned.metadata.iptc)); });
 				add([&] { return properties_from_xmp(scanned.metadata.xmp); });
 
 				// A JPEG XL codestream's own orientation, where no block states one.

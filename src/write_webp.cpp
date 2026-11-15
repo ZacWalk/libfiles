@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing XMP to a WebP. The packet is the "XMP " chunk, and the VP8X header must declare
 // it. A simple file has no VP8X, so one is added, its canvas and alpha read from the image header -

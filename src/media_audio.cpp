@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The audio codec headers the media scanners read - AAC, MPEG audio, AC-3 and E-AC-3, DTS, Opus,
 // Vorbis, FLAC, ALAC and Speex - the Windows structures that describe a stream in AVI, ASF, WAV and
@@ -70,7 +70,7 @@ namespace libfiles::detail
 		// USAC fills some of the indices AAC reserves; 31 escapes to an explicit rate.
 		constexpr std::uint32_t usac_sample_rates[32] = {
 			96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350, 0, 0, 57600,
-			51200, 40000, 38400, 34150, 28800, 25600, 20000, 19200, 17075, 14400, 12800, 9600, 0, 0, 0, 0,
+			51200, 40000, 38400, 34150, 28800, 25600, 20000, 19200, 17075, 14400, 12800, 9600, 0,    0, 0, 0,
 		};
 
 		// The channels a channelConfiguration stands for. Zero for 0, whose program_config_element counts
@@ -106,7 +106,8 @@ namespace libfiles::detail
 		}
 
 		// USAC's escapedValue(): a field that grows by a second, then a third, when the one before is full.
-		std::uint32_t read_escaped_value(bit_reader& b, const unsigned first, const unsigned second, const unsigned third)
+		std::uint32_t read_escaped_value(bit_reader& b, const unsigned first, const unsigned second,
+		                                 const unsigned third)
 		{
 			auto value = b.u(first);
 			if (value != (1u << first) - 1) return value;
@@ -228,7 +229,8 @@ namespace libfiles::detail
 		// ---- AC-3 and E-AC-3 ----------------------------------------------------------------------------
 
 		constexpr std::uint32_t ac3_sample_rates[3] = {48000, 44100, 32000};
-		constexpr std::uint32_t ac3_bit_rates[19] = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640};
+		constexpr std::uint32_t ac3_bit_rates[19] = {32,  40,  48,  56,  64,  80,  96,  112, 128, 160,
+		                                             192, 224, 256, 320, 384, 448, 512, 576, 640};
 		constexpr std::uint32_t eac3_blocks[4] = {1, 2, 3, 6};
 
 		// Channel locations as E-AC-3's custom channel map numbers them - left, centre, right, the
@@ -259,7 +261,7 @@ namespace libfiles::detail
 		std::uint32_t location_channels(const std::uint16_t locations)
 		{
 			return static_cast<std::uint32_t>(std::popcount(locations) +
-				std::popcount(static_cast<std::uint16_t>(locations & location_pairs)));
+			                                  std::popcount(static_cast<std::uint16_t>(locations & location_pairs)));
 		}
 
 		std::uint16_t standard_locations(const std::uint32_t acmod, const bool lfe)
@@ -333,7 +335,9 @@ namespace libfiles::detail
 				const auto shift = bsid > 8 ? bsid - 8 : 0;
 				const auto kbps = ac3_bit_rates[frmsizecod / 2];
 				// Two-byte words: a 44.1 kHz frame rounds down, and the odd codes add one to it.
-				const auto words = fscod == 0 ? 2 * kbps : fscod == 2 ? 3 * kbps : 96000 * kbps / 44100 + (frmsizecod & 1);
+				const auto words = fscod == 0   ? 2 * kbps
+				                   : fscod == 2 ? 3 * kbps
+				                                : 96000 * kbps / 44100 + (frmsizecod & 1);
 
 				f = {};
 				f.bytes = 2 * words;
@@ -406,9 +410,9 @@ namespace libfiles::detail
 
 		// RATE's nominal bit rates; the last three codes are open, variable and lossless, and say none.
 		constexpr std::uint32_t dts_bit_rates[32] = {
-			32000, 56000, 64000, 96000, 112000, 128000, 192000, 224000, 256000, 320000, 384000, 448000, 512000,
-			576000, 640000, 768000, 896000, 1024000, 1152000, 1280000, 1344000, 1408000, 1411200, 1472000, 1536000,
-			1920000, 2048000, 3072000, 3840000, 0, 0, 0,
+			32000,   56000,   64000,   96000,   112000,  128000,  192000,  224000,  256000,  320000,  384000,
+			448000,  512000,  576000,  640000,  768000,  896000,  1024000, 1152000, 1280000, 1344000, 1408000,
+			1411200, 1472000, 1536000, 1920000, 2048000, 3072000, 3840000, 0,       0,       0,
 		};
 
 		// The start of a DTS core frame as the 16-bit big-endian form holds it. Streams are also stored
@@ -460,9 +464,9 @@ namespace libfiles::detail
 		constexpr std::uint32_t le_tag(const char (&s)[5])
 		{
 			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
 		}
 
 		constexpr std::uint32_t upper_fourcc(const std::uint32_t fourcc)
@@ -502,8 +506,8 @@ namespace libfiles::detail
 			{"h263i", "I263"},
 			{"h261", "H261"},
 			{"mpeg4", "FMP4DIVXDX50XVIDMP4SM4S2ZMP4DIV1BLZ0mp4vUMP4WV1FSEDGRMP43IV2WAWVFFDSFVFWDCODMVXMPM4VSMP4"
-			          "DXGMVIDMM4T3GEOXG264HDX4DM4VDMK2DYM4DIGIEPHVEM4AM4CCSN40VSPXULDXGEOVSIPPSM4VXVIXDreXQMP4PLV1"
-			          "GLV4GMP4MNM4GTM4"},
+		              "DXGMVIDMM4T3GEOXG264HDX4DM4VDMK2DYM4DIGIEPHVEM4AM4CCSN40VSPXULDXGEOVSIPPSM4VXVIXDreXQMP4PLV1"
+		              "GLV4GMP4MNM4GTM4"},
 			{"msmpeg4v3", "MP43DIV3MPG3DIV5DIV6DIV4DVX3AP41COL1COL0"},
 			{"msmpeg4v2", "MP42DIV2"},
 			{"msmpeg4v1", "MPG4MP41"},
@@ -522,9 +526,9 @@ namespace libfiles::detail
 			{"ffvhuff", "FFVH"},
 			{"cyuv", "CYUV"},
 			{"rawvideo", "I420YUY2Y210Y216Y416Y422V422Y410YUNVUYNVUYNYuyv12Vu12vuyyuvsyuv2P422YV12YV16YV24UYVYVYUY"
-			             "IYUVAYUVY800Y8  HDYCYVU9VDTZY411NV12NV21Y41BY42BYUV9auv2YVYUYUYVI410I411I422I440I444J420J422"
-			             "J440J444YUVAI40AI42ARGB2RV15RV16RV24RV32RGBAAV32GREYI09LI09BI29LI29BI49LI49BI0ALI0ABI2ALI2AB"
-			             "I4ALI4ABI4FLI4FBI0CLI0CBI2CLI2CBI4CLI4CBI0FLI0FBv308v408v410y408"},
+		                 "IYUVAYUVY800Y8  HDYCYVU9VDTZY411NV12NV21Y41BY42BYUV9auv2YVYUYUYVI410I411I422I440I444J420J422"
+		                 "J440J444YUVAI40AI42ARGB2RV15RV16RV24RV32RGBAAV32GREYI09LI09BI29LI29BI49LI49BI0ALI0ABI2ALI2AB"
+		                 "I4ALI4ABI4FLI4FBI0CLI0CBI2CLI2CBI4CLI4CBI0FLI0FBv308v408v410y408"},
 			{"frwu", "FRWU"},
 			{"r10k", "R10k"},
 			{"r210", "r210"},
@@ -647,11 +651,13 @@ namespace libfiles::detail
 			{"rv60", "RV60"},
 		};
 
-		static_assert(std::ranges::all_of(fourcc_groups, [](const fourcc_group& g) { return g.fourccs.size() % 4 == 0; }));
+		static_assert(std::ranges::all_of(fourcc_groups,
+		                                  [](const fourcc_group& g) { return g.fourccs.size() % 4 == 0; }));
 
 		// The compression values BITMAPINFOHEADER gives uncompressed and run-length pictures, and the
 		// MPEG FourCCs some writers store as numbers.
 		constexpr std::pair<std::uint32_t, std::string_view> numeric_fourccs[] = {
+			// clang-format off
 			{0x00000000, "rawvideo"},
 			{0x00000001, "msrle"},
 			{0x00000002, "msrle"},
@@ -660,10 +666,10 @@ namespace libfiles::detail
 			{0x10000001, "mpeg1"},
 			{0x10000002, "mpeg2"},
 			{0x10000004, "mpeg4"},
+			// clang-format on
 		};
 
-		template <typename Same>
-		std::string_view find_fourcc(const std::uint32_t fourcc, Same same)
+		template <typename Same> std::string_view find_fourcc(const std::uint32_t fourcc, Same same)
 		{
 			for (const auto& [number, codec] : numeric_fourccs)
 			{
@@ -675,9 +681,12 @@ namespace libfiles::detail
 				for (std::size_t i = 0; i < group.fourccs.size(); i += 4)
 				{
 					const auto entry = static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i])) |
-						static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 1])) << 8 |
-						static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 2])) << 16 |
-						static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 3])) << 24;
+					                   static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 1]))
+					                       << 8 |
+					                   static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 2]))
+					                       << 16 |
+					                   static_cast<std::uint32_t>(static_cast<std::uint8_t>(group.fourccs[i + 3]))
+					                       << 24;
 					if (same(entry, fourcc)) return group.codec;
 				}
 			}
@@ -693,6 +702,7 @@ namespace libfiles::detail
 
 		// The WAVE format tags FFmpeg knows, with raw AAC's and the Ogg Vorbis ACM codec's six modes.
 		constexpr wave_tag wave_tags[] = {
+			// clang-format off
 			{0x0001, "pcm"}, {0x0002, "adpcm_ms"}, {0x0003, "pcm"}, {0x0006, "alaw"}, {0x0007, "mulaw"},
 			{0x000A, "wmavoice"}, {0x0010, "adpcm_ima_oki"}, {0x0011, "adpcm_ima_wav"}, {0x0014, "adpcm_g726"},
 			{0x0017, "adpcm_ima_oki"}, {0x0020, "adpcm_yamaha"}, {0x0022, "truespeech"}, {0x0031, "gsm_ms"},
@@ -710,6 +720,7 @@ namespace libfiles::detail
 			{0x674F, "vorbis"}, {0x6750, "vorbis"}, {0x6751, "vorbis"}, {0x676F, "vorbis"}, {0x6770, "vorbis"},
 			{0x6771, "vorbis"}, {0x6C75, "mulaw"}, {0x706D, "aac"}, {0x729A, "g729"}, {0x8180, "ftr"}, {0xA100, "g723_1"},
 			{0xA106, "aac"}, {0xA109, "speex"}, {0xCD02, "g728"}, {0xF1AC, "flac"},
+			// clang-format on
 		};
 
 		// The last twelve bytes of the GUIDs whose first four are a WAVE format tag, as a file stores them:
@@ -729,6 +740,7 @@ namespace libfiles::detail
 
 		// Subformats that stand for no format tag.
 		constexpr wave_subformat wave_subformats[] = {
+			// clang-format off
 			{{0x2C, 0x80, 0x6D, 0xE0, 0x46, 0xDB, 0xCF, 0x11, 0xB4, 0xD1, 0x00, 0x80, 0x5F, 0x6C, 0xBB, 0xEA}, "ac3"},
 			{{0x2B, 0x80, 0x6D, 0xE0, 0x46, 0xDB, 0xCF, 0x11, 0xB4, 0xD1, 0x00, 0x80, 0x5F, 0x6C, 0xBB, 0xEA}, "mp2"},
 			{{0xAF, 0x87, 0xFB, 0xA7, 0x02, 0x2D, 0xFB, 0x42, 0xA4, 0xD4, 0x05, 0xCD, 0x93, 0x84, 0x3B, 0xDD}, "eac3"},
@@ -736,6 +748,7 @@ namespace libfiles::detail
 			{{0xD2, 0x42, 0xE1, 0x47, 0xBA, 0x36, 0x8D, 0x4D, 0x88, 0xFC, 0x61, 0x65, 0x4F, 0x8C, 0x83, 0x6C}, "atrac9"},
 			{{0x82, 0xEC, 0x1F, 0x6A, 0xCA, 0xDB, 0x19, 0x45, 0xBD, 0xE7, 0x56, 0xD3, 0xB3, 0xEF, 0x98, 0x1D}, "adpcm_agm"},
 			{{0x3A, 0xC1, 0xFA, 0x38, 0x81, 0x1D, 0x43, 0x61, 0xA4, 0x0D, 0xCE, 0x53, 0xCA, 0x60, 0x7C, 0xD1}, "dfpwm"},
+			// clang-format on
 		};
 
 		struct picture_format
@@ -763,6 +776,7 @@ namespace libfiles::detail
 
 		// The codecs whose every stream is sampled and deep alike.
 		constexpr fixed_format fixed_formats[] = {
+			// clang-format off
 			{"vp8", yuv420_8}, {"vp3", yuv420_8}, {"vp4", yuv420_8}, {"vp5", yuv420_8}, {"vp6", yuv420_8},
 			{"vp6f", yuv420_8}, {"vp6a", {chroma_format::yuv420, 8, true}}, {"vp7", yuv420_8}, {"h261", yuv420_8},
 			{"h263", yuv420_8}, {"h263i", yuv420_8}, {"h263p", yuv420_8}, {"flv1", yuv420_8}, {"mpeg1", yuv420_8},
@@ -773,10 +787,12 @@ namespace libfiles::detail
 			{"indeo2", yuv410_8}, {"indeo3", yuv410_8}, {"indeo4", yuv410_8}, {"indeo5", yuv410_8},
 			{"yuv4", yuv420_8}, {"y41p", yuv411_8}, {"v210", {chroma_format::yuv422, 10}},
 			{"012v", {chroma_format::yuv422, 10}}, {"r210", {chroma_format::rgb, 10}}, {"r10k", {chroma_format::rgb, 10}},
+			// clang-format on
 		};
 
 		// Uncompressed pictures, by FourCC.
 		constexpr std::pair<std::uint32_t, picture_format> raw_formats[] = {
+			// clang-format off
 			{le_tag("I420"), yuv420_8}, {le_tag("IYUV"), yuv420_8}, {le_tag("YV12"), yuv420_8}, {le_tag("NV12"), yuv420_8},
 			{le_tag("NV21"), yuv420_8}, {le_tag("J420"), {chroma_format::yuv420, 8, false, true}},
 			{le_tag("I40A"), {chroma_format::yuv420, 8, true}},
@@ -799,6 +815,7 @@ namespace libfiles::detail
 			{le_tag("Y800"), gray_8}, {le_tag("Y8  "), gray_8}, {le_tag("GREY"), gray_8},
 			{le_tag("RV24"), rgb_8}, {le_tag("RV32"), rgb_8}, {le_tag("RGBA"), {chroma_format::rgb, 8, true}},
 			{le_tag("AV32"), {chroma_format::rgb, 8, true}},
+			// clang-format on
 		};
 
 		void apply_picture_format(const picture_format& format, video_header& out)
@@ -881,7 +898,8 @@ namespace libfiles::detail
 		if (ps) h.channels = 2;
 
 		h.samples_per_frame = frame_length;
-		h.profile = sbr && is_one_of(aac_core_types, type) ? std::string_view(ps ? "HE-AACv2" : "HE-AAC") : aac_profile(type);
+		h.profile = sbr && is_one_of(aac_core_types, type) ? std::string_view(ps ? "HE-AACv2" : "HE-AAC")
+		                                                   : aac_profile(type);
 		out = std::move(h);
 		return true;
 	}
@@ -958,7 +976,8 @@ namespace libfiles::detail
 		const auto rate_index = header >> 10 & 3;
 
 		// Version 1 and layer 4 are reserved, as is rate 3, and bit rate 15 is forbidden.
-		if ((header & 0xFFE00000) != 0xFFE00000 || version == 1 || layer == 4 || bit_rate_index == 15 || rate_index == 3)
+		if ((header & 0xFFE00000) != 0xFFE00000 || version == 1 || layer == 4 || bit_rate_index == 15 ||
+		    rate_index == 3)
 		{
 			return false;
 		}
@@ -976,7 +995,9 @@ namespace libfiles::detail
 		h.samples_per_frame = samples;
 
 		// Layer I counts four-byte slots.
-		if (kbps != 0) h.frame_bytes = layer == 1 ? (12 * kbps * 1000 / rate + padding) * 4 : samples / 8 * kbps * 1000 / rate + padding;
+		if (kbps != 0)
+			h.frame_bytes = layer == 1 ? (12 * kbps * 1000 / rate + padding) * 4
+			                           : samples / 8 * kbps * 1000 / rate + padding;
 
 		h.profile = std::string(versions[version]) + " Layer " + std::to_string(layer);
 		codec = codecs[layer - 1];
@@ -1002,7 +1023,7 @@ namespace libfiles::detail
 			ac3_sync_frame next;
 
 			if (!read_ac3_sync_frame(data.subspan(static_cast<std::size_t>(bytes)), next) || next.stream_type != 1 ||
-				next.sample_rate != first.sample_rate || next.blocks != first.blocks)
+			    next.sample_rate != first.sample_rate || next.blocks != first.blocks)
 			{
 				break;
 			}
@@ -1106,7 +1127,7 @@ namespace libfiles::detail
 		// FFmpeg's checks: a normal frame of whole subband blocks, with a known layout, rate and source
 		// resolution; AMODE past 15 is user-defined.
 		if (b.overrun() || deficit != 31 || blocks % 8 != 0 || frame_bytes < 96 || mode > 15 || rate == 0 || reserved ||
-			lfe == 3 || resolution == 4 || resolution == 7)
+		    lfe == 3 || resolution == 4 || resolution == 7)
 		{
 			return false;
 		}
@@ -1184,8 +1205,8 @@ namespace libfiles::detail
 		const auto short_block = data[28] & 15;
 		const auto long_block = data[28] >> 4;
 
-		if (version != 0 || channels == 0 || rate == 0 || short_block < 6 || long_block > 13 || short_block > long_block ||
-			(data[29] & 1) == 0)
+		if (version != 0 || channels == 0 || rate == 0 || short_block < 6 || long_block > 13 ||
+		    short_block > long_block || (data[29] & 1) == 0)
 		{
 			return false;
 		}
@@ -1198,7 +1219,8 @@ namespace libfiles::detail
 		return true;
 	}
 
-	bool parse_flac_streaminfo(const std::span<const std::uint8_t> data, audio_header& out, std::uint64_t& total_samples)
+	bool parse_flac_streaminfo(const std::span<const std::uint8_t> data, audio_header& out,
+	                           std::uint64_t& total_samples)
 	{
 		if (data.size() < 34) return false;
 
@@ -1238,7 +1260,7 @@ namespace libfiles::detail
 
 		// What FFmpeg's decoder accepts. With no channel count it takes the container's.
 		if (frame_length == 0 || frame_length > 4096 * 4096 || (bits != 16 && bits != 20 && bits != 24 && bits != 32) ||
-			channels > 8)
+		    channels > 8)
 		{
 			return false;
 		}
@@ -1278,8 +1300,8 @@ namespace libfiles::detail
 
 	// ---- Windows structures and codec names -------------------------------------------------------------
 
-	bool read_wave_format(const std::span<const std::uint8_t> data, media_stream& stream, std::uint32_t* const avg_bytes_per_second,
-	                      std::uint16_t* const block_align)
+	bool read_wave_format(const std::span<const std::uint8_t> data, media_stream& stream,
+	                      std::uint32_t* const avg_bytes_per_second, std::uint16_t* const block_align)
 	{
 		// WAVEFORMAT, then PCMWAVEFORMAT's bits, then WAVEFORMATEX's cbSize and the bytes it counts.
 		if (data.size() < 14) return false;
@@ -1291,7 +1313,8 @@ namespace libfiles::detail
 		const auto align = load_le16(data.data() + 12);
 		std::uint32_t bits = data.size() >= 16 ? load_le16(data.data() + 14) : 0;
 		auto extra = std::span<const std::uint8_t>{};
-		if (data.size() >= 18) extra = data.subspan(18, std::min<std::size_t>(load_le16(data.data() + 16), data.size() - 18));
+		if (data.size() >= 18)
+			extra = data.subspan(18, std::min<std::size_t>(load_le16(data.data() + 16), data.size() - 18));
 
 		std::uint32_t format = tag;
 		auto codec = codec_from_wave_tag(tag);
@@ -1308,7 +1331,8 @@ namespace libfiles::detail
 
 				const auto guid = extra.subspan(6, 16);
 				const auto subtype = load_le32(guid.data());
-				const auto base = std::ranges::any_of(subtype_bases, [&](const auto& known) { return std::ranges::equal(guid.subspan(4), known); });
+				const auto base = std::ranges::any_of(subtype_bases, [&](const auto& known)
+				{ return std::ranges::equal(guid.subspan(4), known); });
 
 				if (base && subtype <= 0xFFFF)
 				{
@@ -1353,7 +1377,8 @@ namespace libfiles::detail
 
 		if (format == 0x0001 || format == 0x0003 || format == 0x0163 || format == 0xF1AC)
 		{
-			if (data.size() < 16 && format <= 0x0003 && channels != 0 && align % channels == 0) bits = align / channels * 8;
+			if (data.size() < 16 && format <= 0x0003 && channels != 0 && align % channels == 0)
+				bits = align / channels * 8;
 			stream.audio.bits_per_sample = static_cast<std::uint8_t>(std::min<std::uint32_t>(bits, 255));
 			stream.audio.float_samples = format == 0x0003;
 		}
@@ -1361,7 +1386,8 @@ namespace libfiles::detail
 		// The AAC tags carry an AudioSpecificConfig; HEAACWAVEFORMAT's follows an HEAACWAVEINFO whose payload
 		// type 3 is LATM. LATM's rate and channels are its core's, which FFmpeg leaves to the decoder.
 		auto config = std::span<const std::uint8_t>{};
-		if (format == 0x00FF || format == 0x1601 || format == 0x4143 || format == 0x706D || format == 0xA106) config = extra;
+		if (format == 0x00FF || format == 0x1601 || format == 0x4143 || format == 0x706D || format == 0xA106)
+			config = extra;
 
 		if (format == 0x1610 && extra.size() >= 12)
 		{
@@ -1403,11 +1429,13 @@ namespace libfiles::detail
 			// BI_RGB and BI_BITFIELDS: 24 and 32 bits are 8-bit RGB, and BI_RGB's 16 are RGB555, where the
 			// masks of BI_BITFIELDS, not read, may make them 565. Fewer bits are a palette.
 			if (bit_count == 24 || bit_count == 32) apply_picture_format(rgb_8, format);
-			if (bit_count == 15 || bit_count == 16) apply_picture_format(compression == 0 ? rgb_5 : picture_format{chroma_format::rgb}, format);
+			if (bit_count == 15 || bit_count == 16)
+				apply_picture_format(compression == 0 ? rgb_5 : picture_format{chroma_format::rgb}, format);
 		}
 		else if (codec == "rawvideo")
 		{
-			const auto found = std::ranges::find(raw_formats, compression, &std::pair<std::uint32_t, picture_format>::first);
+			const auto found = std::ranges::find(raw_formats, compression,
+			                                     &std::pair<std::uint32_t, picture_format>::first);
 			if (found != std::end(raw_formats)) apply_picture_format(found->second, format);
 		}
 		else
@@ -1444,10 +1472,12 @@ namespace libfiles::detail
 	std::string_view codec_from_fourcc(const std::uint32_t little_endian_fourcc) noexcept
 	{
 		// FFmpeg's way: the exact FourCC first, then one that differs only in case.
-		const auto exact = find_fourcc(little_endian_fourcc, [](const std::uint32_t a, const std::uint32_t b) { return a == b; });
+		const auto exact = find_fourcc(little_endian_fourcc,
+		                               [](const std::uint32_t a, const std::uint32_t b) { return a == b; });
 		if (!exact.empty()) return exact;
 
-		return find_fourcc(little_endian_fourcc, [](const std::uint32_t a, const std::uint32_t b) { return upper_fourcc(a) == upper_fourcc(b); });
+		return find_fourcc(little_endian_fourcc, [](const std::uint32_t a, const std::uint32_t b)
+		{ return upper_fourcc(a) == upper_fourcc(b); });
 	}
 
 	std::string_view codec_from_wave_tag(const std::uint16_t tag) noexcept

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 #include "libfiles/reader.h"
 
@@ -42,9 +42,7 @@ namespace libfiles
 	}
 
 	reader::reader(stream& source, const std::size_t block_size) :
-		_source(&source),
-		_size(source.size()),
-		_block_size(block_size ? block_size : default_block_size)
+		_source(&source), _size(source.size()), _block_size(block_size ? block_size : default_block_size)
 	{
 	}
 
@@ -175,14 +173,14 @@ namespace libfiles
 	{
 		const auto* const p = window(offset, 4);
 		return static_cast<std::uint32_t>(p[0]) << 24 | static_cast<std::uint32_t>(p[1]) << 16 |
-			static_cast<std::uint32_t>(p[2]) << 8 | p[3];
+		       static_cast<std::uint32_t>(p[2]) << 8 | p[3];
 	}
 
 	std::uint32_t reader::le32(const std::uint64_t offset)
 	{
 		const auto* const p = window(offset, 4);
 		return static_cast<std::uint32_t>(p[3]) << 24 | static_cast<std::uint32_t>(p[2]) << 16 |
-			static_cast<std::uint32_t>(p[1]) << 8 | p[0];
+		       static_cast<std::uint32_t>(p[1]) << 8 | p[0];
 	}
 
 	std::uint64_t reader::be64(const std::uint64_t offset)

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Text rules shared by every reader and writer: whether bytes are UTF-8, what a Windows-1252 byte
 // stands for, a code point written as UTF-8, UTF-16 read and written, and text as tags and blocks store it
@@ -15,6 +15,7 @@ namespace libfiles::detail
 	bool is_utf8(const std::uint8_t* p, const std::size_t size)
 	{
 		static constexpr int byte_class[256] = {
+			// clang-format off
 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -31,11 +32,25 @@ namespace libfiles::detail
 			5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
 			6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 7, 7,
 			9, 10, 10, 10, 11, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+			// clang-format on
 		};
 
-		enum state : int { start, a, b, c, d, e, f, g, error, state_count };
+		enum state : int
+		{
+			start,
+			a,
+			b,
+			c,
+			d,
+			e,
+			f,
+			g,
+			error,
+			state_count
+		};
 
 		static constexpr state transitions[] = {
+			// clang-format off
 			start, error, error, error, error, error, error, error, error,
 			error, start, a, error, a, b, error, b, error,
 			error, start, a, error, a, b, b, error, error,
@@ -48,6 +63,7 @@ namespace libfiles::detail
 			f, error, error, error, error, error, error, error, error,
 			e, error, error, error, error, error, error, error, error,
 			g, error, error, error, error, error, error, error, error,
+			// clang-format on
 		};
 
 		auto current = start;
@@ -64,10 +80,9 @@ namespace libfiles::detail
 	char32_t windows_1252(const std::uint8_t byte)
 	{
 		static constexpr char16_t high[32] = {
-			0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
-			0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
-			0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
-			0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+			0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160,
+			0x2039, 0x0152, 0x008D, 0x017D, 0x008F, 0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
+			0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
 		};
 
 		return byte >= 0x80 && byte < 0xA0 ? high[byte - 0x80] : byte;
@@ -110,7 +125,8 @@ namespace libfiles::detail
 
 			if (cp >= 0xD800 && cp <= 0xDBFF)
 			{
-				if (i < units.size() && units[i] >= 0xDC00 && units[i] <= 0xDFFF) cp = 0x10000 + ((cp - 0xD800) << 10) + (units[i++] - 0xDC00);
+				if (i < units.size() && units[i] >= 0xDC00 && units[i] <= 0xDFFF)
+					cp = 0x10000 + ((cp - 0xD800) << 10) + (units[i++] - 0xDC00);
 				else cp = 0xFFFD;
 			}
 			else if (cp >= 0xDC00 && cp <= 0xDFFF)
@@ -143,7 +159,11 @@ namespace libfiles::detail
 			std::size_t n = 1;
 
 			if (c < 0x80) cp = c;
-			else if ((c & 0xE0) == 0xC0 && i + 1 < text.size()) { cp = (c & 0x1Fu) << 6 | (s[i + 1] & 0x3F); n = 2; }
+			else if ((c & 0xE0) == 0xC0 && i + 1 < text.size())
+			{
+				cp = (c & 0x1Fu) << 6 | (s[i + 1] & 0x3F);
+				n = 2;
+			}
 			else if ((c & 0xF0) == 0xE0 && i + 2 < text.size())
 			{
 				cp = (c & 0x0Fu) << 12 | (s[i + 1] & 0x3Fu) << 6 | (s[i + 2] & 0x3F);
@@ -245,7 +265,8 @@ namespace libfiles::detail
 
 		for (std::size_t i = 0; i + 1 < bytes.size(); i += 2)
 		{
-			const auto unit = static_cast<char16_t>(big_endian ? bytes[i] << 8 | bytes[i + 1] : bytes[i + 1] << 8 | bytes[i]);
+			const auto unit = static_cast<char16_t>(big_endian ? bytes[i] << 8 | bytes[i + 1]
+			                                                   : bytes[i + 1] << 8 | bytes[i]);
 			if (unit == 0) break;
 			units.push_back(unit);
 		}

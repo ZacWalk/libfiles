@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The PSD scanner, and the Photoshop image resources that PSD stores in its header and
 // JPEG in APP13. The resources carry IPTC, XMP, EXIF and the colour profile.
@@ -41,7 +41,8 @@ namespace libfiles::detail
 			const auto depth_ok = depth == 8 || (depth == 1 && mode == bitmap_mode && channels == 1);
 
 			return columns != 0 && rows != 0 && columns <= max_psd_dimension && rows <= max_psd_dimension &&
-				static_cast<std::uint64_t>(columns) * rows <= max_psd_pixels && channels != 0 && channels <= 56 && depth_ok;
+			       static_cast<std::uint64_t>(columns) * rows <= max_psd_pixels && channels != 0 && channels <= 56 &&
+			       depth_ok;
 		}
 
 		// Big-endian reads at a cursor that never passes the end of the file.
@@ -57,9 +58,7 @@ namespace libfiles::detail
 			}
 
 		public:
-			explicit msb_cursor(reader& r) : _r(r), _len(r.size())
-			{
-			}
+			explicit msb_cursor(reader& r) : _r(r), _len(r.size()) {}
 
 			std::uint64_t remaining() const
 			{
@@ -122,9 +121,7 @@ namespace libfiles::detail
 			std::size_t _accepted = 0;
 
 		public:
-			explicit metadata_resources(metadata_blocks& blocks) : _blocks(blocks)
-			{
-			}
+			explicit metadata_resources(metadata_blocks& blocks) : _blocks(blocks) {}
 
 			static bool holds_metadata(const std::uint16_t id)
 			{
@@ -170,33 +167,40 @@ namespace libfiles::detail
 
 		switch (mode)
 		{
-		case bitmap_mode: result.pixel_format = "mono";
+		case bitmap_mode:
+			result.pixel_format = "mono";
 			result.picture = {chroma_format::gray, 1};
 			break;
-		case rgb_mode: result.pixel_format = channels >= 4 ? "argb32" : "rgb32";
+		case rgb_mode:
+			result.pixel_format = channels >= 4 ? "argb32" : "rgb32";
 			result.picture = {chroma_format::rgb, bits, channels >= 4};
 			break;
-		case lab_mode: result.pixel_format = "lab";
+		case lab_mode:
+			result.pixel_format = "lab";
 			result.picture = {chroma_format::lab, bits};
 			break;
-		case cmyk_mode: result.pixel_format = "cmyk";
+		case cmyk_mode:
+			result.pixel_format = "cmyk";
 			result.picture = {chroma_format::cmyk, bits};
 			break;
-		case grayscale_mode: result.pixel_format = "gray8";
+		case grayscale_mode:
+			result.pixel_format = "gray8";
 			result.picture = {chroma_format::gray, bits};
 			break;
-		case indexed_mode: result.pixel_format = "pal8";
+		case indexed_mode:
+			result.pixel_format = "pal8";
 			result.picture = {chroma_format::rgb, 8, false, true};
 			break;
-		case multichannel_mode: result.pixel_format = "multichannel";
+		case multichannel_mode:
+			result.pixel_format = "multichannel";
 			result.picture.bit_depth = bits;
 			break;
-		case duotone_mode: result.pixel_format = "duotone";
+		case duotone_mode:
+			result.pixel_format = "duotone";
 			// One channel of gray, printed in inks the colour data names.
 			result.picture = {chroma_format::gray, bits};
 			break;
-		default:
-			break;
+		default: break;
 		}
 
 		result.width = columns;
@@ -227,7 +231,8 @@ namespace libfiles::detail
 				const auto start = c.pos();
 				const auto available = after_resources - start;
 				const auto resource = read_photoshop_resource(
-					r.view(start, static_cast<std::size_t>(std::min<std::uint64_t>(max_photoshop_resource_header, available))),
+					r.view(start,
+				           static_cast<std::size_t>(std::min<std::uint64_t>(max_photoshop_resource_header, available))),
 					available);
 				if (!resource) break;
 

@@ -1,3 +1,11 @@
+# This file is part of libfiles.
+# Copyright 2026  Zac Walker
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# The code this writes, and the maker note interface and dispatch it carries, are ported from libexif:
+# Copyright (c) 2001-2022 Lutz Mueller <lutz@users.sourceforge.net> and the libexif contributors,
+# LGPL-2.0-or-later.
+
 """Ports libexif's presentation code into libfiles: its types, tag names, titles and descriptions, value
 text and maker note decoders, as src/libexif_*.
 
@@ -16,7 +24,7 @@ OUT = Path(__file__).resolve().parent.parent / 'src'
 
 BANNER = '''// This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Ported from libexif ({sources}): Copyright (c) 2001-2022 Lutz Mueller
 // <lutz@users.sourceforge.net> and the libexif contributors, LGPL-2.0-or-later. The code is libexif's

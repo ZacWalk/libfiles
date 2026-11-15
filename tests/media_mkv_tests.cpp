@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the Matroska and WebM media scan. Files are built element by element - tracks of
 // every kind, colour and display, tags at every level, attachments, SeekHeads that point past the
@@ -153,29 +153,39 @@ namespace
 		"0164000dffe100186764000dacd94141fa1000000300100000030320f142996001000668ebe3cb22c0fdf8f800";
 	constexpr std::string_view hevc_config =
 		"0102200000009000000000003cf000fcfdfafa00000f03200001001840010c01ffff02200000030090000003000003003c959809210001"
-		"002942010102200000030090000003000003003ca00a080f1365959a4932b9a0200000030020000003032122000100074401c172b46240";
+		"002942010102200000030090000003000003003ca00a080f1365959a4932b9a020000003002000000303212200010007"
+		"4401c172b46240";
 	constexpr std::string_view av1_config = "81000c000a0b0200000561e7fde017c002";
 	constexpr std::string_view mpeg4_config =
 		"000001b001000001b58913000001000000012000c48d8800cd0a041e1443000001b24c61766336332e312e313032";
 	constexpr std::string_view aac_config = "119056e500";
 	constexpr std::string_view opus_head = "4f707573486561640102380180bb0000000000";
 	// 44.1 kHz.
-	constexpr std::string_view flac_private = "664c614380000022120012000003320005490ac442f00000ac44329626d06ec29f977ca65d95690a7626";
+	constexpr std::string_view flac_private =
+		"664c614380000022120012000003320005490ac442f00000ac44329626d06ec29f977ca65d95690a7626";
 	constexpr std::string_view alac_config = "000010000010280a0e02000000004004001588800000ac44";
 	constexpr std::string_view vorbis_identification = "01766f72626973000000000244ac0000000000000000000000000000bb01";
-	constexpr std::string_view vp9_frame = "824983420013f00ef60038241c184a000340620c43f62fa3f63c53eb3a8fa8fa35f57ee8eaff9a5a28";
-	constexpr std::string_view vp8_key_frame = "d028009d012a4001f00000470885858885848802021be7bb9f01fc07e80798affef407f407f80fc7f8";
-	constexpr std::string_view mpeg2_frame = "000001b31400f023ffffe000000001b5148a00010000000001b80008004000000100000ffff8000001b5";
+	constexpr std::string_view vp9_frame =
+		"824983420013f00ef60038241c184a000340620c43f62fa3f63c53eb3a8fa8fa35f57ee8eaff9a5a28";
+	constexpr std::string_view vp8_key_frame =
+		"d028009d012a4001f00000470885858885848802021be7bb9f01fc07e80798affef407f407f80fc7f8";
+	constexpr std::string_view mpeg2_frame =
+		"000001b31400f023ffffe000000001b5148a00010000000001b80008004000000100000ffff8000001b5";
 	// 5.1 channels.
-	constexpr std::string_view ac3_frame = "0b7761191e40ebf8403eff99c598b31662cc59fffb577cf9477b870df577d0df3e7d0df3e7c28ef70e1beaefa1be7cfa";
+	constexpr std::string_view ac3_frame =
+		"0b7761191e40ebf8403eff99c598b31662cc59fffb577cf9477b870df577d0df3e7d0df3e7c28ef70e1beaefa1be7cfa";
 	// A JPEG's start of image and 4:2:2 frame header.
 	constexpr std::string_view jpeg_frame = "ffd8ffc000110800f0014003012100021101031101";
 
 	bytes hex(const std::string_view text)
 	{
-		const auto nibble = [](const char c) { return static_cast<std::uint8_t>(c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10); };
+		const auto nibble = [](const char c)
+		{
+			return static_cast<std::uint8_t>(c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10);
+		};
 		bytes out;
-		for (std::size_t i = 0; i + 1 < text.size(); i += 2) out.push_back(static_cast<std::uint8_t>(nibble(text[i]) << 4 | nibble(text[i + 1])));
+		for (std::size_t i = 0; i + 1 < text.size(); i += 2)
+			out.push_back(static_cast<std::uint8_t>(nibble(text[i]) << 4 | nibble(text[i + 1])));
 		return out;
 	}
 
@@ -264,13 +274,13 @@ namespace
 		return el(element, cat(children));
 	}
 
-	bytes ebml_header(const std::string_view doc_type = "matroska", const std::uint64_t doc_read_version = 2, const std::uint64_t ebml_read_version = 1)
+	bytes ebml_header(const std::string_view doc_type = "matroska", const std::uint64_t doc_read_version = 2,
+	                  const std::uint64_t ebml_read_version = 1)
 	{
-		return master(id::ebml, {
-			              el_uint(id::ebml_version, 1), el_uint(id::ebml_read_version, ebml_read_version), el_uint(id::ebml_max_id_length, 4),
-			              el_uint(id::ebml_max_size_length, 8), el_str(id::doc_type, doc_type), el_uint(id::doc_type_version, 4),
-			              el_uint(id::doc_type_read_version, doc_read_version)
-		              });
+		return master(id::ebml, {el_uint(id::ebml_version, 1), el_uint(id::ebml_read_version, ebml_read_version),
+		                         el_uint(id::ebml_max_id_length, 4), el_uint(id::ebml_max_size_length, 8),
+		                         el_str(id::doc_type, doc_type), el_uint(id::doc_type_version, 4),
+		                         el_uint(id::doc_type_read_version, doc_read_version)});
 	}
 
 	bytes segment(const std::vector<bytes>& children)
@@ -283,12 +293,11 @@ namespace
 		return master(id::info, {el_uint(id::timestamp_scale, 1000000), cat(more)});
 	}
 
-	bytes track(const std::uint64_t number, const std::uint64_t type, const std::string_view codec, const std::vector<bytes>& more = {})
+	bytes track(const std::uint64_t number, const std::uint64_t type, const std::string_view codec,
+	            const std::vector<bytes>& more = {})
 	{
-		return master(id::track_entry, {
-			              el_uint(id::track_number, number), el_uint(id::track_uid, number + 10), el_uint(id::track_type, type),
-			              el_str(id::codec_id, codec), cat(more)
-		              });
+		return master(id::track_entry, {el_uint(id::track_number, number), el_uint(id::track_uid, number + 10),
+		                                el_uint(id::track_type, type), el_str(id::codec_id, codec), cat(more)});
 	}
 
 	bytes picture_size(const std::uint64_t width, const std::uint64_t height, const std::vector<bytes>& more = {})
@@ -303,7 +312,9 @@ namespace
 
 	bytes simple_block(const unsigned track_number, const bytes& frame, const unsigned flags = 0x80)
 	{
-		return el(id::simple_block, cat({bytes{static_cast<std::uint8_t>(0x80 | track_number), 0, 0, static_cast<std::uint8_t>(flags)}, frame}));
+		return el(id::simple_block,
+		          cat({bytes{static_cast<std::uint8_t>(0x80 | track_number), 0, 0, static_cast<std::uint8_t>(flags)},
+		               frame}));
 	}
 
 	bytes cluster(const std::vector<bytes>& blocks)
@@ -321,12 +332,12 @@ namespace
 		return master(id::tag, {master(id::targets, targets), cat(simple_tags)});
 	}
 
-	bytes attached_file(const std::string_view file_name, const std::string_view mime, const bytes& data, const std::string_view description = {})
+	bytes attached_file(const std::string_view file_name, const std::string_view mime, const bytes& data,
+	                    const std::string_view description = {})
 	{
-		return master(id::attached_file, {
-			              description.empty() ? bytes{} : el_str(id::file_description, description), el_str(id::file_name, file_name),
-			              el_str(id::file_mime_type, mime), el(id::file_data, data), el_uint(id::file_uid, data.size())
-		              });
+		return master(id::attached_file, {description.empty() ? bytes{} : el_str(id::file_description, description),
+		                                  el_str(id::file_name, file_name), el_str(id::file_mime_type, mime),
+		                                  el(id::file_data, data), el_uint(id::file_uid, data.size())});
 	}
 
 	struct seek_to
@@ -357,10 +368,7 @@ namespace
 			return index;
 		}
 
-		void point(const std::size_t head, std::vector<seek_to> entries)
-		{
-			_entries[head] = std::move(entries);
-		}
+		void point(const std::size_t head, std::vector<seek_to> entries) { _entries[head] = std::move(entries); }
 
 		bytes build(const bytes& header, const bool unknown_size = false)
 		{
@@ -386,7 +394,8 @@ namespace
 			}
 
 			_data = header.size() + 12;
-			return cat({header, unknown_size ? el_unknown(id::segment, cat(_children)) : el(id::segment, cat(_children), 8)});
+			return cat(
+				{header, unknown_size ? el_unknown(id::segment, cat(_children)) : el(id::segment, cat(_children), 8)});
 		}
 
 		// Where a child begins in the file, and where it ends.
@@ -400,8 +409,10 @@ namespace
 
 			for (const auto& e : entries)
 			{
-				const auto position = static_cast<std::uint64_t>(static_cast<std::int64_t>(positions[e.child]) + e.adjust);
-				append(payload, master(id::seek, {el(id::seek_id, id_bytes(e.element)), el_uint(id::seek_position, position, 8)}));
+				const auto position = static_cast<std::uint64_t>(static_cast<std::int64_t>(positions[e.child]) +
+				                                                 e.adjust);
+				append(payload, master(id::seek, {el(id::seek_id, id_bytes(e.element)),
+				                                  el_uint(id::seek_position, position, 8)}));
 			}
 
 			return el(id::seek_head, payload);
@@ -444,7 +455,8 @@ namespace
 		return std::abs(a - b) < 1e-6;
 	}
 
-	bool same_tag(const libfiles::media_tag& t, const std::string_view key, const std::string_view value, const std::string_view language = {})
+	bool same_tag(const libfiles::media_tag& t, const std::string_view key, const std::string_view value,
+	              const std::string_view language = {})
 	{
 		return t.key == key && t.value == value && t.language == language;
 	}
@@ -469,7 +481,8 @@ namespace
 		}
 
 		const auto length = static_cast<unsigned>(data.size());
-		return cat({builder().u8(0x78).u8(0x01).u8(0x01).le16(length).le16(~length & 0xFFFF).b, data, builder().be32(b << 16 | a).b});
+		return cat({builder().u8(0x78).u8(0x01).u8(0x01).le16(length).le16(~length & 0xFFFF).b, data,
+		            builder().be32(b << 16 | a).b});
 	}
 
 	// The file the cut and corruption tests start from. A SeekHead points at Info and Tracks before the
@@ -488,51 +501,60 @@ namespace
 		segment_builder s;
 		const auto head = s.add_seek_head();
 		const auto void_index = s.add(el(id::void_element, bytes(8, 0)));
-		const auto info_index = s.add(info({
-			el_float(id::duration, 2000.0), el_str(id::title, "Sample"), el_str(id::muxing_app, "libfiles mux"),
-			el_str(id::writing_app, "libfiles writer"), el_uint(id::date_utc, 321722029000000000, 8)
-		}));
-		const auto tracks_index = s.add(master(id::tracks, {
-			track(1, 1, "V_MPEG4/ISO/AVC", {
-				      el(id::codec_private, hex(avc_config)), el_uint(id::default_duration, 40000000), el_str(id::language, "ger"),
-				      el_str(id::name, "Main"), picture_size(320, 240)
-			      }),
-			track(2, 2, "A_AAC", {el(id::codec_private, hex(aac_config)), el_uint(id::flag_default, 0), sound(48000, 2)}),
-			track(3, 0x11, "S_TEXT/UTF8", {el_str(id::language, "fre"), el_str(id::language_bcp47, "fr-CA")}),
-		}));
+		const auto info_index = s.add(
+			info({el_float(id::duration, 2000.0), el_str(id::title, "Sample"), el_str(id::muxing_app, "libfiles mux"),
+		          el_str(id::writing_app, "libfiles writer"), el_uint(id::date_utc, 321722029000000000, 8)}));
+		const auto tracks_index = s.add(
+			master(id::tracks,
+		           {
+					   track(1, 1, "V_MPEG4/ISO/AVC",
+		                     {el(id::codec_private, hex(avc_config)), el_uint(id::default_duration, 40000000),
+		                      el_str(id::language, "ger"), el_str(id::name, "Main"), picture_size(320, 240)}),
+					   track(2, 2, "A_AAC",
+		                     {el(id::codec_private, hex(aac_config)), el_uint(id::flag_default, 0), sound(48000, 2)}),
+					   track(3, 0x11, "S_TEXT/UTF8",
+		                     {el_str(id::language, "fre"), el_str(id::language_bcp47, "fr-CA")}),
+				   }));
 		s.add(master(id::tags, {
-			tag({}, {simple_tag("GENRE", "Test")}),
-			tag({el_uint(id::tag_track_uid, 11)}, {
-				    simple_tag("DURATION", "00:00:01.960000000"), simple_tag("BPS", "123456"), simple_tag("TITLE", "Track title")
-			    }),
-		}));
+								   tag({}, {simple_tag("GENRE", "Test")}),
+								   tag({el_uint(id::tag_track_uid, 11)},
+		                               {simple_tag("DURATION", "00:00:01.960000000"), simple_tag("BPS", "123456"),
+		                                simple_tag("TITLE", "Track title")}),
+							   }));
 		s.add(cluster({simple_block(1, bytes(8, 0x11)), simple_block(2, bytes(4, 0x22))}));
 		const auto cues = s.add(el(id::cues, bytes(4, 0x33)));
-		const auto end_tags = s.add(master(id::tags, {
-			tag({el_uint(id::target_type_value, 50)}, {
-				    simple_tag("ARTIST", "Artist Name", {simple_tag("SORT_WITH", "Name, Artist")}),
-				    simple_tag("COMMENT", "Kommentar", {el_str(id::tag_language, "ger")}),
-				    simple_tag("TITLE", "Colour", {el_str(id::tag_language, "und"), el_str(id::tag_language_bcp47, "en-GB")}),
-				    master(id::simple_tag, {el_str(id::tag_name, "COVER"), el(id::tag_binary, bytes(10, 7))}),
-				    master(id::simple_tag, {el_str(id::tag_string, "no name")}),
-				    simple_tag("EMPTY", ""),
-			    }),
-			tag({el_uint(id::target_type_value, 50), el_str(id::target_type, "ALBUM")}, {simple_tag("TITLE", "An Album")}),
-			tag({el_uint(id::tag_chapter_uid, 5)}, {simple_tag("TITLE", "Chapter")}),
-			tag({el_uint(id::tag_attachment_uid, 7)}, {simple_tag("TITLE", "Attachment")}),
-			tag({el_uint(id::tag_track_uid, 999)}, {simple_tag("TITLE", "Nobody")}),
-			tag({el_uint(id::tag_track_uid, 11), el_uint(id::tag_track_uid, 12)}, {simple_tag("NOTE", "both")}),
-		}));
-		const auto attachments = s.add(master(id::attachments, {
-			attached_file("font.ttf", "application/x-truetype-font", bytes(20, 0x44)),
-			attached_file("cover.jpg", "image/jpeg", hex(jpeg_frame), "The front"),
-		}));
+		const auto end_tags = s.add(master(
+			id::tags,
+			{
+				tag({el_uint(id::target_type_value, 50)},
+		            {
+						simple_tag("ARTIST", "Artist Name", {simple_tag("SORT_WITH", "Name, Artist")}),
+						simple_tag("COMMENT", "Kommentar", {el_str(id::tag_language, "ger")}),
+						simple_tag("TITLE", "Colour",
+		                           {el_str(id::tag_language, "und"), el_str(id::tag_language_bcp47, "en-GB")}),
+						master(id::simple_tag, {el_str(id::tag_name, "COVER"), el(id::tag_binary, bytes(10, 7))}),
+						master(id::simple_tag, {el_str(id::tag_string, "no name")}),
+						simple_tag("EMPTY", ""),
+					}),
+				tag({el_uint(id::target_type_value, 50), el_str(id::target_type, "ALBUM")},
+		            {simple_tag("TITLE", "An Album")}),
+				tag({el_uint(id::tag_chapter_uid, 5)}, {simple_tag("TITLE", "Chapter")}),
+				tag({el_uint(id::tag_attachment_uid, 7)}, {simple_tag("TITLE", "Attachment")}),
+				tag({el_uint(id::tag_track_uid, 999)}, {simple_tag("TITLE", "Nobody")}),
+				tag({el_uint(id::tag_track_uid, 11), el_uint(id::tag_track_uid, 12)}, {simple_tag("NOTE", "both")}),
+			}));
+		const auto attachments = s.add(
+			master(id::attachments, {
+										attached_file("font.ttf", "application/x-truetype-font", bytes(20, 0x44)),
+										attached_file("cover.jpg", "image/jpeg", hex(jpeg_frame), "The front"),
+									}));
 		const auto end_head = s.add_seek_head();
 
-		s.point(head, {
-			        {id::info, info_index}, {id::tracks, tracks_index}, {id::attachments, attachments}, {id::seek_head, end_head},
-			        {id::tags, void_index, 3}
-		        });
+		s.point(head, {{id::info, info_index},
+		               {id::tracks, tracks_index},
+		               {id::attachments, attachments},
+		               {id::seek_head, end_head},
+		               {id::tags, void_index, 3}});
 		s.point(end_head, {{id::cues, cues}, {id::tags, end_tags}});
 
 		sample out;
@@ -578,8 +600,7 @@ namespace
 	}
 
 	// Whether a's items appear in b in the same order, as the tags a file cut short keeps must.
-	template <typename T, typename Same>
-	bool in_order(const std::vector<T>& a, const std::vector<T>& b, Same same)
+	template <typename T, typename Same> bool in_order(const std::vector<T>& a, const std::vector<T>& b, Same same)
 	{
 		std::size_t j = 0;
 
@@ -620,7 +641,8 @@ namespace
 
 		for (const auto& p : r.pictures)
 		{
-			CHECK(!p.location.empty() && p.location.offset <= file_size && p.location.size <= file_size - p.location.offset);
+			CHECK(!p.location.empty() && p.location.offset <= file_size &&
+			      p.location.size <= file_size - p.location.offset);
 			CHECK(p.data.empty());
 		}
 
@@ -634,22 +656,21 @@ namespace
 
 TEST("media mkv reads a video and an audio track")
 {
-	const auto file = cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1500.0)}),
-			master(id::tracks, {
-				track(1, 1, "V_MPEG4/ISO/AVC", {
-					      el(id::codec_private, hex(avc_config)), el_uint(id::default_duration, 40000000), el_str(id::language, "ger"),
-					      el_str(id::name, "Main"), picture_size(320, 240)
-				      }),
-				track(2, 2, "A_AAC", {
-					      el(id::codec_private, hex(aac_config)), el_uint(id::flag_default, 0), el_uint(id::flag_commentary, 1),
-					      el_uint(id::flag_visual_impaired, 1), sound(48000, 2)
-				      }),
-			}),
-			cluster({simple_block(1, bytes(64, 0)), simple_block(2, bytes(16, 0))}),
-		})
-	});
+	const auto file = cat(
+		{ebml_header(),
+	     segment({
+			 info({el_float(id::duration, 1500.0)}),
+			 master(id::tracks,
+	                {
+						track(1, 1, "V_MPEG4/ISO/AVC",
+	                          {el(id::codec_private, hex(avc_config)), el_uint(id::default_duration, 40000000),
+	                           el_str(id::language, "ger"), el_str(id::name, "Main"), picture_size(320, 240)}),
+						track(2, 2, "A_AAC",
+	                          {el(id::codec_private, hex(aac_config)), el_uint(id::flag_default, 0),
+	                           el_uint(id::flag_commentary, 1), el_uint(id::flag_visual_impaired, 1), sound(48000, 2)}),
+					}),
+			 cluster({simple_block(1, bytes(64, 0)), simple_block(2, bytes(16, 0))}),
+		 })});
 
 	const auto r = scan(file);
 	CHECK(r.success);
@@ -699,15 +720,16 @@ TEST("media mkv reads a video and an audio track")
 
 TEST("media mkv reads a video and an audio track's codec headers")
 {
-	const auto file = cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {
-				track(1, 1, "V_MPEG4/ISO/AVC", {el(id::codec_private, hex(avc_config)), picture_size(320, 240)}),
-				track(2, 2, "A_AAC", {el(id::codec_private, hex(aac_config)), sound(48000, 2)}),
-			}),
-		})
-	});
+	const auto file = cat(
+		{ebml_header(), segment({
+							info({el_float(id::duration, 1000.0)}),
+							master(id::tracks,
+	                               {
+									   track(1, 1, "V_MPEG4/ISO/AVC",
+	                                         {el(id::codec_private, hex(avc_config)), picture_size(320, 240)}),
+									   track(2, 2, "A_AAC", {el(id::codec_private, hex(aac_config)), sound(48000, 2)}),
+								   }),
+						})});
 
 	const auto r = scan(file);
 	CHECK(r.success);
@@ -734,6 +756,7 @@ TEST("media mkv reads the sample file whole")
 	// flattens them; a TargetType prefixes its keys, and tags for chapters, attachments and tracks
 	// that do not exist are left out.
 	const std::vector<libfiles::media_tag> expected = {
+		// clang-format off
 		{"TITLE", "Sample", ""},
 		{"ENCODER", "libfiles writer", ""},
 		{"ENCODER", "libfiles mux", ""},
@@ -744,6 +767,7 @@ TEST("media mkv reads the sample file whole")
 		{"TITLE", "Colour", "en-GB"},
 		{"COVER", "10 bytes of binary data", ""},
 		{"ALBUM/TITLE", "An Album", ""},
+		// clang-format on
 	};
 
 	CHECK_EQ(r.tags.size(), expected.size());
@@ -812,26 +836,56 @@ TEST("media mkv names the codecs of every CodecID")
 	constexpr auto data = media_stream_kind::data;
 
 	const expectation cases[] = {
-		{"V_MPEG4/ISO/AVC", 1, "h264", video}, {"V_MPEGH/ISO/HEVC", 1, "hevc", video}, {"V_AV1", 1, "av1", video},
-		{"V_VP9", 1, "vp9", video}, {"V_VP8", 1, "vp8", video}, {"V_MPEG4/ISO/SP", 1, "mpeg4", video},
-		{"V_MPEG4/ISO/ASP", 1, "mpeg4", video}, {"V_MPEG4/ISO/AP", 1, "mpeg4", video}, {"V_MPEG1", 1, "mpeg1", video},
-		{"V_MPEG2", 1, "mpeg2", video}, {"V_MJPEG", 1, "mjpeg", video}, {"V_THEORA", 1, "theora", video},
-		{"V_PRORES", 1, "prores", video}, {"V_FFV1", 1, "ffv1", video}, {"V_UNCOMPRESSED", 1, "rawvideo", video},
-		{"A_AAC", 2, "aac", audio}, {"A_AAC/MPEG4/LC/SBR", 2, "aac", audio}, {"A_MPEG/L3", 2, "mp3", audio},
-		{"A_MPEG/L2", 2, "mp2", audio}, {"A_MPEG/L1", 2, "mp1", audio}, {"A_AC3", 2, "ac3", audio}, {"A_EAC3", 2, "eac3", audio},
-		{"A_DTS", 2, "dts", audio}, {"A_DTS/LOSSLESS", 2, "dts", audio}, {"A_OPUS", 2, "opus", audio},
-		{"A_VORBIS", 2, "vorbis", audio}, {"A_FLAC", 2, "flac", audio}, {"A_ALAC", 2, "alac", audio},
-		{"A_PCM/INT/LIT", 2, "pcm", audio}, {"A_PCM/INT/BIG", 2, "pcm", audio}, {"A_PCM/FLOAT/IEEE", 2, "pcm", audio},
-		{"A_TRUEHD", 2, "truehd", audio}, {"A_WAVPACK4", 2, "wavpack", audio}, {"A_TTA1", 2, "tta", audio},
-		{"S_TEXT/UTF8", 0x11, "subrip", subtitle}, {"S_TEXT/ASS", 0x11, "ass", subtitle}, {"S_TEXT/SSA", 0x11, "ass", subtitle},
-		{"S_TEXT/WEBVTT", 0x11, "webvtt", subtitle}, {"S_VOBSUB", 0x11, "dvd_subtitle", subtitle},
+		{"V_MPEG4/ISO/AVC", 1, "h264", video},
+		{"V_MPEGH/ISO/HEVC", 1, "hevc", video},
+		{"V_AV1", 1, "av1", video},
+		{"V_VP9", 1, "vp9", video},
+		{"V_VP8", 1, "vp8", video},
+		{"V_MPEG4/ISO/SP", 1, "mpeg4", video},
+		{"V_MPEG4/ISO/ASP", 1, "mpeg4", video},
+		{"V_MPEG4/ISO/AP", 1, "mpeg4", video},
+		{"V_MPEG1", 1, "mpeg1", video},
+		{"V_MPEG2", 1, "mpeg2", video},
+		{"V_MJPEG", 1, "mjpeg", video},
+		{"V_THEORA", 1, "theora", video},
+		{"V_PRORES", 1, "prores", video},
+		{"V_FFV1", 1, "ffv1", video},
+		{"V_UNCOMPRESSED", 1, "rawvideo", video},
+		{"A_AAC", 2, "aac", audio},
+		{"A_AAC/MPEG4/LC/SBR", 2, "aac", audio},
+		{"A_MPEG/L3", 2, "mp3", audio},
+		{"A_MPEG/L2", 2, "mp2", audio},
+		{"A_MPEG/L1", 2, "mp1", audio},
+		{"A_AC3", 2, "ac3", audio},
+		{"A_EAC3", 2, "eac3", audio},
+		{"A_DTS", 2, "dts", audio},
+		{"A_DTS/LOSSLESS", 2, "dts", audio},
+		{"A_OPUS", 2, "opus", audio},
+		{"A_VORBIS", 2, "vorbis", audio},
+		{"A_FLAC", 2, "flac", audio},
+		{"A_ALAC", 2, "alac", audio},
+		{"A_PCM/INT/LIT", 2, "pcm", audio},
+		{"A_PCM/INT/BIG", 2, "pcm", audio},
+		{"A_PCM/FLOAT/IEEE", 2, "pcm", audio},
+		{"A_TRUEHD", 2, "truehd", audio},
+		{"A_WAVPACK4", 2, "wavpack", audio},
+		{"A_TTA1", 2, "tta", audio},
+		{"S_TEXT/UTF8", 0x11, "subrip", subtitle},
+		{"S_TEXT/ASS", 0x11, "ass", subtitle},
+		{"S_TEXT/SSA", 0x11, "ass", subtitle},
+		{"S_TEXT/WEBVTT", 0x11, "webvtt", subtitle},
+		{"S_VOBSUB", 0x11, "dvd_subtitle", subtitle},
 		{"S_HDMV/PGS", 0x11, "hdmv_pgs_subtitle", subtitle},
 		// FFmpeg reads a WebVTT metadata track as subtitles.
 		{"D_WEBVTT/METADATA", 0x21, "webvtt", subtitle},
 		// A CodecID that does not fit its track's type, as FFmpeg checks, names nothing; nor does one
 		// nobody knows, nor none at all.
-		{"A_AAC", 1, "", video}, {"V_VP8", 2, "", audio}, {"V_FUTURE", 1, "", video}, {"B_VOBBTN", 0x12, "", data},
-		{"", 0x20, "", data}, {"V_VP8", 3, "", data},
+		{"A_AAC", 1, "", video},
+		{"V_VP8", 2, "", audio},
+		{"V_FUTURE", 1, "", video},
+		{"B_VOBBTN", 0x12, "", data},
+		{"", 0x20, "", data},
+		{"V_VP8", 3, "", data},
 	};
 
 	std::vector<bytes> entries;
@@ -868,11 +922,12 @@ TEST("media mkv reads PCM and lossless sample formats")
 	// FFmpeg reads PCM without a BitDepth as 16-bit integers or 32-bit floats; a lossy codec's BitDepth
 	// is not its samples'.
 	const expectation cases[] = {
-		{"A_PCM/INT/LIT", 16, 16, false}, {"A_PCM/INT/LIT", 24, 24, false}, {"A_PCM/INT/LIT", 8, 8, false},
-		{"A_PCM/INT/LIT", 0, 16, false}, {"A_PCM/INT/BIG", 16, 16, false}, {"A_PCM/INT/BIG", 32, 32, false},
+		{"A_PCM/INT/LIT", 16, 16, false},   {"A_PCM/INT/LIT", 24, 24, false},   {"A_PCM/INT/LIT", 8, 8, false},
+		{"A_PCM/INT/LIT", 0, 16, false},    {"A_PCM/INT/BIG", 16, 16, false},   {"A_PCM/INT/BIG", 32, 32, false},
 		{"A_PCM/FLOAT/IEEE", 32, 32, true}, {"A_PCM/FLOAT/IEEE", 64, 64, true}, {"A_PCM/FLOAT/IEEE", 0, 32, true},
-		{"A_WAVPACK4", 24, 24, false}, {"A_TTA1", 16, 16, false}, {"A_TRUEHD", 24, 24, false}, {"A_FLAC", 20, 20, false},
-		{"A_MPEG/L3", 16, 0, false}, {"A_AC3", 16, 0, false}, {"A_WAVPACK4", 0, 0, false},
+		{"A_WAVPACK4", 24, 24, false},      {"A_TTA1", 16, 16, false},          {"A_TRUEHD", 24, 24, false},
+		{"A_FLAC", 20, 20, false},          {"A_MPEG/L3", 16, 0, false},        {"A_AC3", 16, 0, false},
+		{"A_WAVPACK4", 0, 0, false},
 	};
 
 	std::vector<bytes> entries;
@@ -880,10 +935,12 @@ TEST("media mkv reads PCM and lossless sample formats")
 
 	for (const auto& c : cases)
 	{
-		entries.push_back(track(number++, 2, c.codec_id, {sound(44100, 2, {c.bit_depth ? el_uint(id::bit_depth, c.bit_depth) : bytes{}})}));
+		entries.push_back(track(number++, 2, c.codec_id,
+		                        {sound(44100, 2, {c.bit_depth ? el_uint(id::bit_depth, c.bit_depth) : bytes{}})}));
 	}
 
-	const auto r = scan(cat({ebml_header(), segment({info({el_float(id::duration, 10.0)}), master(id::tracks, entries)})}));
+	const auto r = scan(
+		cat({ebml_header(), segment({info({el_float(id::duration, 10.0)}), master(id::tracks, entries)})}));
 	CHECK(r.success);
 	CHECK(r.complete);
 	CHECK_EQ(r.streams.size(), std::size(cases));
@@ -900,21 +957,25 @@ TEST("media mkv reads PCM and lossless sample formats")
 
 TEST("media mkv reads the rate that plays and Matroska's defaults")
 {
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info(),
-			master(id::tracks, {
-				// AAC with SBR states the rate it plays at apart.
-				track(1, 2, "A_AAC/MPEG4/LC/SBR", {sound(24000, 2, {el_float(id::output_sampling_frequency, 48000.0)})}),
-				// No Audio element: 8 kHz and one channel, as FFmpeg reads it.
-				track(2, 2, "A_MPEG/L3"),
-				// A rate FFmpeg cannot use falls back to 8 kHz; a single-precision rate reads too.
-				track(3, 2, "A_MPEG/L3", {sound(-5.0, 2)}),
-				track(4, 2, "A_MPEG/L2", {master(id::audio, {el_float32(id::sampling_frequency, 32000.0f), el_uint(id::channels, 1)})}),
-				track(5, 2, "A_AAC/MPEG2/MAIN", {sound(22050, 1)}),
-			}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header(),
+	         segment({
+				 info(),
+				 master(id::tracks,
+	                    {
+							// AAC with SBR states the rate it plays at apart.
+							track(1, 2, "A_AAC/MPEG4/LC/SBR",
+	                              {sound(24000, 2, {el_float(id::output_sampling_frequency, 48000.0)})}),
+							// No Audio element: 8 kHz and one channel, as FFmpeg reads it.
+							track(2, 2, "A_MPEG/L3"),
+							// A rate FFmpeg cannot use falls back to 8 kHz; a single-precision rate reads too.
+							track(3, 2, "A_MPEG/L3", {sound(-5.0, 2)}),
+							track(4, 2, "A_MPEG/L2",
+	                              {master(id::audio,
+	                                      {el_float32(id::sampling_frequency, 32000.0f), el_uint(id::channels, 1)})}),
+							track(5, 2, "A_AAC/MPEG2/MAIN", {sound(22050, 1)}),
+						}),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 5u);
@@ -933,63 +994,65 @@ TEST("media mkv reads the rate that plays and Matroska's defaults")
 
 TEST("media mkv reads colour, display shape, flags and turn")
 {
-	const auto colour = master(id::colour, {
-		el_uint(id::matrix_coefficients, 9), el_uint(id::bits_per_channel, 10), el_uint(id::chroma_subsampling_horz, 1),
-		el_uint(id::chroma_subsampling_vert, 1), el_uint(id::range, 2), el_uint(id::transfer_characteristics, 16),
-		el_uint(id::primaries, 9)
-	});
+	const auto colour = master(id::colour, {el_uint(id::matrix_coefficients, 9), el_uint(id::bits_per_channel, 10),
+	                                        el_uint(id::chroma_subsampling_horz, 1),
+	                                        el_uint(id::chroma_subsampling_vert, 1), el_uint(id::range, 2),
+	                                        el_uint(id::transfer_characteristics, 16), el_uint(id::primaries, 9)});
 
 	const auto roll = [](const double degrees, const double yaw = 0)
 	{
-		return master(id::projection, {
-			              el_uint(id::projection_type, 0), el_float(id::projection_pose_yaw, yaw), el_float(id::projection_pose_pitch, 0),
-			              el_float(id::projection_pose_roll, degrees)
-		              });
+		return master(id::projection,
+		              {el_uint(id::projection_type, 0), el_float(id::projection_pose_yaw, yaw),
+		               el_float(id::projection_pose_pitch, 0), el_float(id::projection_pose_roll, degrees)});
 	};
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {
-				// HDR10 colour, 16:9 shown from 1440 x 1080, interlaced, with alpha.
-				track(1, 1, "V_FFV1", {
-					      picture_size(1440, 1080, {
-						                   el_uint(id::display_width, 1920), el_uint(id::display_height, 1080), el_uint(id::flag_interlaced, 1),
-						                   el_uint(id::alpha_mode, 1), colour
-					                   })
-				      }),
-				// A display aspect ratio, and a crop that the size loses.
-				track(2, 1, "V_FFV1", {
-					      picture_size(720, 576, {
-						                   el_uint(id::pixel_crop_left, 8), el_uint(id::pixel_crop_right, 8), el_uint(id::pixel_crop_top, 2),
-						                   el_uint(id::pixel_crop_bottom, 2), el_uint(id::display_width, 16), el_uint(id::display_height, 9),
-						                   el_uint(id::display_unit, 3), el_uint(id::flag_interlaced, 2)
-					                   })
-				      }),
-				// Turned a quarter counter-clockwise, then mirrored and turned back; a unit that is unknown
-				// gives no shape, and a display size that is the picture's is square.
-				track(3, 1, "V_FFV1", {picture_size(640, 480, {roll(90), el_uint(id::display_width, 640), el_uint(id::display_unit, 4)})}),
-				track(4, 1, "V_FFV1", {picture_size(640, 480, {roll(-90, 180), el_uint(id::display_width, 640)})}),
-				// A pose that is not a flat right-angle turn is left alone, and so is the shape of a picture
-				// whose display size is missing.
-				track(5, 1, "V_FFV1", {picture_size(640, 480, {roll(45)})}),
-				track(6, 1, "V_FFV1", {
-					      picture_size(640, 480, {
-						                   master(id::projection, {el_float(id::projection_pose_pitch, 90), el_float(id::projection_pose_roll, 90)})
-					                   })
-				      }),
-				// Side by side, each eye shown at the display size.
-				track(7, 1, "V_FFV1", {
-					      picture_size(3840, 1080, {el_uint(id::stereo_mode, 1), el_uint(id::display_width, 1920), el_uint(id::display_height, 1080)})
-				      }),
-				// FrameRate stands only where DefaultDuration does not.
-				track(8, 1, "V_FFV1", {picture_size(64, 64, {el_float(id::frame_rate, 29.97)})}),
-				track(9, 1, "V_FFV1", {el_uint(id::default_duration, 20000000), picture_size(64, 64, {el_float(id::frame_rate, 29.97)})}),
-				// V_UNCOMPRESSED is tagged by its FourCC.
-				track(10, 1, "V_UNCOMPRESSED", {picture_size(64, 48, {el(id::uncompressed_fourcc, to_bytes("I420"))})}),
-			}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(),
+	     segment({
+			 info({el_float(id::duration, 1000.0)}),
+			 master(
+				 id::tracks,
+				 {
+					 // HDR10 colour, 16:9 shown from 1440 x 1080, interlaced, with alpha.
+					 track(1, 1, "V_FFV1",
+	                       {picture_size(1440, 1080,
+	                                     {el_uint(id::display_width, 1920), el_uint(id::display_height, 1080),
+	                                      el_uint(id::flag_interlaced, 1), el_uint(id::alpha_mode, 1), colour})}),
+					 // A display aspect ratio, and a crop that the size loses.
+					 track(2, 1, "V_FFV1",
+	                       {picture_size(720, 576,
+	                                     {el_uint(id::pixel_crop_left, 8), el_uint(id::pixel_crop_right, 8),
+	                                      el_uint(id::pixel_crop_top, 2), el_uint(id::pixel_crop_bottom, 2),
+	                                      el_uint(id::display_width, 16), el_uint(id::display_height, 9),
+	                                      el_uint(id::display_unit, 3), el_uint(id::flag_interlaced, 2)})}),
+					 // Turned a quarter counter-clockwise, then mirrored and turned back; a unit that is unknown
+					 // gives no shape, and a display size that is the picture's is square.
+					 track(3, 1, "V_FFV1",
+	                       {picture_size(640, 480,
+	                                     {roll(90), el_uint(id::display_width, 640), el_uint(id::display_unit, 4)})}),
+					 track(4, 1, "V_FFV1", {picture_size(640, 480, {roll(-90, 180), el_uint(id::display_width, 640)})}),
+					 // A pose that is not a flat right-angle turn is left alone, and so is the shape of a picture
+					 // whose display size is missing.
+					 track(5, 1, "V_FFV1", {picture_size(640, 480, {roll(45)})}),
+					 track(6, 1, "V_FFV1",
+	                       {picture_size(640, 480,
+	                                     {master(id::projection, {el_float(id::projection_pose_pitch, 90),
+	                                                              el_float(id::projection_pose_roll, 90)})})}),
+					 // Side by side, each eye shown at the display size.
+					 track(7, 1, "V_FFV1",
+	                       {picture_size(3840, 1080,
+	                                     {el_uint(id::stereo_mode, 1), el_uint(id::display_width, 1920),
+	                                      el_uint(id::display_height, 1080)})}),
+					 // FrameRate stands only where DefaultDuration does not.
+					 track(8, 1, "V_FFV1", {picture_size(64, 64, {el_float(id::frame_rate, 29.97)})}),
+					 track(9, 1, "V_FFV1",
+	                       {el_uint(id::default_duration, 20000000),
+	                        picture_size(64, 64, {el_float(id::frame_rate, 29.97)})}),
+					 // V_UNCOMPRESSED is tagged by its FourCC.
+					 track(10, 1, "V_UNCOMPRESSED",
+	                       {picture_size(64, 48, {el(id::uncompressed_fourcc, to_bytes("I420"))})}),
+				 }),
+		 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 10u);
@@ -1047,18 +1110,19 @@ TEST("media mkv reads VfW and ACM tracks through their Windows structures")
 	const auto bitmap = builder().le32(40).le32(640).le32(480).le16(1).le16(12).raw("XVID").le32(0).zeros(16).b;
 	const auto wave = builder().le16(0x0161).le16(2).le32(44100).le32(16000).le16(2973).le16(16).le16(0).b;
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {
-				// The container's size stands over the structure's, as FFmpeg reads them.
-				track(1, 1, "V_MS/VFW/FOURCC", {el(id::codec_private, bitmap), picture_size(640, 360)}),
-				track(2, 2, "A_MS/ACM", {el(id::codec_private, wave), sound(44100, 2)}),
-				// Too short to be a structure: the track names no codec.
-				track(3, 1, "V_MS/VFW/FOURCC", {el(id::codec_private, bytes(20, 0)), picture_size(320, 240)}),
-			}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(),
+	     segment({
+			 info({el_float(id::duration, 1000.0)}),
+			 master(id::tracks,
+	                {
+						// The container's size stands over the structure's, as FFmpeg reads them.
+						track(1, 1, "V_MS/VFW/FOURCC", {el(id::codec_private, bitmap), picture_size(640, 360)}),
+						track(2, 2, "A_MS/ACM", {el(id::codec_private, wave), sound(44100, 2)}),
+						// Too short to be a structure: the track names no codec.
+						track(3, 1, "V_MS/VFW/FOURCC", {el(id::codec_private, bytes(20, 0)), picture_size(320, 240)}),
+					}),
+		 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 3u);
@@ -1080,25 +1144,54 @@ TEST("media mkv reads VfW and ACM tracks through their Windows structures")
 TEST("media mkv reads codec headers from private data")
 {
 	// Theora's identification header for 320 x 240 at 25 fps, 4:2:0.
-	const auto theora = builder().u8(0x80).raw("theora").u8(3).u8(2).u8(1).be16(20).be16(15).u8(0).be16(320).u8(0).be16(240)
-	                             .u8(0).u8(0).be32(25).be32(1).u8(0).be16(1).u8(0).be16(1).u8(0).u8(0).be16(0).be16(0x00C0).b;
-	const auto xiph = [](const bytes& first) { return cat({bytes{2, static_cast<std::uint8_t>(first.size()), 1}, first, bytes{3, 5}}); };
+	const auto theora = builder()
+	                        .u8(0x80)
+	                        .raw("theora")
+	                        .u8(3)
+	                        .u8(2)
+	                        .u8(1)
+	                        .be16(20)
+	                        .be16(15)
+	                        .u8(0)
+	                        .be16(320)
+	                        .u8(0)
+	                        .be16(240)
+	                        .u8(0)
+	                        .u8(0)
+	                        .be32(25)
+	                        .be32(1)
+	                        .u8(0)
+	                        .be16(1)
+	                        .u8(0)
+	                        .be16(1)
+	                        .u8(0)
+	                        .u8(0)
+	                        .be16(0)
+	                        .be16(0x00C0)
+	                        .b;
+	const auto xiph = [](const bytes& first)
+	{
+		return cat({bytes{2, static_cast<std::uint8_t>(first.size()), 1}, first, bytes{3, 5}});
+	};
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {
-				track(1, 1, "V_MPEGH/ISO/HEVC", {el(id::codec_private, hex(hevc_config)), picture_size(320, 240)}),
-				track(2, 1, "V_AV1", {el(id::codec_private, hex(av1_config)), picture_size(320, 240)}),
-				track(3, 1, "V_MPEG4/ISO/ASP", {el(id::codec_private, hex(mpeg4_config)), picture_size(320, 240)}),
-				track(4, 1, "V_THEORA", {el(id::codec_private, xiph(theora)), picture_size(320, 240)}),
-				track(5, 2, "A_OPUS", {el(id::codec_private, hex(opus_head)), sound(48000, 2)}),
-				track(6, 2, "A_VORBIS", {el(id::codec_private, xiph(hex(vorbis_identification))), sound(44100, 2)}),
-				track(7, 2, "A_FLAC", {el(id::codec_private, hex(flac_private)), sound(44100, 2)}),
-				track(8, 2, "A_ALAC", {el(id::codec_private, hex(alac_config)), sound(44100, 2)}),
-			}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(),
+	     segment({
+			 info({el_float(id::duration, 1000.0)}),
+			 master(
+				 id::tracks,
+				 {
+					 track(1, 1, "V_MPEGH/ISO/HEVC", {el(id::codec_private, hex(hevc_config)), picture_size(320, 240)}),
+					 track(2, 1, "V_AV1", {el(id::codec_private, hex(av1_config)), picture_size(320, 240)}),
+					 track(3, 1, "V_MPEG4/ISO/ASP", {el(id::codec_private, hex(mpeg4_config)), picture_size(320, 240)}),
+					 track(4, 1, "V_THEORA", {el(id::codec_private, xiph(theora)), picture_size(320, 240)}),
+					 track(5, 2, "A_OPUS", {el(id::codec_private, hex(opus_head)), sound(48000, 2)}),
+					 track(6, 2, "A_VORBIS",
+	                       {el(id::codec_private, xiph(hex(vorbis_identification))), sound(44100, 2)}),
+					 track(7, 2, "A_FLAC", {el(id::codec_private, hex(flac_private)), sound(44100, 2)}),
+					 track(8, 2, "A_ALAC", {el(id::codec_private, hex(alac_config)), sound(44100, 2)}),
+				 }),
+		 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 8u);
@@ -1127,31 +1220,35 @@ TEST("media mkv reads VP9's codec features and private data a muxer encoded")
 {
 	// Profile 1, 10 bits, 4:4:4.
 	const auto features = bytes{1, 1, 1, 2, 1, 31, 3, 1, 10, 4, 1, 3};
-	const auto compressed = master(id::content_encodings, {
-		master(id::content_encoding, {
-			       el_uint(id::content_encoding_scope, 2), el_uint(id::content_encoding_type, 0),
-			       master(id::content_compression, {el_uint(id::content_comp_algo, 0)})
-		       })
-	});
-	const auto stripped = master(id::content_encodings, {
-		master(id::content_encoding, {
-			       el_uint(id::content_encoding_scope, 3),
-			       master(id::content_compression, {el_uint(id::content_comp_algo, 3), el(id::content_comp_settings, bytes{1, 1, 1, 2})})
-		       })
-	});
+	const auto compressed = master(id::content_encodings,
+	                               {master(id::content_encoding,
+	                                       {el_uint(id::content_encoding_scope, 2),
+	                                        el_uint(id::content_encoding_type, 0),
+	                                        master(id::content_compression, {el_uint(id::content_comp_algo, 0)})})});
+	const auto stripped = master(id::content_encodings,
+	                             {master(id::content_encoding,
+	                                     {el_uint(id::content_encoding_scope, 3),
+	                                      master(id::content_compression,
+	                                             {el_uint(id::content_comp_algo, 3),
+	                                              el(id::content_comp_settings, bytes{1, 1, 1, 2})})})});
 
-	const auto r = scan(cat({
-		ebml_header("webm"), segment({
-			info(),
-			master(id::tracks, {
-				track(1, 1, "V_VP9", {el(id::codec_private, features), picture_size(320, 240)}),
-				track(2, 1, "V_VP9", {el(id::codec_private, zlib_stored(features)), compressed, picture_size(320, 240)}),
-				track(3, 1, "V_VP9", {el(id::codec_private, bytes(features.begin() + 4, features.end())), stripped, picture_size(320, 240)}),
-				// A private the scan cannot inflate is dropped, as FFmpeg drops it.
-				track(4, 1, "V_VP9", {el(id::codec_private, bytes{9, 9, 9}), compressed, picture_size(320, 240)}),
-			}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header("webm"),
+	         segment({
+				 info(),
+				 master(id::tracks,
+	                    {
+							track(1, 1, "V_VP9", {el(id::codec_private, features), picture_size(320, 240)}),
+							track(2, 1, "V_VP9",
+	                              {el(id::codec_private, zlib_stored(features)), compressed, picture_size(320, 240)}),
+							track(3, 1, "V_VP9",
+	                              {el(id::codec_private, bytes(features.begin() + 4, features.end())), stripped,
+	                               picture_size(320, 240)}),
+							// A private the scan cannot inflate is dropped, as FFmpeg drops it.
+							track(4, 1, "V_VP9",
+	                              {el(id::codec_private, bytes{9, 9, 9}), compressed, picture_size(320, 240)}),
+						}),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_STR(r.brand, "webm");
@@ -1173,15 +1270,16 @@ TEST("media mkv inflates codec headers within the scan's budget")
 {
 	// Eight tracks whose 12-byte features are compressed, read with room for three.
 	const auto features = bytes{1, 1, 1, 2, 1, 31, 3, 1, 10, 4, 1, 3};
-	const auto compressed = master(id::content_encodings, {
-		master(id::content_encoding, {
-			       el_uint(id::content_encoding_scope, 2), el_uint(id::content_encoding_type, 0),
-			       master(id::content_compression, {el_uint(id::content_comp_algo, 0)})
-		       })
-	});
+	const auto compressed = master(id::content_encodings,
+	                               {master(id::content_encoding,
+	                                       {el_uint(id::content_encoding_scope, 2),
+	                                        el_uint(id::content_encoding_type, 0),
+	                                        master(id::content_compression, {el_uint(id::content_comp_algo, 0)})})});
 
 	std::vector<bytes> tracks;
-	for (std::uint64_t n = 1; n <= 8; ++n) tracks.push_back(track(n, 1, "V_VP9", {el(id::codec_private, zlib_stored(features)), compressed, picture_size(320, 240)}));
+	for (std::uint64_t n = 1; n <= 8; ++n)
+		tracks.push_back(
+			track(n, 1, "V_VP9", {el(id::codec_private, zlib_stored(features)), compressed, picture_size(320, 240)}));
 	const auto file = cat({ebml_header("webm"), segment({info(), master(id::tracks, tracks)})});
 
 	libfiles::scan_limits limits;
@@ -1202,20 +1300,19 @@ TEST("media mkv reads a first block only for a codec that needs it")
 	const auto file_with = [](std::vector<bytes> tracks, const bytes& block)
 	{
 		tracks.push_back(track(9, 2, "A_FLAC", {sound(44100, 2)}));
-		return cat({
-			ebml_header(), segment({
-				info({el_float(id::duration, 1000.0)}), master(id::tracks, tracks), cluster({simple_block(9, bytes(100000, 0)), block})
-			})
-		});
+		return cat({ebml_header(), segment({info({el_float(id::duration, 1000.0)}), master(id::tracks, tracks),
+		                                    cluster({simple_block(9, bytes(100000, 0)), block})})});
 	};
 
 	// Every track described by its private data, or one a block would not help, and an AC-3 frame that
 	// lies past what the scan has read: the Cluster is not read.
-	const auto described = scan_counted(file_with({
-		                                              track(1, 1, "V_VP9", {el(id::codec_private, bytes{4, 1, 0, 3, 1, 8}), picture_size(320, 240)}),
-		                                              track(2, 1, "V_VP8", {picture_size(320, 240)}),
-		                                              track(3, 2, "A_AC3", {sound(48000, 2)}),
-	                                              }, simple_block(3, hex(ac3_frame))));
+	const auto described = scan_counted(file_with(
+		{
+			track(1, 1, "V_VP9", {el(id::codec_private, bytes{4, 1, 0, 3, 1, 8}), picture_size(320, 240)}),
+			track(2, 1, "V_VP8", {picture_size(320, 240)}),
+			track(3, 2, "A_AC3", {sound(48000, 2)}),
+		},
+		simple_block(3, hex(ac3_frame))));
 	CHECK(described.result.success);
 	CHECK_EQ(described.reads, 1u);
 	if (described.result.streams.size() == 4) CHECK_EQ(described.result.streams[2].audio.channels, 2u);
@@ -1230,13 +1327,12 @@ TEST("media mkv reads a first block only for a codec that needs it")
 	CHECK(needed.bytes_read <= 3u * 64 * 1024);
 
 	// Encrypted frames cannot be read, so they are not.
-	const auto encrypted = scan_counted(file_with({
-		                                              track(1, 1, "V_MJPEG", {
-			                                                    picture_size(320, 240), master(id::content_encodings, {
-				                                                    master(id::content_encoding, {el_uint(id::content_encoding_type, 1)})
-			                                                    })
-		                                                    })
-	                                              }, simple_block(1, hex(jpeg_frame))));
+	const auto encrypted = scan_counted(
+		file_with({track(1, 1, "V_MJPEG",
+	                     {picture_size(320, 240),
+	                      master(id::content_encodings,
+	                             {master(id::content_encoding, {el_uint(id::content_encoding_type, 1)})})})},
+	              simple_block(1, hex(jpeg_frame))));
 	CHECK(encrypted.result.success);
 	CHECK_EQ(encrypted.reads, 1u);
 }
@@ -1248,36 +1344,36 @@ TEST("media mkv reads what only a first block says")
 	const auto sps = cat({bytes{0, 0, 0, 0x18}, bytes(config.begin() + 8, config.begin() + 32)});
 	const auto ac3 = hex(ac3_frame);
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {
-				track(1, 1, "V_MJPEG", {picture_size(320, 240)}),
-				track(2, 1, "V_VP9", {picture_size(320, 240)}),
-				track(3, 1, "V_MPEG4/ISO/AVC", {picture_size(320, 240)}),
-				track(4, 1, "V_MPEG2", {picture_size(320, 240)}),
-				track(5, 1, "V_VP8"),
-				// A track whose muxer stripped the sync word from every frame.
-				track(6, 2, "A_AC3", {
-					      sound(48000, 2), master(id::content_encodings, {
-						      master(id::content_encoding, {
-							             master(id::content_compression, {
-								                    el_uint(id::content_comp_algo, 3), el(id::content_comp_settings, bytes{0x0B, 0x77})
-							                    })
-						             })
-					      })
-				      }),
-			}),
-			cluster({
-				master(id::block_group, {el_uint(id::block_duration, 40), el(id::block, cat({bytes{0x81, 0, 0, 0}, hex(jpeg_frame)}))}),
-				simple_block(2, hex(vp9_frame)),
-				simple_block(3, sps),
-				simple_block(4, hex(mpeg2_frame)),
-				simple_block(5, hex(vp8_key_frame)),
-				simple_block(6, bytes(ac3.begin() + 2, ac3.end())),
-			}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header(),
+	         segment({
+				 info({el_float(id::duration, 1000.0)}),
+				 master(id::tracks,
+	                    {
+							track(1, 1, "V_MJPEG", {picture_size(320, 240)}),
+							track(2, 1, "V_VP9", {picture_size(320, 240)}),
+							track(3, 1, "V_MPEG4/ISO/AVC", {picture_size(320, 240)}),
+							track(4, 1, "V_MPEG2", {picture_size(320, 240)}),
+							track(5, 1, "V_VP8"),
+							// A track whose muxer stripped the sync word from every frame.
+							track(6, 2, "A_AC3",
+	                              {sound(48000, 2),
+	                               master(id::content_encodings,
+	                                      {master(id::content_encoding,
+	                                              {master(id::content_compression,
+	                                                      {el_uint(id::content_comp_algo, 3),
+	                                                       el(id::content_comp_settings, bytes{0x0B, 0x77})})})})}),
+						}),
+				 cluster({
+					 master(id::block_group, {el_uint(id::block_duration, 40),
+	                                          el(id::block, cat({bytes{0x81, 0, 0, 0}, hex(jpeg_frame)}))}),
+					 simple_block(2, hex(vp9_frame)),
+					 simple_block(3, sps),
+					 simple_block(4, hex(mpeg2_frame)),
+					 simple_block(5, hex(vp8_key_frame)),
+					 simple_block(6, bytes(ac3.begin() + 2, ac3.end())),
+				 }),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 6u);
@@ -1306,13 +1402,14 @@ TEST("media mkv reads the first frame of a laced block")
 	const auto ebml = cat({bytes{2, static_cast<std::uint8_t>(0x80 | ac3.size()), 0xBF}, two, ac3});
 	const auto fixed = cat({bytes{1}, two});
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {track(1, 2, "A_AC3", {sound(48000, 2)}), track(2, 2, "A_AC3", {sound(48000, 2)}), track(3, 2, "A_AC3", {sound(48000, 2)})}),
-			cluster({simple_block(1, xiph, 0x82), simple_block(2, ebml, 0x86), simple_block(3, fixed, 0x84)}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header(),
+	         segment({
+				 info({el_float(id::duration, 1000.0)}),
+				 master(id::tracks, {track(1, 2, "A_AC3", {sound(48000, 2)}), track(2, 2, "A_AC3", {sound(48000, 2)}),
+	                                 track(3, 2, "A_AC3", {sound(48000, 2)})}),
+				 cluster({simple_block(1, xiph, 0x82), simple_block(2, ebml, 0x86), simple_block(3, fixed, 0x84)}),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 3u);
@@ -1322,21 +1419,21 @@ TEST("media mkv reads the first frame of a laced block")
 TEST("media mkv locates attached pictures without reading them")
 {
 	const auto big = cat({hex(jpeg_frame), bytes(1000000, 0x55)});
-	const auto file = cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {track(1, 2, "A_FLAC", {sound(44100, 2)})}),
-			master(id::attachments, {
-				attached_file("cover.png", "image/png", big),
-				attached_file("Small_Cover.JPG", "IMAGE/JPEG", bytes(30, 1)),
-				attached_file("cover_land.webp", "image/webp", bytes(30, 2)),
-				attached_file("photo.jpg", "image/jpeg", bytes(30, 3), "On the beach"),
-				attached_file("font.otf", "font/otf", bytes(30, 4)),
-				attached_file("empty.png", "image/png", bytes{}),
-			}),
-			cluster({simple_block(1, bytes(10, 0))}),
-		})
-	});
+	const auto file = cat(
+		{ebml_header(), segment({
+							info({el_float(id::duration, 1000.0)}),
+							master(id::tracks, {track(1, 2, "A_FLAC", {sound(44100, 2)})}),
+							master(id::attachments,
+	                               {
+									   attached_file("cover.png", "image/png", big),
+									   attached_file("Small_Cover.JPG", "IMAGE/JPEG", bytes(30, 1)),
+									   attached_file("cover_land.webp", "image/webp", bytes(30, 2)),
+									   attached_file("photo.jpg", "image/jpeg", bytes(30, 3), "On the beach"),
+									   attached_file("font.otf", "font/otf", bytes(30, 4)),
+									   attached_file("empty.png", "image/png", bytes{}),
+								   }),
+							cluster({simple_block(1, bytes(10, 0))}),
+						})});
 
 	const auto c = scan_counted(file);
 	const auto& r = c.result;
@@ -1370,18 +1467,20 @@ TEST("media mkv locates attached pictures without reading them")
 TEST("media mkv follows SeekHeads past a large cluster at few reads")
 {
 	std::vector<bytes> blocks;
+	blocks.reserve(64);
 	for (auto i = 0; i < 64; ++i) blocks.push_back(simple_block(1, bytes(256 * 1024, static_cast<std::uint8_t>(i))));
 
 	segment_builder s;
 	const auto head = s.add_seek_head();
 	const auto info_index = s.add(info({el_float(id::duration, 60000.0), el_str(id::muxing_app, "mux")}));
-	const auto tracks_index = s.add(master(id::tracks, {
-		track(1, 1, "V_MPEG4/ISO/AVC", {el(id::codec_private, hex(avc_config)), picture_size(320, 240)})
-	}));
+	const auto tracks_index = s.add(
+		master(id::tracks,
+	           {track(1, 1, "V_MPEG4/ISO/AVC", {el(id::codec_private, hex(avc_config)), picture_size(320, 240)})}));
 	s.add(cluster(blocks));
 	const auto cues = s.add(el(id::cues, bytes(100, 0)));
 	const auto tags = s.add(master(id::tags, {tag({}, {simple_tag("ARTIST", "At the end")})}));
-	const auto attachments = s.add(master(id::attachments, {attached_file("cover.jpg", "image/jpeg", hex(jpeg_frame))}));
+	const auto attachments = s.add(
+		master(id::attachments, {attached_file("cover.jpg", "image/jpeg", hex(jpeg_frame))}));
 	const auto second = s.add_seek_head();
 
 	// The first SeekHead knows only Info, Tracks and the second, which knows the rest.
@@ -1409,10 +1508,12 @@ TEST("media mkv reads an unknown-size segment and cluster among Void and CRC-32 
 
 	segment_builder s;
 	s.add(el(id::void_element, bytes(7, 0)));
-	s.add(master(id::info, {crc, el_uint(id::timestamp_scale, 1000000), el(id::void_element, bytes(3, 0)), el_float(id::duration, 3000.0)}));
+	s.add(master(id::info, {crc, el_uint(id::timestamp_scale, 1000000), el(id::void_element, bytes(3, 0)),
+	                        el_float(id::duration, 3000.0)}));
 	s.add(master(id::tracks, {crc, track(1, 1, "V_MJPEG", {picture_size(320, 240), el(id::void_element, bytes{})})}));
 	s.add(master(id::tags, {crc, tag({}, {simple_tag("TITLE", "Unknown sizes")})}));
-	s.add(el_unknown(id::cluster, cat({el_uint(id::cluster_timestamp, 0), crc, el(id::void_element, bytes(2, 0)), simple_block(1, hex(jpeg_frame))})));
+	s.add(el_unknown(id::cluster, cat({el_uint(id::cluster_timestamp, 0), crc, el(id::void_element, bytes(2, 0)),
+	                                   simple_block(1, hex(jpeg_frame))})));
 	s.add(el_unknown(id::cluster, cat({el_uint(id::cluster_timestamp, 40), simple_block(1, bytes(30, 0))})));
 	const auto file = s.build(ebml_header(), true);
 
@@ -1425,7 +1526,8 @@ TEST("media mkv reads an unknown-size segment and cluster among Void and CRC-32 
 	if (r.streams.size() == 1) CHECK_EQ(r.streams[0].video.width, 320u);
 
 	// The Void before the Segment, too.
-	const auto padded = cat({ebml_header(), el(id::void_element, bytes(5, 0)), segment({info(), master(id::tracks, {track(1, 2, "A_OPUS")})})});
+	const auto padded = cat({ebml_header(), el(id::void_element, bytes(5, 0)),
+	                         segment({info(), master(id::tracks, {track(1, 2, "A_OPUS")})})});
 	CHECK(scan(padded).success);
 }
 
@@ -1434,7 +1536,8 @@ TEST("media mkv reads the first block of a Cluster of unknown size")
 	segment_builder s;
 	s.add(info({el_float(id::duration, 3000.0)}));
 	s.add(master(id::tracks, {track(1, 1, "V_MJPEG", {picture_size(320, 240)})}));
-	s.add(el_unknown(id::cluster, cat({el_uint(id::cluster_timestamp, 0), el(id::crc32, bytes{1, 2, 3, 4}), simple_block(1, hex(jpeg_frame))})));
+	s.add(el_unknown(id::cluster, cat({el_uint(id::cluster_timestamp, 0), el(id::crc32, bytes{1, 2, 3, 4}),
+	                                   simple_block(1, hex(jpeg_frame))})));
 	const auto r = scan(s.build(ebml_header(), true));
 	CHECK(r.success);
 	if (r.streams.size() == 1) CHECK(r.streams[0].video.chroma == chroma_format::yuv422);
@@ -1444,17 +1547,20 @@ TEST("media mkv files a series tagged by level under show, season and episode")
 {
 	// As mkvmerge and media servers tag an episode: the series at COLLECTION, the season at SEASON and the
 	// episode at EPISODE. FFmpeg keys these under their TargetType and files them under nothing.
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0)}),
-			master(id::tracks, {track(1, 1, "V_VP8", {picture_size(16, 16)})}),
-			master(id::tags, {
-				tag({el_uint(id::target_type_value, 70), el_str(id::target_type, "COLLECTION")}, {simple_tag("TITLE", "The Show")}),
-				tag({el_uint(id::target_type_value, 60), el_str(id::target_type, "SEASON")}, {simple_tag("PART_NUMBER", "2")}),
-				tag({el_uint(id::target_type_value, 50), el_str(id::target_type, "EPISODE")}, {simple_tag("PART_NUMBER", "7")}),
-			}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(), segment({
+							info({el_float(id::duration, 1000.0)}),
+							master(id::tracks, {track(1, 1, "V_VP8", {picture_size(16, 16)})}),
+							master(id::tags,
+	                               {
+									   tag({el_uint(id::target_type_value, 70), el_str(id::target_type, "COLLECTION")},
+	                                       {simple_tag("TITLE", "The Show")}),
+									   tag({el_uint(id::target_type_value, 60), el_str(id::target_type, "SEASON")},
+	                                       {simple_tag("PART_NUMBER", "2")}),
+									   tag({el_uint(id::target_type_value, 50), el_str(id::target_type, "EPISODE")},
+	                                       {simple_tag("PART_NUMBER", "7")}),
+								   }),
+						})}));
 
 	CHECK(r.success);
 	CHECK_STR(r.properties.show, "The Show");
@@ -1467,21 +1573,23 @@ TEST("media mkv files its tags under the properties FFmpeg gave them")
 {
 	// tagged.mkv's tags, as Diffractor reads them, and an encoder named twice: MuxingApp is the one
 	// FFmpeg reports.
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info({el_float(id::duration, 1000.0), el_str(id::muxing_app, "the muxer"), el_str(id::writing_app, "the writer")}),
-			master(id::tracks, {track(1, 1, "V_VP8", {picture_size(16, 16)})}),
-			master(id::tags, {
-				tag({}, {
-					    simple_tag("TITLE", "Matroska Test Title"), simple_tag("ARTIST", "Matroska Test Artist"), simple_tag("GENRE", "TestGenre"),
-					    simple_tag("COMMENT", "matroska test comment"), simple_tag("RATING", "4"), simple_tag("KEYWORDS", "alpha,beta")
-				    }),
-				// Album-level under its TargetType, and a track's own title, are not the recording's title.
-				tag({el_str(id::target_type, "ALBUM")}, {simple_tag("TITLE", "The Album")}),
-				tag({el_uint(id::tag_track_uid, 11)}, {simple_tag("TITLE", "The Track")}),
-			}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header(),
+	         segment({
+				 info({el_float(id::duration, 1000.0), el_str(id::muxing_app, "the muxer"),
+	                   el_str(id::writing_app, "the writer")}),
+				 master(id::tracks, {track(1, 1, "V_VP8", {picture_size(16, 16)})}),
+				 master(id::tags,
+	                    {
+							tag({}, {simple_tag("TITLE", "Matroska Test Title"),
+	                                 simple_tag("ARTIST", "Matroska Test Artist"), simple_tag("GENRE", "TestGenre"),
+	                                 simple_tag("COMMENT", "matroska test comment"), simple_tag("RATING", "4"),
+	                                 simple_tag("KEYWORDS", "alpha,beta")}),
+							// Album-level under its TargetType, and a track's own title, are not the recording's title.
+							tag({el_str(id::target_type, "ALBUM")}, {simple_tag("TITLE", "The Album")}),
+							tag({el_uint(id::tag_track_uid, 11)}, {simple_tag("TITLE", "The Track")}),
+						}),
+			 })}));
 
 	CHECK(r.success);
 	const auto& p = r.properties;
@@ -1495,12 +1603,13 @@ TEST("media mkv files its tags under the properties FFmpeg gave them")
 	CHECK_EQ(p.keywords.size(), 2u);
 
 	// A title in a stated language is the title still, where FFmpeg keys it apart as "TITLE-ger".
-	const auto german = scan(cat({
-		ebml_header(), segment({
-			info(), master(id::tracks, {track(1, 2, "A_OPUS")}),
-			master(id::tags, {tag({}, {simple_tag("TITLE", "Der Titel", {el_str(id::tag_language, "ger")})})}),
-		})
-	}));
+	const auto german = scan(
+		cat({ebml_header(),
+	         segment({
+				 info(),
+				 master(id::tracks, {track(1, 2, "A_OPUS")}),
+				 master(id::tags, {tag({}, {simple_tag("TITLE", "Der Titel", {el_str(id::tag_language, "ger")})})}),
+			 })}));
 
 	CHECK(german.success);
 	CHECK_STR(german.properties.title, "Der Titel");
@@ -1597,9 +1706,7 @@ TEST("media mkv reports its structure for inspection")
 	const auto has = [&](const std::string_view key, const std::string_view value_start)
 	{
 		return std::ranges::any_of(r.structure, [&](const libfiles::structure_row& row)
-		{
-			return row.key == key && row.value.starts_with(value_start);
-		});
+		{ return row.key == key && row.value.starts_with(value_start); });
 	};
 
 	CHECK(has("Summary (7)", ""));
@@ -1622,15 +1729,16 @@ TEST("media mkv reports its structure for inspection")
 
 TEST("media mkv reads WebM")
 {
-	const auto r = scan(cat({
-		ebml_header("webm"), segment({
-			info({el_float(id::duration, 2500.0), el_uint(id::timestamp_scale, 1000000)}),
-			master(id::tracks, {
-				track(1, 1, "V_VP8", {picture_size(640, 360, {el_uint(id::alpha_mode, 1)})}),
-				track(2, 2, "A_OPUS", {el(id::codec_private, hex(opus_head)), sound(48000, 2)}),
-			}),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header("webm"),
+	         segment({
+				 info({el_float(id::duration, 2500.0), el_uint(id::timestamp_scale, 1000000)}),
+				 master(id::tracks,
+	                    {
+							track(1, 1, "V_VP8", {picture_size(640, 360, {el_uint(id::alpha_mode, 1)})}),
+							track(2, 2, "A_OPUS", {el(id::codec_private, hex(opus_head)), sound(48000, 2)}),
+						}),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_STR(r.brand, "webm");
@@ -1648,19 +1756,21 @@ TEST("media mkv reads WebM")
 TEST("media mkv reads a stream's language")
 {
 	// Matroska's default is English; LanguageBCP47 replaces Language; "und", either way, names none.
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info(),
-			master(id::tracks, {
-				track(1, 2, "A_OPUS"),
-				track(2, 2, "A_OPUS", {el_str(id::language, "ger")}),
-				track(3, 2, "A_OPUS", {el_str(id::language, "und")}),
-				track(4, 0x11, "S_TEXT/UTF8", {el_str(id::language, "fre"), el_str(id::language_bcp47, "fr-CA")}),
-				track(5, 0x11, "S_TEXT/UTF8", {el_str(id::language, "fre"), el_str(id::language_bcp47, "und")}),
-				track(6, 2, "A_OPUS", {el_str(id::language, "")}),
-			}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(),
+	     segment({
+			 info(),
+			 master(id::tracks,
+	                {
+						track(1, 2, "A_OPUS"),
+						track(2, 2, "A_OPUS", {el_str(id::language, "ger")}),
+						track(3, 2, "A_OPUS", {el_str(id::language, "und")}),
+						track(4, 0x11, "S_TEXT/UTF8",
+	                          {el_str(id::language, "fre"), el_str(id::language_bcp47, "fr-CA")}),
+						track(5, 0x11, "S_TEXT/UTF8", {el_str(id::language, "fre"), el_str(id::language_bcp47, "und")}),
+						track(6, 2, "A_OPUS", {el_str(id::language, "")}),
+					}),
+		 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 6u);
@@ -1676,12 +1786,11 @@ TEST("media mkv reads a stream's language")
 
 TEST("media mkv reads a TimestampScale other than a millisecond")
 {
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			master(id::info, {el_float(id::duration, 90000.0), el_uint(id::timestamp_scale, 100000)}),
-			master(id::tracks, {track(1, 2, "A_FLAC", {sound(96000, 2)})}),
-		})
-	}));
+	const auto r = scan(cat(
+		{ebml_header(), segment({
+							master(id::info, {el_float(id::duration, 90000.0), el_uint(id::timestamp_scale, 100000)}),
+							master(id::tracks, {track(1, 2, "A_FLAC", {sound(96000, 2)})}),
+						})}));
 
 	CHECK(r.success);
 	CHECK(near(r.duration, 9.0));
@@ -1694,10 +1803,12 @@ TEST("media mkv bounds what a crafted file makes it hold")
 
 	for (std::uint64_t n = 1; n <= 1500; ++n)
 	{
-		entries.push_back(master(id::track_entry, {el_uint(id::track_number, n), el_uint(id::track_uid, 7), el_uint(id::track_type, 2), el_str(id::codec_id, "A_OPUS")}));
+		entries.push_back(master(id::track_entry, {el_uint(id::track_number, n), el_uint(id::track_uid, 7),
+		                                           el_uint(id::track_type, 2), el_str(id::codec_id, "A_OPUS")}));
 	}
 
 	std::vector<bytes> names;
+	names.reserve(5000);
 	for (auto i = 0; i < 5000; ++i) names.push_back(simple_tag("NAME" + std::to_string(i), "value"));
 
 	// SimpleTags nested forty deep, and twenty thousand Tags that hold nothing.
@@ -1707,13 +1818,14 @@ TEST("media mkv bounds what a crafted file makes it hold")
 	bytes empty_tags;
 	for (auto i = 0; i < 20000; ++i) append(empty_tags, bytes{0x73, 0x73, 0x80});
 
-	const auto r = scan(cat({
-		ebml_header(), segment({
-			info(), master(id::tracks, entries),
-			master(id::tags, {tag({}, {nested}), tag({el_uint(id::tag_track_uid, 7)}, names), tag({}, names)}),
-			el(id::tags, empty_tags),
-		})
-	}));
+	const auto r = scan(
+		cat({ebml_header(),
+	         segment({
+				 info(),
+				 master(id::tracks, entries),
+				 master(id::tags, {tag({}, {nested}), tag({el_uint(id::tag_track_uid, 7)}, names), tag({}, names)}),
+				 el(id::tags, empty_tags),
+			 })}));
 
 	CHECK(r.success);
 	CHECK_EQ(r.streams.size(), 1000u);

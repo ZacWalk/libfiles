@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What a file is. One table of every format libfiles knows - its family, name, MIME type and
 // extensions, and what libfiles can do with it in this build - and the one identification that scan_media,
@@ -154,6 +154,8 @@ namespace libfiles
 		tiff,
 		psd,
 		jxl,
+		// HEIF: HEIC, AVIF and the other ISO base media still images.
+		heif,
 		// ISO base media - MP4, M4A, M4V, 3GP - and QuickTime.
 		mp4,
 		// ASF: WMV, WMA and ASF.

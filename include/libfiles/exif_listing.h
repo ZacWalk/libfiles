@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Listing an EXIF block for an inspector: every entry of every directory with its name, its
 // English title and description, and its value as text, the maker note decoded where its maker's format

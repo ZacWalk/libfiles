@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the ASF and FLV media scans. Each file is built object by object and tag by tag, so
 // every field a test reads back is one it put there. Each is also cut short at every byte near its ends
@@ -96,7 +96,8 @@ namespace
 
 		for (const auto& p : s.pictures)
 		{
-			CHECK(p.location.size > 0 && p.location.offset <= file.size() && p.location.size <= file.size() - p.location.offset);
+			CHECK(p.location.size > 0 && p.location.offset <= file.size() &&
+			      p.location.size <= file.size() - p.location.offset);
 		}
 
 		CHECK(to_string(s.xmp) == packet_of(file));
@@ -289,7 +290,13 @@ namespace
 	bytes file_properties(const properties_spec& p)
 	{
 		builder b;
-		b.zeros(16).raw(le64(0)).raw(le64(p.created)).raw(le64(1)).raw(le64(p.play)).raw(le64(p.play)).raw(le64(p.preroll));
+		b.zeros(16)
+			.raw(le64(0))
+			.raw(le64(p.created))
+			.raw(le64(1))
+			.raw(le64(p.play))
+			.raw(le64(p.play))
+			.raw(le64(p.preroll));
 		b.le32(p.flags).le32(3200).le32(3200).le32(p.max_bitrate);
 		return asf_object(file_properties_guid, b.b);
 	}
@@ -297,20 +304,33 @@ namespace
 	bytes stream_properties(const bytes& type, const unsigned number, const bytes& specific, const unsigned flags = 0)
 	{
 		builder b;
-		b.raw(type).raw(no_error_correction_guid).raw(le64(0)).le32(static_cast<std::uint32_t>(specific.size())).le32(0);
+		b.raw(type)
+			.raw(no_error_correction_guid)
+			.raw(le64(0))
+			.le32(static_cast<std::uint32_t>(specific.size()))
+			.le32(0);
 		b.le16(number | flags).le32(0).raw(specific);
 		return asf_object(stream_properties_guid, b.b);
 	}
 
-	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate, const std::uint32_t bytes_per_second,
-	                  const unsigned bits, const bytes& extra = {})
+	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate,
+	                  const std::uint32_t bytes_per_second, const unsigned bits, const bytes& extra = {})
 	{
-		return builder().le16(tag).le16(channels).le32(rate).le32(bytes_per_second).le16(channels * 2).le16(bits)
-		                .le16(static_cast<unsigned>(extra.size())).raw(extra).b;
+		return builder()
+		    .le16(tag)
+		    .le16(channels)
+		    .le32(rate)
+		    .le32(bytes_per_second)
+		    .le16(channels * 2)
+		    .le16(bits)
+		    .le16(static_cast<unsigned>(extra.size()))
+		    .raw(extra)
+		    .b;
 	}
 
 	// The encoded size, a reserved byte, and the format data: a BITMAPINFOHEADER and what follows it.
-	bytes video_format(const std::uint32_t width, const std::uint32_t height, const std::string_view fourcc, const bytes& extra = {})
+	bytes video_format(const std::uint32_t width, const std::uint32_t height, const std::string_view fourcc,
+	                   const bytes& extra = {})
 	{
 		builder bih;
 		bih.le32(static_cast<std::uint32_t>(40 + extra.size())).le32(width).le32(height).le16(1).le16(24).raw(fourcc);
@@ -336,7 +356,13 @@ namespace
 	bytes descriptor(const std::string_view name, const unsigned type, const bytes& value)
 	{
 		const auto n = utf16z(name);
-		return builder().le16(static_cast<unsigned>(n.size())).raw(n).le16(type).le16(static_cast<unsigned>(value.size())).raw(value).b;
+		return builder()
+		    .le16(static_cast<unsigned>(n.size()))
+		    .raw(n)
+		    .le16(type)
+		    .le16(static_cast<unsigned>(value.size()))
+		    .raw(value)
+		    .b;
 	}
 
 	bytes extended_content(const std::vector<bytes>& descriptors)
@@ -347,11 +373,19 @@ namespace
 		return asf_object(extended_content_guid, b.b);
 	}
 
-	bytes record(const unsigned stream, const std::string_view name, const unsigned type, const bytes& value, const unsigned language = 0)
+	bytes record(const unsigned stream, const std::string_view name, const unsigned type, const bytes& value,
+	             const unsigned language = 0)
 	{
 		const auto n = utf16z(name);
-		return builder().le16(language).le16(stream).le16(static_cast<unsigned>(n.size())).le16(type)
-		                .le32(static_cast<std::uint32_t>(value.size())).raw(n).raw(value).b;
+		return builder()
+		    .le16(language)
+		    .le16(stream)
+		    .le16(static_cast<unsigned>(n.size()))
+		    .le16(type)
+		    .le32(static_cast<std::uint32_t>(value.size()))
+		    .raw(n)
+		    .raw(value)
+		    .b;
 	}
 
 	bytes metadata_object(const bytes& id, const std::vector<bytes>& records)
@@ -367,7 +401,8 @@ namespace
 		builder data;
 		for (const auto& c : children) data.raw(c);
 		const auto size = static_cast<std::uint32_t>(data.size());
-		return asf_object(header_extension_guid, builder().raw(extension_reserved_guid).le16(6).le32(size).raw(data.b).b);
+		return asf_object(header_extension_guid,
+		                  builder().raw(extension_reserved_guid).le16(6).le32(size).raw(data.b).b);
 	}
 
 	struct extended_spec
@@ -385,8 +420,21 @@ namespace
 	bytes extended_stream_properties(const extended_spec& e)
 	{
 		builder b;
-		b.raw(le64(0)).raw(le64(0)).le32(e.data_bitrate).le32(5000).le32(0).le32(e.data_bitrate).le32(5000).le32(0).le32(0).le32(2);
-		b.le16(e.number).le16(e.language).raw(le64(e.frame_time)).le16(static_cast<unsigned>(e.names.size())).le16(e.extension_systems);
+		b.raw(le64(0))
+			.raw(le64(0))
+			.le32(e.data_bitrate)
+			.le32(5000)
+			.le32(0)
+			.le32(e.data_bitrate)
+			.le32(5000)
+			.le32(0)
+			.le32(0)
+			.le32(2);
+		b.le16(e.number)
+			.le16(e.language)
+			.raw(le64(e.frame_time))
+			.le16(static_cast<unsigned>(e.names.size()))
+			.le16(e.extension_systems);
 
 		for (const auto& n : e.names)
 		{
@@ -425,9 +473,16 @@ namespace
 		return asf_object(stream_bitrate_guid, b.b);
 	}
 
-	bytes wm_picture(const unsigned type, const std::string_view mime, const std::string_view description, const bytes& image)
+	bytes wm_picture(const unsigned type, const std::string_view mime, const std::string_view description,
+	                 const bytes& image)
 	{
-		return builder().u8(type).le32(static_cast<std::uint32_t>(image.size())).raw(utf16z(mime)).raw(utf16z(description)).raw(image).b;
+		return builder()
+		    .u8(type)
+		    .le32(static_cast<std::uint32_t>(image.size()))
+		    .raw(utf16z(mime))
+		    .raw(utf16z(description))
+		    .raw(image)
+		    .b;
 	}
 
 	bytes xmp_object(const std::string_view packet)
@@ -440,7 +495,8 @@ namespace
 		return asf_object(simple_index_guid, bytes(32, 0x22));
 	}
 
-	bytes asf_file(const std::vector<bytes>& children, const bytes& media = bytes(64, 0xAB), const std::vector<bytes>& after = {})
+	bytes asf_file(const std::vector<bytes>& children, const bytes& media = bytes(64, 0xAB),
+	               const std::vector<bytes>& after = {})
 	{
 		builder header;
 		header.le32(static_cast<std::uint32_t>(children.size())).u8(1).u8(2);
@@ -456,12 +512,13 @@ namespace
 	bool holds(const bytes& file, const libfiles::byte_range& at, const bytes& expected)
 	{
 		return at.size == expected.size() && at.offset <= file.size() && at.size <= file.size() - at.offset &&
-			std::equal(expected.begin(), expected.end(), file.begin() + static_cast<std::ptrdiff_t>(at.offset));
+		       std::equal(expected.begin(), expected.end(), file.begin() + static_cast<std::ptrdiff_t>(at.offset));
 	}
 
 	bool is_guid(const bytes& file, const std::size_t at, const bytes& id)
 	{
-		return file.size() >= at + 16 && std::equal(id.begin(), id.end(), file.begin() + static_cast<std::ptrdiff_t>(at));
+		return file.size() >= at + 16 &&
+		       std::equal(id.begin(), id.end(), file.begin() + static_cast<std::ptrdiff_t>(at));
 	}
 
 	// Where each object of an ASF file starts and ends: the top-level objects, the header's, and its
@@ -480,8 +537,10 @@ namespace
 				out.push_back(pos);
 				out.push_back(pos + static_cast<std::size_t>(size));
 
-				if (depth == 0 && is_guid(file, pos, header_guid)) self(self, pos + 30, pos + static_cast<std::size_t>(size), 1);
-				if (depth == 1 && is_guid(file, pos, header_extension_guid)) self(self, pos + 46, pos + static_cast<std::size_t>(size), 2);
+				if (depth == 0 && is_guid(file, pos, header_guid))
+					self(self, pos + 30, pos + static_cast<std::size_t>(size), 1);
+				if (depth == 1 && is_guid(file, pos, header_extension_guid))
+					self(self, pos + 46, pos + static_cast<std::size_t>(size), 2);
 				pos += static_cast<std::size_t>(size);
 			}
 		};
@@ -494,7 +553,10 @@ namespace
 	bytes wma_file(const std::vector<bytes>& descriptors)
 	{
 		// 2011-03-13T15:13:49Z; ten and a half seconds after a preroll of 1.5.
-		const properties_spec p{.created = filetime(1300029229), .play = 120'000'000, .preroll = 1500, .max_bitrate = 128000};
+		const properties_spec p{.created = filetime(1300029229),
+		                        .play = 120'000'000,
+		                        .preroll = 1500,
+		                        .max_bitrate = 128000};
 		const auto audio = wave_format(0x0161, 2, 44100, 16000, 16, bytes(10, 0));
 
 		return asf_file({
@@ -546,17 +608,17 @@ TEST("media asf reads an audio file's stream, duration, date and tags")
 	CHECK(s.complete);
 
 	check_tags(s.tags, {
-		{"Title", "Song"},
-		{"Author", "Artist"},
-		{"Copyright", "(c) 2011"},
-		{"Description", "A description"},
-		{"Rating", "PG"},
-		{"WM/AlbumTitle", "The Album"},
-		{"WM/TrackNumber", "5"},
-		{"WM/Category", "Live"},
-		{"WM/SharedUserRating", "75"},
-		{"WM/EncodingSettings", "Lavf62.12.102"},
-	});
+						   {"Title", "Song"},
+						   {"Author", "Artist"},
+						   {"Copyright", "(c) 2011"},
+						   {"Description", "A description"},
+						   {"Rating", "PG"},
+						   {"WM/AlbumTitle", "The Album"},
+						   {"WM/TrackNumber", "5"},
+						   {"WM/Category", "Live"},
+						   {"WM/SharedUserRating", "75"},
+						   {"WM/EncodingSettings", "Lavf62.12.102"},
+					   });
 
 	// The File Properties' creation date, in UTC.
 	const auto& created = s.properties.created;
@@ -603,12 +665,14 @@ TEST("media asf reads a value of every descriptor type")
 			descriptor("Undefined type", 9, bytes(4, 1)),
 		}),
 		header_extension({
-			metadata_object(metadata_library_guid, {
-				record(0, "WM/MediaClassPrimaryID", guid_type, guid("D1607DBC-E323-4BE2-86A1-48A42A28441E")),
-				// A Metadata Library BOOL is 16 bits.
-				record(0, "IsProtected", bool_type, builder().le16(0).b),
-				record(0, "Library text", unicode_type, utf16z("from the library")),
-			}),
+			metadata_object(metadata_library_guid,
+	                        {
+								record(0, "WM/MediaClassPrimaryID", guid_type,
+	                                   guid("D1607DBC-E323-4BE2-86A1-48A42A28441E")),
+								// A Metadata Library BOOL is 16 bits.
+								record(0, "IsProtected", bool_type, builder().le16(0).b),
+								record(0, "Library text", unicode_type, utf16z("from the library")),
+							}),
 		}),
 	});
 
@@ -617,18 +681,18 @@ TEST("media asf reads a value of every descriptor type")
 
 	// The header extension comes after the descriptors, so its records do too; text is trimmed.
 	check_tags(s.tags, {
-		{"Text", "Zürich"},
-		{"Bytes", "12 bytes"},
-		{"One byte", "1 byte"},
-		{"WM/AlbumTitle", "3 bytes"},
-		{"Flag", "1"},
-		{"Double word", "4000000000"},
-		{"Quad word", "1099511627781"},
-		{"Word", "65535"},
-		{"WM/MediaClassPrimaryID", "{D1607DBC-E323-4BE2-86A1-48A42A28441E}"},
-		{"IsProtected", "0"},
-		{"Library text", "from the library"},
-	});
+						   {"Text", "Zürich"},
+						   {"Bytes", "12 bytes"},
+						   {"One byte", "1 byte"},
+						   {"WM/AlbumTitle", "3 bytes"},
+						   {"Flag", "1"},
+						   {"Double word", "4000000000"},
+						   {"Quad word", "1099511627781"},
+						   {"Word", "65535"},
+						   {"WM/MediaClassPrimaryID", "{D1607DBC-E323-4BE2-86A1-48A42A28441E}"},
+						   {"IsProtected", "0"},
+						   {"Library text", "from the library"},
+					   });
 
 	CHECK(s.properties.album.empty());
 }
@@ -643,15 +707,20 @@ TEST("media asf reads a video file's streams, frame rate, names, languages and b
 		header_extension({
 			language_list({"en-us", "fr-fr"}),
 			// 333667 hundreds of nanoseconds a frame: 29.97 frames a second.
-			extended_stream_properties({.number = 1, .language = 0, .frame_time = 333667, .data_bitrate = 1000000, .names = {"Main video"}}),
-			extended_stream_properties({.number = 2, .language = 1, .data_bitrate = 192000, .names = {"Commentaire", "Second name"},
-			                            .extension_systems = 2}),
-			metadata_object(metadata_guid, {
-				record(1, "AspectRatioX", dword_type, builder().le32(16).b),
-				record(1, "AspectRatioY", dword_type, builder().le32(12).b),
-				record(1, "DeviceConformanceTemplate", unicode_type, utf16z("MP@ML")),
-				record(9, "Of no stream", unicode_type, utf16z("dropped")),
-			}),
+			extended_stream_properties(
+				{.number = 1, .language = 0, .frame_time = 333667, .data_bitrate = 1000000, .names = {"Main video"}}),
+			extended_stream_properties({.number = 2,
+	                                    .language = 1,
+	                                    .data_bitrate = 192000,
+	                                    .names = {"Commentaire", "Second name"},
+	                                    .extension_systems = 2}),
+			metadata_object(metadata_guid,
+	                        {
+								record(1, "AspectRatioX", dword_type, builder().le32(16).b),
+								record(1, "AspectRatioY", dword_type, builder().le32(12).b),
+								record(1, "DeviceConformanceTemplate", unicode_type, utf16z("MP@ML")),
+								record(9, "Of no stream", unicode_type, utf16z("dropped")),
+							}),
 		}),
 		stream_properties(video_media_guid, 1, video),
 		stream_properties(audio_media_guid, 2, audio),
@@ -727,13 +796,15 @@ TEST("media asf locates WM/Picture rather than reading it")
 	const auto file = asf_file({
 		file_properties({.play = 20'000'000}),
 		header_extension({
-			metadata_object(metadata_library_guid, {record(0, "WM/Picture", bytes_type, wm_picture(4, "image/png", "", back))}),
+			metadata_object(metadata_library_guid,
+	                        {record(0, "WM/Picture", bytes_type, wm_picture(4, "image/png", "", back))}),
 		}),
 		stream_properties(audio_media_guid, 1, wave_format(0x0161, 2, 44100, 16000, 16)),
 		extended_content({
 			descriptor("WM/Picture", bytes_type, wm_picture(3, "image/jpeg", "Front", front)),
 			// An image larger than the value holds is no picture, and an unknown type is "Other".
-			descriptor("WM/Picture", bytes_type, builder().u8(3).le32(5000).raw(utf16z("image/jpeg")).raw(utf16z("")).raw(bytes(10, 1)).b),
+			descriptor("WM/Picture", bytes_type,
+	                   builder().u8(3).le32(5000).raw(utf16z("image/jpeg")).raw(utf16z("")).raw(bytes(10, 1)).b),
 			descriptor("WM/Picture", bytes_type, wm_picture(99, "image/gif", "Odd", bytes(5, 7))),
 		}),
 	});
@@ -760,11 +831,11 @@ TEST("media asf locates WM/Picture rather than reading it")
 
 	// Each is a tag too, described: a picture by its type and size, bytes that are none by their count.
 	check_tags(s.tags, {
-		{"WM/Picture", "image/png, back cover, 150000 bytes"},
-		{"WM/Picture", "image/jpeg, front cover, 3000 bytes"},
-		{"WM/Picture", "39 bytes"},
-		{"WM/Picture", "image/gif, other, 5 bytes"},
-	});
+						   {"WM/Picture", "image/png, back cover, 150000 bytes"},
+						   {"WM/Picture", "image/jpeg, front cover, 3000 bytes"},
+						   {"WM/Picture", "39 bytes"},
+						   {"WM/Picture", "image/gif, other, 5 bytes"},
+					   });
 
 	// Over a stream, the large image is stepped over, not read.
 	libfiles::memory_stream stream(file);
@@ -784,7 +855,8 @@ TEST("media asf keeps a hidden stream declared in its extended stream properties
 		stream_properties(audio_media_guid, 1, wave_format(0x0161, 2, 44100, 16000, 16)),
 		header_extension({
 			language_list({"UND", "de-de"}),
-			extended_stream_properties({.number = 3, .frame_time = 400000, .names = {"Low rate"}, .extension_systems = 1, .embedded = hidden}),
+			extended_stream_properties(
+				{.number = 3, .frame_time = 400000, .names = {"Low rate"}, .extension_systems = 1, .embedded = hidden}),
 			extended_stream_properties({.number = 1, .language = 1}),
 		}),
 		stream_properties(command_media_guid, 4, {}),
@@ -814,7 +886,8 @@ TEST("media asf keeps a hidden stream declared in its extended stream properties
 	CHECK(s.streams[3].kind == media_stream_kind::data);
 	CHECK_STR(s.streams[3].codec, "mjpeg");
 
-	const auto hidden_row = std::ranges::find_if(s.structure, [](const libfiles::structure_row& row) { return row.key == "Stream 3"; });
+	const auto hidden_row = std::ranges::find_if(s.structure, [](const libfiles::structure_row& row)
+	{ return row.key == "Stream 3"; });
 	CHECK(hidden_row != s.structure.end() && hidden_row->value.find("hidden") != std::string::npos);
 }
 
@@ -829,15 +902,17 @@ TEST("media asf takes a stream's language from its WM/Language record when the L
 		header_extension({
 			language_list({"en-us"}),
 			extended_stream_properties({.number = 1, .language = 0}),
-			metadata_object(metadata_guid, {
-				record(1, "WM/Language", unicode_type, utf16z("de-de")),
-				record(2, "WM/Language", unicode_type, utf16z("fr-fr")),
-				record(3, "WM/Language", unicode_type, utf16z("und")),
-			}),
-			metadata_object(metadata_library_guid, {
-				// The last record wins, and FFmpeg matches the name whatever its case.
-				record(2, "wm/language", unicode_type, utf16z("es-es")),
-			}),
+			metadata_object(metadata_guid,
+	                        {
+								record(1, "WM/Language", unicode_type, utf16z("de-de")),
+								record(2, "WM/Language", unicode_type, utf16z("fr-fr")),
+								record(3, "WM/Language", unicode_type, utf16z("und")),
+							}),
+			metadata_object(metadata_library_guid,
+	                        {
+								// The last record wins, and FFmpeg matches the name whatever its case.
+								record(2, "wm/language", unicode_type, utf16z("es-es")),
+							}),
 		}),
 	});
 
@@ -913,23 +988,28 @@ TEST("media asf takes no duration or date from a broadcast file")
 
 TEST("media asf reports its structure")
 {
-	const auto file = asf_file({
-		file_properties({.created = filetime(0), .play = 51'000'000, .preroll = 3100, .max_bitrate = 1000}),
-		header_extension({language_list({"en-us"}), asf_object(padding_guid, bytes(10, 0))}),
-		stream_properties(video_media_guid, 1, video_format(160, 120, "MP42"), 0x8000),
-	}, bytes(100, 0), {simple_index(), xmp_object("<x/>")});
+	const auto file = asf_file(
+		{
+			file_properties({.created = filetime(0), .play = 51'000'000, .preroll = 3100, .max_bitrate = 1000}),
+			header_extension({language_list({"en-us"}), asf_object(padding_guid, bytes(10, 0))}),
+			stream_properties(video_media_guid, 1, video_format(160, 120, "MP42"), 0x8000),
+		},
+		bytes(100, 0), {simple_index(), xmp_object("<x/>")});
 
 	const auto s = scan(file, libfiles::scan_intent::inspect);
 	CHECK(s.success);
 
 	std::vector<std::string> keys;
+	keys.reserve(s.structure.size());
 	for (const auto& row : s.structure) keys.push_back(row.key);
 
 	const std::vector<std::string> expected = {
+		// clang-format off
 		"Summary (7)", "File size", "Play duration", "Preroll", "Flags", "Data packets", "Packet size", "Maximum bit rate",
 		"Objects (4)", "Header", "Data", "Simple Index", "XMP",
 		"Header (5)", "File Properties", "Header Extension", "Language List", "Padding", "Stream Properties",
 		"Streams (1)", "Stream 1",
+		// clang-format on
 	};
 
 	CHECK(keys == expected);
@@ -977,22 +1057,31 @@ TEST("media asf survives files cut short")
 	bytes cover(200);
 	for (std::size_t i = 0; i < cover.size(); ++i) cover[i] = static_cast<std::uint8_t>(i);
 
-	const auto file = asf_file({
-		file_properties({.created = filetime(1300029229), .play = 61'000'000, .preroll = 3100}),
-		header_extension({
-			language_list({"en-us", "fr-fr"}),
-			extended_stream_properties({.number = 1, .frame_time = 333667, .data_bitrate = 1000000, .names = {"Video"}, .extension_systems = 1,
-			                            .embedded = stream_properties(video_media_guid, 3, video_format(320, 240, "WMV2"))}),
-			metadata_object(metadata_guid, {record(1, "AspectRatioX", dword_type, builder().le32(4).b)}),
-			metadata_object(metadata_library_guid, {record(0, "WM/Category", unicode_type, utf16z("C")),
-			                                         record(0, "WM/Picture", bytes_type, wm_picture(3, "image/jpeg", "", cover))}),
-		}),
-		stream_properties(video_media_guid, 1, video_format(640, 480, "WMV3", bytes(4, 1))),
-		stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16, bytes(10, 0))),
-		content_description({"Title", "Author", "", "", ""}),
-		extended_content({descriptor("WM/Category", unicode_type, utf16z("A")), descriptor("WM/Year", unicode_type, utf16z("2011"))}),
-		stream_bitrates({{1, 1200000}, {2, 128000}}),
-	}, bytes(300, 0x11), {simple_index(), xmp_object("<x:xmpmeta xmlns:x='adobe:ns:meta/'/>")});
+	const auto file = asf_file(
+		{
+			file_properties({.created = filetime(1300029229), .play = 61'000'000, .preroll = 3100}),
+			header_extension({
+				language_list({"en-us", "fr-fr"}),
+				extended_stream_properties(
+					{.number = 1,
+	                 .frame_time = 333667,
+	                 .data_bitrate = 1000000,
+	                 .names = {"Video"},
+	                 .extension_systems = 1,
+	                 .embedded = stream_properties(video_media_guid, 3, video_format(320, 240, "WMV2"))}),
+				metadata_object(metadata_guid, {record(1, "AspectRatioX", dword_type, builder().le32(4).b)}),
+				metadata_object(metadata_library_guid,
+	                            {record(0, "WM/Category", unicode_type, utf16z("C")),
+	                             record(0, "WM/Picture", bytes_type, wm_picture(3, "image/jpeg", "", cover))}),
+			}),
+			stream_properties(video_media_guid, 1, video_format(640, 480, "WMV3", bytes(4, 1))),
+			stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16, bytes(10, 0))),
+			content_description({"Title", "Author", "", "", ""}),
+			extended_content({descriptor("WM/Category", unicode_type, utf16z("A")),
+	                          descriptor("WM/Year", unicode_type, utf16z("2011"))}),
+			stream_bitrates({{1, 1200000}, {2, 128000}}),
+		},
+		bytes(300, 0x11), {simple_index(), xmp_object("<x:xmpmeta xmlns:x='adobe:ns:meta/'/>")});
 
 	const auto whole = scan(file);
 	CHECK(whole.success);
@@ -1019,21 +1108,29 @@ TEST("media asf survives files cut short")
 
 TEST("media asf survives damaged sizes and counts")
 {
-	const auto file = asf_file({
-		file_properties({.created = filetime(1300029229), .play = 61'000'000, .preroll = 3100}),
-		header_extension({
-			language_list({"en-us"}),
-			extended_stream_properties({.number = 1, .frame_time = 333667, .names = {"V"}, .extension_systems = 1,
-			                            .embedded = stream_properties(video_media_guid, 3, video_format(32, 24, "WMV2"))}),
-			metadata_object(metadata_library_guid, {record(2, "Lang", unicode_type, utf16z("x")),
-			                                         record(0, "WM/Picture", bytes_type, wm_picture(3, "image/png", "d", bytes(16, 9)))}),
-		}),
-		stream_properties(video_media_guid, 1, video_format(64, 48, "WMV3", bytes(4, 1))),
-		stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16, bytes(4, 0))),
-		content_description({"T", "A", "C", "D", "R"}),
-		extended_content({descriptor("WM/Category", unicode_type, utf16z("A")), descriptor("N", dword_type, builder().le32(7).b)}),
-		stream_bitrates({{1, 1200000}}),
-	}, bytes(40, 0x11), {simple_index(), xmp_object("<x/>")});
+	const auto file = asf_file(
+		{
+			file_properties({.created = filetime(1300029229), .play = 61'000'000, .preroll = 3100}),
+			header_extension({
+				language_list({"en-us"}),
+				extended_stream_properties(
+					{.number = 1,
+	                 .frame_time = 333667,
+	                 .names = {"V"},
+	                 .extension_systems = 1,
+	                 .embedded = stream_properties(video_media_guid, 3, video_format(32, 24, "WMV2"))}),
+				metadata_object(metadata_library_guid,
+	                            {record(2, "Lang", unicode_type, utf16z("x")),
+	                             record(0, "WM/Picture", bytes_type, wm_picture(3, "image/png", "d", bytes(16, 9)))}),
+			}),
+			stream_properties(video_media_guid, 1, video_format(64, 48, "WMV3", bytes(4, 1))),
+			stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16, bytes(4, 0))),
+			content_description({"T", "A", "C", "D", "R"}),
+			extended_content({descriptor("WM/Category", unicode_type, utf16z("A")),
+	                          descriptor("N", dword_type, builder().le32(7).b)}),
+			stream_bitrates({{1, 1200000}}),
+		},
+		bytes(40, 0x11), {simple_index(), xmp_object("<x/>")});
 
 	CHECK(scan(file).success);
 	check_damage(file, 0, static_cast<std::size_t>(load_le64(file, 16)) + 80);
@@ -1041,12 +1138,14 @@ TEST("media asf survives damaged sizes and counts")
 
 TEST("media asf reads a large file in a few blocks")
 {
-	const auto file = asf_file({
-		file_properties({.play = 600'000'000}),
-		stream_properties(video_media_guid, 1, video_format(640, 480, "WVC1")),
-		stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16)),
-		extended_content({descriptor("WM/Category", unicode_type, utf16z("A"))}),
-	}, bytes(4 * 1024 * 1024, 0x5A), {simple_index(), xmp_object("<x/>")});
+	const auto file = asf_file(
+		{
+			file_properties({.play = 600'000'000}),
+			stream_properties(video_media_guid, 1, video_format(640, 480, "WVC1")),
+			stream_properties(audio_media_guid, 2, wave_format(0x0161, 2, 44100, 16000, 16)),
+			extended_content({descriptor("WM/Category", unicode_type, utf16z("A"))}),
+		},
+		bytes(4 * 1024 * 1024, 0x5A), {simple_index(), xmp_object("<x/>")});
 
 	libfiles::memory_stream stream(file);
 	libfiles::reader r(stream);
@@ -1108,7 +1207,13 @@ namespace
 	{
 		builder b;
 		b.u8(type).u8(data.size() >> 16 & 0xFF).u8(data.size() >> 8 & 0xFF).u8(data.size() & 0xFF);
-		b.u8(timestamp >> 16 & 0xFF).u8(timestamp >> 8 & 0xFF).u8(timestamp & 0xFF).u8(timestamp >> 24).u8(0).u8(0).u8(0);
+		b.u8(timestamp >> 16 & 0xFF)
+			.u8(timestamp >> 8 & 0xFF)
+			.u8(timestamp & 0xFF)
+			.u8(timestamp >> 24)
+			.u8(0)
+			.u8(0)
+			.u8(0);
 		b.raw(data).be32(static_cast<std::uint32_t>(11 + data.size()));
 		return b.b;
 	}
@@ -1142,7 +1247,12 @@ namespace
 	bytes amf_date(const double milliseconds, const unsigned zone = 0)
 	{
 		const auto bits = std::bit_cast<std::uint64_t>(milliseconds);
-		return builder().u8(11).be32(static_cast<std::uint32_t>(bits >> 32)).be32(static_cast<std::uint32_t>(bits)).be16(zone).b;
+		return builder()
+		    .u8(11)
+		    .be32(static_cast<std::uint32_t>(bits >> 32))
+		    .be32(static_cast<std::uint32_t>(bits))
+		    .be16(zone)
+		    .b;
 	}
 
 	using amf_properties = std::vector<std::pair<std::string, bytes>>;
@@ -1194,8 +1304,19 @@ namespace
 	{
 		const auto sps = h264_sps();
 		const bytes pps = {0x68, 0xEE, 0x3C, 0x80};
-		return builder().u8(1).u8(sps[1]).u8(sps[2]).u8(sps[3]).u8(0xFF).u8(0xE1).be16(static_cast<unsigned>(sps.size())).raw(sps)
-		                .u8(1).be16(static_cast<unsigned>(pps.size())).raw(pps).b;
+		return builder()
+		    .u8(1)
+		    .u8(sps[1])
+		    .u8(sps[2])
+		    .u8(sps[3])
+		    .u8(0xFF)
+		    .u8(0xE1)
+		    .be16(static_cast<unsigned>(sps.size()))
+		    .raw(sps)
+		    .u8(1)
+		    .be16(static_cast<unsigned>(pps.size()))
+		    .raw(pps)
+		    .b;
 	}
 
 	// Main 10's profile, tier and level: progressive frames at level 3.1.
@@ -1239,7 +1360,8 @@ namespace
 		b.u8(1).u8(0x02).be32(0x20000000).u8(0x90).zeros(5).u8(93);
 		b.be16(0xF000).u8(0xFC).u8(0xFD).u8(0xFA).u8(0xFA).be16(0).u8(0x0F);
 		b.u8(3);
-		for (const auto& [type, unit] : arrays) b.u8(0x80 | type).be16(1).be16(static_cast<unsigned>(unit.size())).raw(unit);
+		for (const auto& [type, unit] : arrays)
+			b.u8(0x80 | type).be16(1).be16(static_cast<unsigned>(unit.size())).raw(unit);
 		return b.b;
 	}
 
@@ -1282,7 +1404,8 @@ namespace
 	}
 
 	// An enhanced RTMP video tag: a key frame of the packet type given, its FourCC, and its body.
-	bytes enhanced_video(const unsigned packet_type, const std::string_view fourcc, const bytes& body, const std::uint32_t timestamp = 0)
+	bytes enhanced_video(const unsigned packet_type, const std::string_view fourcc, const bytes& body,
+	                     const std::uint32_t timestamp = 0)
 	{
 		return flv_tag(9, timestamp, builder().u8(0x80 | 0x10 | packet_type).raw(fourcc).raw(body).b);
 	}
@@ -1413,19 +1536,19 @@ TEST("media flv reads AVC and AAC with onMetaData")
 	CHECK(s.complete);
 
 	check_tags(s.tags, {
-		{"duration", "12.5"},
-		{"width", "1920"},
-		{"height", "1088"},
-		{"framerate", "29.97"},
-		{"videocodecid", "7"},
-		{"videodatarate", "2500"},
-		{"audiocodecid", "10"},
-		{"audiodatarate", "128"},
-		{"audiosamplerate", "44100"},
-		{"stereo", "true"},
-		{"encoder", "Lavf62.12.102"},
-		{"filesize", "123456"},
-	});
+						   {"duration", "12.5"},
+						   {"width", "1920"},
+						   {"height", "1088"},
+						   {"framerate", "29.97"},
+						   {"videocodecid", "7"},
+						   {"videodatarate", "2500"},
+						   {"audiocodecid", "10"},
+						   {"audiodatarate", "128"},
+						   {"audiosamplerate", "44100"},
+						   {"stereo", "true"},
+						   {"encoder", "Lavf62.12.102"},
+						   {"filesize", "123456"},
+					   });
 
 	CHECK_STR(s.properties.encoder, "Lavf62.12.102");
 	CHECK(s.xmp.empty());
@@ -1435,24 +1558,26 @@ TEST("media flv reads onMetaData values of every AMF type")
 {
 	builder b;
 	b.raw(flv_header(1));
-	b.raw(script_tag("onMetaData", amf_ecma_array({
-		{"integer", amf_number(42)},
-		{"fraction", amf_number(-0.25)},
-		{"large", amf_number(1e21)},
-		{"flag", amf_boolean(false)},
-		{"title", amf_string(" A title ")},
-		{"comment", amf_long_string("A long string")},
-		{"latin", amf_string("caf\xE9")},
-		{"creationdate", amf_string("Mon Mar 14 10:00:00 2011")},
-		{"lastmodified", amf_date(1300029229000.0 + 500, 60)},
-		{"nothing", builder().u8(5).b},
-		{"undefined", builder().u8(6).b},
-		{"keyframes", amf_object({{"times", amf_strict_array({amf_number(0), amf_number(2)})},
-		                          {"filepositions", amf_strict_array({amf_number(13), amf_number(9000)})}})},
-		{"trackinfo", amf_strict_array({amf_object({{"language", amf_string("eng")}})})},
-		{"tags", amf_strict_array({amf_string("one"), amf_string("two")})},
-		{"after", amf_string("still read")},
-	})));
+	b.raw(script_tag("onMetaData",
+	                 amf_ecma_array({
+						 {"integer", amf_number(42)},
+						 {"fraction", amf_number(-0.25)},
+						 {"large", amf_number(1e21)},
+						 {"flag", amf_boolean(false)},
+						 {"title", amf_string(" A title ")},
+						 {"comment", amf_long_string("A long string")},
+						 {"latin", amf_string("caf\xE9")},
+						 {"creationdate", amf_string("Mon Mar 14 10:00:00 2011")},
+						 {"lastmodified", amf_date(1300029229000.0 + 500, 60)},
+						 {"nothing", builder().u8(5).b},
+						 {"undefined", builder().u8(6).b},
+						 {"keyframes",
+	                      amf_object({{"times", amf_strict_array({amf_number(0), amf_number(2)})},
+	                                  {"filepositions", amf_strict_array({amf_number(13), amf_number(9000)})}})},
+						 {"trackinfo", amf_strict_array({amf_object({{"language", amf_string("eng")}})})},
+						 {"tags", amf_strict_array({amf_string("one"), amf_string("two")})},
+						 {"after", amf_string("still read")},
+					 })));
 	b.raw(flv_tag(9, 0, sorenson_frame(6)));
 	b.raw(flv_tag(9, 40, sorenson_frame(6)));
 	const auto file = b.b;
@@ -1462,17 +1587,17 @@ TEST("media flv reads onMetaData values of every AMF type")
 
 	// Only onMetaData's own values are tags: what nests in its objects and arrays describes the media.
 	check_tags(s.tags, {
-		{"integer", "42"},
-		{"fraction", "-0.25"},
-		{"large", "1e+21"},
-		{"flag", "false"},
-		{"title", "A title"},
-		{"comment", "A long string"},
-		{"latin", "caf\xC3\xA9"},
-		{"creationdate", "Mon Mar 14 10:00:00 2011"},
-		{"lastmodified", "2011-03-13T15:13:49Z"},
-		{"after", "still read"},
-	});
+						   {"integer", "42"},
+						   {"fraction", "-0.25"},
+						   {"large", "1e+21"},
+						   {"flag", "false"},
+						   {"title", "A title"},
+						   {"comment", "A long string"},
+						   {"latin", "caf\xC3\xA9"},
+						   {"creationdate", "Mon Mar 14 10:00:00 2011"},
+						   {"lastmodified", "2011-03-13T15:13:49Z"},
+						   {"after", "still read"},
+					   });
 
 	CHECK_STR(s.properties.title, "A title");
 }
@@ -1485,7 +1610,8 @@ TEST("media flv reads MP3 audio, and the duration from the last tag when onMetaD
 	builder b;
 	b.raw(flv_header(4));
 	b.raw(script_tag("onMetaData", amf_ecma_array({{"encoder", amf_string("x")}})));
-	for (std::uint32_t i = 0; i < 40; ++i) b.raw(flv_tag(8, i * 24 + (i == 39 ? 1 : 0), builder().u8(0x2F).raw(frame).raw(bytes(100, 0)).b));
+	for (std::uint32_t i = 0; i < 40; ++i)
+		b.raw(flv_tag(8, i * 24 + (i == 39 ? 1 : 0), builder().u8(0x2F).raw(frame).raw(bytes(100, 0)).b));
 	// onMetaData written again at the end, at time zero, is stepped back over.
 	b.raw(script_tag("onMetaData", amf_ecma_array({{"duration", amf_number(0)}})));
 	const auto file = b.b;
@@ -1510,7 +1636,9 @@ TEST("media flv reads MP3 audio, and the duration from the last tag when onMetaD
 
 	// A timestamp past 24 bits takes its extension byte.
 	builder late;
-	late.raw(flv_header(4)).raw(flv_tag(8, 0, builder().u8(0x2F).raw(frame).b)).raw(flv_tag(8, 0x01000010, builder().u8(0x2F).raw(frame).b));
+	late.raw(flv_header(4))
+		.raw(flv_tag(8, 0, builder().u8(0x2F).raw(frame).b))
+		.raw(flv_tag(8, 0x01000010, builder().u8(0x2F).raw(frame).b));
 	CHECK(near(scan(late.b).duration, 16777.232));
 
 	// No duration anywhere: a last tag at time zero, or a size field at the end that does not match.
@@ -1535,6 +1663,7 @@ TEST("media flv reads PCM and Flash's other audio formats from their flags")
 	};
 
 	const expected cases[] = {
+		// clang-format off
 		{0x36, "pcm", 11025, 1, 16},     // little-endian, 11 kHz, 16 bits, mono
 		{0x01, "pcm", 5512, 2, 8},       // in the writer's byte order, 5.5 kHz, 8 bits, stereo
 		{0x1E, "adpcm_swf", 44100, 1, 0},
@@ -1545,6 +1674,7 @@ TEST("media flv reads PCM and Flash's other audio formats from their flags")
 		{0x8F, "mulaw", 8000, 2, 0},
 		{0xB2, "speex", 16000, 1, 0},
 		{0xF2, "", 5512, 1, 0},
+		// clang-format on
 	};
 
 	for (const auto& c : cases)
@@ -1575,10 +1705,10 @@ TEST("media flv reads enhanced RTMP's HEVC, AV1 and VP9")
 		builder b;
 		b.raw(flv_header(1));
 		b.raw(script_tag("onMetaData", amf_ecma_array({
-			{"duration", amf_number(2)},
-			{"width", amf_number(640)},
-			{"height", amf_number(360)},
-		})));
+										   {"duration", amf_number(2)},
+										   {"width", amf_number(640)},
+										   {"height", amf_number(360)},
+									   })));
 		b.raw(sequence_start);
 		b.raw(enhanced_video(1, "hvc1", bytes(8, 0), 40));
 		return scan(b.b);
@@ -1628,7 +1758,17 @@ TEST("media flv reads enhanced RTMP's HEVC, AV1 and VP9")
 	// AVC through enhanced RTMP, in a multitrack tag naming track 2, with ModEx data before it.
 	builder avc;
 	avc.raw(flv_header(1));
-	avc.raw(flv_tag(9, 0, builder().u8(0x80 | 0x10 | 7).u8(2).raw(bytes{0, 0, 0}).u8(0x06).u8(0x00).raw("avc1").u8(2).raw(avc_config()).b));
+	avc.raw(flv_tag(9, 0,
+	                builder()
+	                    .u8(0x80 | 0x10 | 7)
+	                    .u8(2)
+	                    .raw(bytes{0, 0, 0})
+	                    .u8(0x06)
+	                    .u8(0x00)
+	                    .raw("avc1")
+	                    .u8(2)
+	                    .raw(avc_config())
+	                    .b));
 	const auto tracked = scan(avc.b);
 	CHECK(tracked.success && tracked.streams.size() == 1);
 	if (!tracked.streams.empty())
@@ -1729,10 +1869,13 @@ TEST("media flv trusts the tags it sees over the header's flags")
 
 	// The header says video only; audio comes first.
 	builder both;
-	both.raw(flv_header(1)).raw(flv_tag(8, 0, builder().u8(0x36).raw(bytes(8, 0)).b)).raw(flv_tag(9, 0, sorenson_frame(6)));
+	both.raw(flv_header(1))
+		.raw(flv_tag(8, 0, builder().u8(0x36).raw(bytes(8, 0)).b))
+		.raw(flv_tag(9, 0, sorenson_frame(6)));
 	const auto b = scan(both.b);
 	CHECK(b.success);
-	CHECK(b.streams.size() == 2 && b.streams[0].kind == media_stream_kind::audio && b.streams[1].kind == media_stream_kind::video);
+	CHECK(b.streams.size() == 2 && b.streams[0].kind == media_stream_kind::audio &&
+	      b.streams[1].kind == media_stream_kind::video);
 
 	// No tags at all is a file with nothing to play.
 	const auto empty = scan(builder().raw(flv_header(5)).zeros(4).b);
@@ -1767,9 +1910,11 @@ TEST("media flv reports its structure")
 	CHECK(s.success);
 
 	std::vector<std::string> keys;
+	keys.reserve(s.structure.size());
 	for (const auto& row : s.structure) keys.push_back(row.key);
 	const std::vector<std::string> expected = {
-		"Header (3)", "Version", "Streams declared", "Header size", "Tags (4)", "onMetaData", "onXMPData", "Video", "Audio",
+		"Header (3)", "Version", "Streams declared", "Header size", "Tags (4)", "onMetaData", "onXMPData",
+		"Video",      "Audio",
 	};
 
 	CHECK(keys == expected);
@@ -1845,7 +1990,8 @@ TEST("asf reads back the edits it keeps outside the packet")
 	// The Content Description keeps the title, the artist as its author, the copyright and the comment as its
 	// description, where Windows, FFmpeg and the taggers that write WMA read them; Windows' descriptors the
 	// keywords and rating; the File Properties the creation date. The description stays in the packet.
-	check_round_trip("asf", wma_file({}), {"artist", "comment", "copyright", "keywords", "rating", "recorded", "title"});
+	check_round_trip("asf", wma_file({}),
+	                 {"artist", "comment", "copyright", "keywords", "rating", "recorded", "title"});
 }
 
 TEST("asf writes the creators as its author when an edit names no artist, and only a comment as its description")

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The tags media files share - ID3v2, ID3v1, APE and Vorbis comments, with FLAC pictures - the
 // mapping of every container's tag names onto media_properties, and dates and places as tags write them.
@@ -53,8 +53,8 @@ namespace libfiles::detail
 
 		bool iequals(const std::string_view a, const std::string_view b) noexcept
 		{
-			return a.size() == b.size() &&
-				std::equal(a.begin(), a.end(), b.begin(), [](const char x, const char y) { return ascii_lower(x) == ascii_lower(y); });
+			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](const char x, const char y)
+			{ return ascii_lower(x) == ascii_lower(y); });
 		}
 
 		bool istarts_with(const std::string_view text, const std::string_view prefix) noexcept
@@ -144,10 +144,12 @@ namespace libfiles::detail
 
 		// The ID3 and FLAC picture types, as a tag's description of a picture names them.
 		constexpr std::array<std::string_view, 21> picture_types = {
+			// clang-format off
 			"other", "file icon", "other file icon", "front cover", "back cover", "leaflet page", "media",
 			"lead artist", "artist", "conductor", "band", "composer", "lyricist", "recording location",
 			"during recording", "during performance", "video capture", "bright coloured fish", "illustration",
 			"band logo", "publisher logo",
+			// clang-format on
 		};
 
 		// "image/jpeg, front cover, 51234 bytes": a picture described in place of its bytes.
@@ -156,7 +158,8 @@ namespace libfiles::detail
 			std::string text(mime);
 			if (!text.empty()) text += ", ";
 
-			if (type >= 0 && type < static_cast<int>(picture_types.size())) text += picture_types[static_cast<std::size_t>(type)];
+			if (type >= 0 && type < static_cast<int>(picture_types.size()))
+				text += picture_types[static_cast<std::size_t>(type)];
 			else text += "picture type " + std::to_string(type);
 
 			return text + ", " + byte_count(size);
@@ -169,7 +172,8 @@ namespace libfiles::detail
 			if (dot == npos) return {};
 
 			const auto extension = name.substr(dot + 1);
-			if (iequals(extension, "jpg") || iequals(extension, "jpeg") || iequals(extension, "jpe")) return "image/jpeg";
+			if (iequals(extension, "jpg") || iequals(extension, "jpeg") || iequals(extension, "jpe"))
+				return "image/jpeg";
 			if (iequals(extension, "png")) return "image/png";
 			if (iequals(extension, "gif")) return "image/gif";
 			if (iequals(extension, "bmp")) return "image/bmp";
@@ -198,6 +202,7 @@ namespace libfiles::detail
 
 		// ID3v1's genres, with Winamp's additions, by number.
 		constexpr std::array<std::string_view, 192> id3v1_genres = {
+			// clang-format off
 			"Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
 			"New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
 			"Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop",
@@ -223,11 +228,14 @@ namespace libfiles::detail
 			"Post-Punk", "Post-Rock", "Psytrance", "Shoegaze", "Space Rock", "Trop Rock", "World Music",
 			"Neoclassical", "Audiobook", "Audio Theatre", "Neue Deutsche Welle", "Podcast", "Indie Rock",
 			"G-Funk", "Dubstep", "Garage Rock", "Psybient",
+			// clang-format on
 		};
 
 		std::string_view genre_name(const int number) noexcept
 		{
-			return number >= 0 && number < static_cast<int>(id3v1_genres.size()) ? id3v1_genres[static_cast<std::size_t>(number)] : std::string_view{};
+			return number >= 0 && number < static_cast<int>(id3v1_genres.size())
+			           ? id3v1_genres[static_cast<std::size_t>(number)]
+			           : std::string_view{};
 		}
 
 		// One genre as an ID3v2 frame writes it - a name, an ID3v1 number, ID3v2.4's "RX" and "CR", or
@@ -291,7 +299,10 @@ namespace libfiles::detail
 
 			for (auto i = names.begin(); i != names.end(); ++i)
 			{
-				const auto same = [i](const std::string_view n) { return iequals(n, *i); };
+				const auto same = [i](const std::string_view n)
+				{
+					return iequals(n, *i);
+				};
 				if (std::none_of(names.begin(), i, same)) append_value(joined, *i);
 			}
 
@@ -362,6 +373,7 @@ namespace libfiles::detail
 
 		// MP4 ilst atoms, named as box_type_text gives them.
 		constexpr mapping itunes_names[] = {
+			// clang-format off
 			{"\xC2\xA9" "nam", field::title},
 			{"\xC2\xA9" "ART", field::artist},
 			{"\xC2\xA9" "aut", field::artist},
@@ -397,10 +409,12 @@ namespace libfiles::detail
 			{"\xC2\xA9" "xyz", field::location},
 			// iTunes' content advisory, not a rating.
 			{"rtng", field::none},
+			// clang-format on
 		};
 
 		// QuickTime's udta atoms, 3GPP's asset boxes and the keys of a 'mdta' handler.
 		constexpr mapping quicktime_names[] = {
+			// clang-format off
 			{"\xC2\xA9" "nam", field::title},
 			{"titl", field::title},
 			{"\xC2\xA9" "ART", field::artist},
@@ -464,6 +478,7 @@ namespace libfiles::detail
 			{"com.apple.quicktime.publisher", field::publisher},
 			{"com.apple.quicktime.year", field::year},
 			{"com.apple.quicktime.rating.user", field::rating},
+			// clang-format on
 		};
 
 		// ID3v2.3 and 2.4 frame IDs, and ID3v2.2's three-letter ones; those the MP3 writer writes by the names
@@ -511,6 +526,7 @@ namespace libfiles::detail
 
 		// ID3v1's fields, as read_id3v1 names them after "ID3v1:".
 		constexpr mapping id3v1_names[] = {
+			// clang-format off
 			{"title", field::title},
 			{"artist", field::artist},
 			{"album", field::album},
@@ -518,6 +534,7 @@ namespace libfiles::detail
 			{"comment", field::comment},
 			{"track", field::track},
 			{"genre", field::genre},
+			// clang-format on
 		};
 
 		constexpr mapping ape_names[] = {
@@ -651,6 +668,7 @@ namespace libfiles::detail
 		};
 
 		constexpr mapping flv_names[] = {
+			// clang-format off
 			{"title", field::title},
 			{"artist", field::artist},
 			{"author", field::artist},
@@ -660,14 +678,17 @@ namespace libfiles::detail
 			{"creationdate", field::created},
 			{"encoder", field::encoder},
 			{"metadatacreator", field::encoder},
+			// clang-format on
 		};
 
 		constexpr mapping aiff_names[] = {
+			// clang-format off
 			{"NAME", field::title},
 			{"AUTH", field::artist},
 			{"(c) ", field::copyright},
 			{"ANNO", field::comment},
 			{"COMT", field::comment},
+			// clang-format on
 		};
 
 		// FFmpeg's own names, which its muxers write into Matroska, Vorbis, APE, FLV, ASF and QuickTime
@@ -708,7 +729,8 @@ namespace libfiles::detail
 			{"location", field::location},
 		};
 
-		std::optional<field> find_field(const std::span<const mapping> names, const std::string_view key, const bool any_case) noexcept
+		std::optional<field> find_field(const std::span<const mapping> names, const std::string_view key,
+		                                const bool any_case) noexcept
 		{
 			for (const auto& m : names)
 			{
@@ -740,7 +762,8 @@ namespace libfiles::detail
 			case tag_family::id3v2:
 				for (const std::string_view prefix : {"TXXX:", "TXX:"})
 				{
-					if (key.starts_with(prefix)) return {find_field(generic_names, key.substr(prefix.size()), true).value_or(field::none)};
+					if (key.starts_with(prefix))
+						return {find_field(generic_names, key.substr(prefix.size()), true).value_or(field::none)};
 				}
 
 				return {find_field(id3v2_names, key, false).value_or(field::none)};
@@ -776,25 +799,32 @@ namespace libfiles::detail
 			if (of > 0 && (!only_lacking || total == 0)) total = of;
 		}
 
-		void add_comment(std::vector<media_text>& comments, const std::string_view text, const std::string_view language,
-		                 const bool only_lacking)
+		void add_comment(std::vector<media_text>& comments, const std::string_view text,
+		                 const std::string_view language, const bool only_lacking)
 		{
 			if ((only_lacking && !comments.empty()) || comments.size() >= max_kept) return;
 
 			auto code = comment_language(language);
-			const auto same = [&](const media_text& c) { return c.text == text && c.language == code; };
+			const auto same = [&](const media_text& c)
+			{
+				return c.text == text && c.language == code;
+			};
 			if (std::ranges::any_of(comments, same)) return;
 
 			comments.push_back({std::string(text), std::move(code)});
 		}
 
-		void add_keywords(std::vector<std::string>& keywords, const std::string_view text, const std::string_view separators)
+		void add_keywords(std::vector<std::string>& keywords, const std::string_view text,
+		                  const std::string_view separators)
 		{
 			for (std::size_t start = 0; keywords.size() < max_kept;)
 			{
 				const auto end = text.find_first_of(separators, start);
 				const auto word = trim_text(text.substr(start, end == npos ? npos : end - start));
-				const auto same = [word](const std::string& k) { return iequals(k, word); };
+				const auto same = [word](const std::string& k)
+				{
+					return iequals(k, word);
+				};
 				if (!word.empty() && std::ranges::none_of(keywords, same)) keywords.emplace_back(word);
 				if (end == npos) break;
 				start = end + 1;
@@ -808,7 +838,8 @@ namespace libfiles::detail
 			if (!value) return {};
 
 			const auto rounded = std::lround(*value);
-			const auto stars = rounded <= 5 ? static_cast<int>(rounded) : stars_from_percent(static_cast<int>(std::min(rounded, 100l)));
+			const auto stars = rounded <= 5 ? static_cast<int>(rounded)
+			                                : stars_from_percent(static_cast<int>(std::min(rounded, 100l)));
 			if (stars <= 0) return {};
 			return stars;
 		}
@@ -827,7 +858,8 @@ namespace libfiles::detail
 			return trim_text(text.substr(0, text.find(';')));
 		}
 
-		void apply_field(media_properties& p, const target t, const std::string_view text, const std::string_view language)
+		void apply_field(media_properties& p, const target t, const std::string_view text,
+		                 const std::string_view language)
 		{
 			const auto lacking = t.only_lacking;
 			const auto one = first_value(text);
@@ -835,80 +867,57 @@ namespace libfiles::detail
 			switch (t.f)
 			{
 			case field::none: break;
-			case field::title: set_text(p.title, text, lacking);
-				break;
-			case field::display_name: set_text(p.title, text, true);
-				break;
-			case field::artist: set_text(p.artist, text, lacking);
-				break;
-			case field::album: set_text(p.album, text, lacking);
-				break;
-			case field::album_artist: set_text(p.album_artist, text, lacking);
-				break;
-			case field::composer: set_text(p.composer, text, lacking);
-				break;
-			case field::performer: set_text(p.performer, text, lacking);
-				break;
-			case field::genre: set_text(p.genre, text, lacking);
-				break;
-			case field::genre_references: set_text(p.genre, resolve_genres(text), lacking);
-				break;
+			case field::title: set_text(p.title, text, lacking); break;
+			case field::display_name: set_text(p.title, text, true); break;
+			case field::artist: set_text(p.artist, text, lacking); break;
+			case field::album: set_text(p.album, text, lacking); break;
+			case field::album_artist: set_text(p.album_artist, text, lacking); break;
+			case field::composer: set_text(p.composer, text, lacking); break;
+			case field::performer: set_text(p.performer, text, lacking); break;
+			case field::genre: set_text(p.genre, text, lacking); break;
+			case field::genre_references: set_text(p.genre, resolve_genres(text), lacking); break;
 			case field::genre_number:
 				if (const auto number = parse_count(one)) set_text(p.genre, genre_name(*number - 1), lacking);
 				else set_text(p.genre, text, lacking);
 				break;
-			case field::publisher: set_text(p.publisher, text, lacking);
-				break;
-			case field::copyright: set_text(p.copyright, text, lacking);
-				break;
-			case field::description: set_text(p.description, text, lacking);
-				break;
-			case field::synopsis: set_text(p.synopsis, text, lacking);
-				break;
-			case field::show: set_text(p.show, text, lacking);
-				break;
-			case field::encoder: set_text(p.encoder, text, lacking);
-				break;
-			case field::camera_make: set_text(p.camera_make, text, lacking);
-				break;
-			case field::camera_model: set_text(p.camera_model, text, lacking);
-				break;
-			case field::comment: add_comment(p.comments, text, language, lacking);
-				break;
-			case field::keywords: add_keywords(p.keywords, text, ",;");
-				break;
-			case field::categories: add_keywords(p.keywords, text, ";");
-				break;
+			case field::publisher: set_text(p.publisher, text, lacking); break;
+			case field::copyright: set_text(p.copyright, text, lacking); break;
+			case field::description: set_text(p.description, text, lacking); break;
+			case field::synopsis: set_text(p.synopsis, text, lacking); break;
+			case field::show: set_text(p.show, text, lacking); break;
+			case field::encoder: set_text(p.encoder, text, lacking); break;
+			case field::camera_make: set_text(p.camera_make, text, lacking); break;
+			case field::camera_model: set_text(p.camera_model, text, lacking); break;
+			case field::comment: add_comment(p.comments, text, language, lacking); break;
+			case field::keywords: add_keywords(p.keywords, text, ",;"); break;
+			case field::categories: add_keywords(p.keywords, text, ";"); break;
 			case field::rating:
 				if (const auto stars = stars_of(one)) p.rating = *stars;
 				break;
 			case field::percent_rating:
-				if (const auto percent = parse_count(one); percent && stars_from_percent(*percent) > 0) p.rating = stars_from_percent(*percent);
+				if (const auto percent = parse_count(one); percent && stars_from_percent(*percent) > 0)
+					p.rating = stars_from_percent(*percent);
 				break;
 			case field::year:
-				if (const auto date = parse_media_date(one); date.valid() && (!lacking || p.year == 0)) p.year = date.year;
+				if (const auto date = parse_media_date(one); date.valid() && (!lacking || p.year == 0))
+					p.year = date.year;
 				break;
-			case field::created: apply_date(p, parse_media_date(one), lacking);
-				break;
+			case field::created: apply_date(p, parse_media_date(one), lacking); break;
 			case field::created_fallback:
 				if (!p.created.valid()) apply_date(p, parse_media_date(one), lacking);
 				break;
 			case field::original_release:
-				if (const auto date = parse_media_date(one); date.valid() && (!lacking || !p.original_release.valid())) p.original_release = date;
+				if (const auto date = parse_media_date(one); date.valid() && (!lacking || !p.original_release.valid()))
+					p.original_release = date;
 				break;
-			case field::track: set_number_and_total(p.track, p.track_count, one, lacking);
-				break;
+			case field::track: set_number_and_total(p.track, p.track_count, one, lacking); break;
 			case field::track_from_zero:
 				if (const auto n = parse_count(one); n && p.track == 0) p.track = *n + 1;
 				break;
-			case field::track_count: set_count(p.track_count, one, lacking);
-				break;
-			case field::disc: set_number_and_total(p.disc, p.disc_count, one, lacking);
-				break;
-			case field::disc_count: set_count(p.disc_count, one, lacking);
-				break;
-			case field::season: set_count(p.season, one, lacking);
-				break;
+			case field::track_count: set_count(p.track_count, one, lacking); break;
+			case field::disc: set_number_and_total(p.disc, p.disc_count, one, lacking); break;
+			case field::disc_count: set_count(p.disc_count, one, lacking); break;
+			case field::season: set_count(p.season, one, lacking); break;
 			case field::episode:
 				if (const auto n = number_and_total(one).first; n > 0 && (!lacking || p.episode == 0)) p.episode = n;
 				break;
@@ -916,17 +925,17 @@ namespace libfiles::detail
 				if (const auto n = parse_count(one); n && (!lacking || !p.media_kind)) p.media_kind = *n;
 				break;
 			case field::location:
+			{
+				auto altitude = std::numeric_limits<double>::quiet_NaN();
+
+				if (const auto position = parse_iso6709(one, &altitude))
 				{
-					auto altitude = std::numeric_limits<double>::quiet_NaN();
-
-					if (const auto position = parse_iso6709(one, &altitude))
-					{
-						p.location = position;
-						p.altitude = std::isnan(altitude) ? std::optional<double>() : altitude;
-					}
-
-					break;
+					p.location = position;
+					p.altitude = std::isnan(altitude) ? std::optional<double>() : altitude;
 				}
+
+				break;
+			}
 			}
 		}
 
@@ -1127,7 +1136,8 @@ namespace libfiles::detail
 		}
 
 		constexpr std::array<std::string_view, 7> day_names = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
-		constexpr std::array<std::string_view, 12> month_names = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"};
+		constexpr std::array<std::string_view, 12> month_names = {"jan", "feb", "mar", "apr", "may", "jun",
+		                                                          "jul", "aug", "sep", "oct", "nov", "dec"};
 
 		// Which of the names a word begins with - "Mar" or "March" for March - or -1.
 		template <std::size_t N>
@@ -1196,7 +1206,8 @@ namespace libfiles::detail
 
 		// One ISO 6709 coordinate from at: a sign, then degrees, degrees and minutes, or degrees, minutes
 		// and seconds, told apart by how many whole digits there are, with a fraction of the last.
-		bool parse_coordinate(const std::string_view s, std::size_t& at, const std::size_t degree_digits, const double limit, double& out) noexcept
+		bool parse_coordinate(const std::string_view s, std::size_t& at, const std::size_t degree_digits,
+		                      const double limit, double& out) noexcept
 		{
 			if (at >= s.size() || (s[at] != '+' && s[at] != '-')) return false;
 
@@ -1344,7 +1355,8 @@ namespace libfiles::detail
 			std::string time;
 		};
 
-		void read_text_frame(id3_pass& pass, const std::string_view id, const std::span<const std::uint8_t> data, const int version)
+		void read_text_frame(id3_pass& pass, const std::string_view id, const std::span<const std::uint8_t> data,
+		                     const int version)
 		{
 			if (data.empty() || data[0] > 3) return;
 
@@ -1355,7 +1367,9 @@ namespace libfiles::detail
 			{
 				const auto description = id3_string(body, decode.encoding);
 				const auto name = decode(body.first(description.length));
-				const auto value = description.terminated ? id3_values(body.subspan(description.next), decode, version == 4) : std::string();
+				const auto value = description.terminated
+				                       ? id3_values(body.subspan(description.next), decode, version == 4)
+				                       : std::string();
 				add_tag(pass.found, tag_family::id3v2, frame_key(id, name), value);
 				return;
 			}
@@ -1395,7 +1409,9 @@ namespace libfiles::detail
 			const auto body = data.subspan(1);
 			const auto description = id3_string(body, decode.encoding);
 			const auto name = decode(body.first(description.length));
-			if (description.terminated) add_tag(pass.found, tag_family::id3v2, frame_key(id, name), text_from_windows_1252(body.subspan(description.next)));
+			if (description.terminated)
+				add_tag(pass.found, tag_family::id3v2, frame_key(id, name),
+				        text_from_windows_1252(body.subspan(description.next)));
 		}
 
 		// POPM: who rated, the rating from 1 to 255, and a play count. The rating is chosen at the end.
@@ -1487,8 +1503,8 @@ namespace libfiles::detail
 		}
 
 		// An attached picture, located where its image lies as stored in the file, else copied.
-		void read_picture_frame(id3_pass& pass, reader& source, const bool in_file, const id3_header& tag, const id3_frame& f,
-		                        const id3_frame_layout& l)
+		void read_picture_frame(id3_pass& pass, reader& source, const bool in_file, const id3_header& tag,
+		                        const id3_frame& f, const id3_frame_layout& l)
 		{
 			std::optional<picture_fields> fields;
 			std::uint64_t image_size = 0;
@@ -1517,11 +1533,13 @@ namespace libfiles::detail
 
 				image_size = data_size - fields->image;
 				if (in_file) picture.location = {data + fields->image, image_size};
-				else if (image_size <= max_picture) picture.data = source.read(data + fields->image, static_cast<std::size_t>(image_size));
+				else if (image_size <= max_picture)
+					picture.data = source.read(data + fields->image, static_cast<std::size_t>(image_size));
 			}
 			else
 			{
-				const auto data = id3_frame_data(source, f, l, l.compressed ? pass.budget->inflate_limit(max_value) : max_value);
+				const auto data = id3_frame_data(source, f, l,
+				                                 l.compressed ? pass.budget->inflate_limit(max_value) : max_value);
 				if (data && l.compressed) pass.budget->inflated(data->size());
 				if (data) fields = parse_picture_fields(*data, tag.version);
 
@@ -1532,7 +1550,8 @@ namespace libfiles::detail
 				}
 
 				image_size = data->size() - fields->image;
-				if (image_size <= max_picture) picture.data.assign(data->begin() + static_cast<std::ptrdiff_t>(fields->image), data->end());
+				if (image_size <= max_picture)
+					picture.data.assign(data->begin() + static_cast<std::ptrdiff_t>(fields->image), data->end());
 			}
 
 			add_description(pass.found, f.name(), describe_picture(fields->mime, fields->type, image_size));
@@ -1554,7 +1573,10 @@ namespace libfiles::detail
 			if (l.encrypted) return;
 
 			const auto id = f.name();
-			const auto is = [id](const std::string_view v22, const std::string_view v23) { return id == v22 || id == v23; };
+			const auto is = [id](const std::string_view v22, const std::string_view v23)
+			{
+				return id == v22 || id == v23;
+			};
 
 			if (is("PIC", "APIC"))
 			{
@@ -1562,8 +1584,8 @@ namespace libfiles::detail
 				return;
 			}
 
-			const auto known = id[0] == 'T' || id[0] == 'W' || is("COM", "COMM") || is("ULT", "USLT") || is("POP", "POPM") ||
-				is_id3_private_frame(id);
+			const auto known = id[0] == 'T' || id[0] == 'W' || is("COM", "COMM") || is("ULT", "USLT") ||
+			                   is("POP", "POPM") || is_id3_private_frame(id);
 			// A compressed frame inflates within what the scan has left; one that would pass it is described.
 			const auto limit = l.compressed ? pass.budget->inflate_limit(max_value) : max_value;
 			const auto data = known ? id3_frame_data(source, f, l, limit) : std::nullopt;
@@ -1592,7 +1614,10 @@ namespace libfiles::detail
 				if (const auto stars = stars_from_popm(*popm); stars > 0) pass.found.properties.rating = stars;
 			}
 
-			const auto all_digits = [](const std::string& s, const std::size_t n) { return s.size() == n && std::ranges::all_of(s, is_digit); };
+			const auto all_digits = [](const std::string& s, const std::size_t n)
+			{
+				return s.size() == n && std::ranges::all_of(s, is_digit);
+			};
 			if (!all_digits(pass.year, 4) || !all_digits(pass.day_month, 4)) return;
 
 			auto text = pass.year + "-" + pass.day_month.substr(2, 2) + "-" + pass.day_month.substr(0, 2);
@@ -1601,8 +1626,8 @@ namespace libfiles::detail
 		}
 
 		// One reading of a tag's frames, keeping what was read before any damage.
-		id3_pass read_id3_frames(reader& r, const std::uint64_t offset, const id3_header& tag, const media_properties& properties,
-		                         const id3_sizes sizes, media_budget& budget)
+		id3_pass read_id3_frames(reader& r, const std::uint64_t offset, const id3_header& tag,
+		                         const media_properties& properties, const id3_sizes sizes, media_budget& budget)
 		{
 			id3_pass pass;
 			pass.found.properties = properties;
@@ -1664,9 +1689,11 @@ namespace libfiles::detail
 		int cover_art_type(const std::string_view key) noexcept
 		{
 			constexpr std::array<std::string_view, 21> names = {
+				// clang-format off
 				"Other", "Icon", "Other Icon", "Front", "Back", "Leaflet", "Media", "Lead Artist", "Artist", "Conductor",
 				"Band", "Composer", "Lyricist", "Recording Location", "During Recording", "During Performance",
 				"Video Capture", "Fish", "Illustration", "Band Logotype", "Publisher Logotype",
+				// clang-format on
 			};
 
 			const auto open = key.find('(');
@@ -1684,7 +1711,8 @@ namespace libfiles::detail
 		}
 
 		// A binary item: cover art is a file's name, a NUL, then the image, which is located.
-		void read_ape_binary(reader& r, const std::string& key, const std::uint64_t at, const std::uint64_t size, media_scan_result& out)
+		void read_ape_binary(reader& r, const std::string& key, const std::uint64_t at, const std::uint64_t size,
+		                     media_scan_result& out)
 		{
 			if (!istarts_with(key, "Cover Art"))
 			{
@@ -1716,10 +1744,11 @@ namespace libfiles::detail
 		}
 
 		// The items between an APE tag's header, or its start, and its footer.
-		void read_ape_items(reader& r, std::uint64_t at, const std::uint64_t end, std::uint32_t count, const bool version2,
-		                    media_scan_result& out)
+		void read_ape_items(reader& r, std::uint64_t at, const std::uint64_t end, std::uint32_t count,
+		                    const bool version2, media_scan_result& out)
 		{
-			for (count = std::min(count, static_cast<std::uint32_t>(max_entries)); count > 0 && at <= end && end - at >= 9; --count)
+			for (count = std::min(count, static_cast<std::uint32_t>(max_entries));
+			     count > 0 && at <= end && end - at >= 9; --count)
 			{
 				const auto size = r.le32(at);
 				const auto flags = r.le32(at + 4);
@@ -1828,15 +1857,15 @@ namespace libfiles::detail
 
 	// ---- Tags ------------------------------------------------------------------------------------------
 
-	void apply_tag(media_properties& properties, const tag_family family, const std::string_view key, const std::string_view value,
-	               const std::string_view language)
+	void apply_tag(media_properties& properties, const tag_family family, const std::string_view key,
+	               const std::string_view value, const std::string_view language)
 	{
 		const auto text = trim_text(value);
 		if (!text.empty()) apply_field(properties, target_of(family, key), text, language);
 	}
 
-	void add_tag(media_scan_result& out, const tag_family family, const std::string_view key, const std::string_view value,
-	             const std::string_view language)
+	void add_tag(media_scan_result& out, const tag_family family, const std::string_view key,
+	             const std::string_view value, const std::string_view language)
 	{
 		const auto text = trim_text(value);
 		if (text.empty()) return;
@@ -1875,7 +1904,8 @@ namespace libfiles::detail
 		if (id3_fault(*tag, offset, r.size()) || pass.overran) pass.found.xmp.clear();
 
 		out.properties = std::move(pass.found.properties);
-		out.tags.insert(out.tags.end(), std::make_move_iterator(pass.found.tags.begin()), std::make_move_iterator(pass.found.tags.end()));
+		out.tags.insert(out.tags.end(), std::make_move_iterator(pass.found.tags.begin()),
+		                std::make_move_iterator(pass.found.tags.end()));
 		out.pictures.insert(out.pictures.end(), std::make_move_iterator(pass.found.pictures.begin()),
 		                    std::make_move_iterator(pass.found.pictures.end()));
 		if (out.xmp.empty()) out.xmp = std::move(pass.found.xmp);
@@ -1898,7 +1928,10 @@ namespace libfiles::detail
 
 		if (!starts_with(tag, "TAG")) return false;
 
-		const auto text = [&tag](const std::size_t at, const std::size_t length) { return text_from_unknown(std::span(tag).subspan(at, length)); };
+		const auto text = [&tag](const std::size_t at, const std::size_t length)
+		{
+			return text_from_unknown(std::span(tag).subspan(at, length));
+		};
 
 		// ID3v1.1 gives the comment's last two bytes to a zero and the track.
 		const auto track = tag[125] == 0 && tag[126] != 0 ? tag[126] : 0;
@@ -1935,7 +1968,8 @@ namespace libfiles::detail
 		const auto flags = load_le32(footer.data() + 20);
 
 		// The size counts the items and the footer; APEv2 may put a header of the footer's size before them.
-		if ((version != 1000 && version != 2000) || (flags & ape_is_header) || size < ape_footer_size || size > end) return 0;
+		if ((version != 1000 && version != 2000) || (flags & ape_is_header) || size < ape_footer_size || size > end)
+			return 0;
 
 		const auto version2 = version == 2000;
 		const auto total = size + (version2 && (flags & ape_contains_header) ? ape_footer_size : 0);
@@ -2002,7 +2036,8 @@ namespace libfiles::detail
 				auto described = byte_count(value.size());
 				media_picture picture;
 
-				if (const auto decoded = base64_decode(as_text(value), max_value); decoded && read_flac_picture(*decoded, 0, picture))
+				if (const auto decoded = base64_decode(as_text(value), max_value);
+				    decoded && read_flac_picture(*decoded, 0, picture))
 				{
 					described = describe_picture(picture.mime_type, picture.type, picture.data.size());
 					out.pictures.push_back(std::move(picture));
@@ -2066,7 +2101,8 @@ namespace libfiles::detail
 		return true;
 	}
 
-	bool read_flac_picture(const std::span<const std::uint8_t> block, const std::uint64_t block_offset, media_picture& out)
+	bool read_flac_picture(const std::span<const std::uint8_t> block, const std::uint64_t block_offset,
+	                       media_picture& out)
 	{
 		std::size_t at = 0;
 
@@ -2113,7 +2149,8 @@ namespace libfiles::detail
 		else
 		{
 			if (size > block.size() - at || size > max_picture) return false;
-			picture.data.assign(block.begin() + static_cast<std::ptrdiff_t>(at), block.begin() + static_cast<std::ptrdiff_t>(at + size));
+			picture.data.assign(block.begin() + static_cast<std::ptrdiff_t>(at),
+			                    block.begin() + static_cast<std::ptrdiff_t>(at + size));
 		}
 
 		out = std::move(picture);
@@ -2134,7 +2171,8 @@ namespace libfiles::detail
 		const auto s = trim_text(text);
 		std::size_t at = 0;
 		gps_position position;
-		if (!parse_coordinate(s, at, 2, 90, position.latitude) || !parse_coordinate(s, at, 3, 180, position.longitude)) return {};
+		if (!parse_coordinate(s, at, 2, 90, position.latitude) || !parse_coordinate(s, at, 3, 180, position.longitude))
+			return {};
 
 		std::optional<double> height;
 

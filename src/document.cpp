@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native image dispatch and portable pixel-storage sizes; a document decoded whole, and any
 // document's rows as BGRA.
@@ -64,7 +64,7 @@ namespace libfiles
 		{
 			decode.check_cancel();
 			if (!options.pixels && format != image_format::jpeg && format != image_format::png &&
-				format != image_format::tiff)
+			    format != image_format::tiff)
 			{
 				const auto scanned = scan(input);
 				if (!scanned.success || scanned.format != format)
@@ -110,7 +110,9 @@ namespace libfiles
 			}
 			result.success = true;
 		}
-		catch (const detail::document_stop&) {}
+		catch (const detail::document_stop&)
+		{
+		}
 		catch (const read_error& error)
 		{
 			result.truncated = true;
@@ -132,20 +134,18 @@ namespace libfiles
 	                                const document_options& options)
 	{
 		document_keeper keeper(options.maximum_retained_bytes, options.cancelled, options.progress,
-		                      options.count_palette_in_retained_bytes);
+		                       options.count_palette_in_retained_bytes);
 		auto result = decode_document(input, format, keeper, options);
 		keeper.document.info = result.info;
 		output = std::move(keeper.document);
 		return result;
 	}
 
-	document_keeper::document_keeper(const std::uint64_t maximum_retained_bytes,
-	                                 std::function<bool()> cancelled,
+	document_keeper::document_keeper(const std::uint64_t maximum_retained_bytes, std::function<bool()> cancelled,
 	                                 std::function<void(std::uint32_t, std::uint32_t)> progress,
 	                                 const bool count_palette_in_retained_bytes) :
 		_maximum_retained_bytes(maximum_retained_bytes),
-		_count_palette_in_retained_bytes(count_palette_in_retained_bytes),
-		_cancelled(std::move(cancelled)),
+		_count_palette_in_retained_bytes(count_palette_in_retained_bytes), _cancelled(std::move(cancelled)),
 		_progress(std::move(progress))
 	{
 	}
@@ -159,12 +159,12 @@ namespace libfiles
 		kept.height = frame.height;
 		kept.storage = frame.storage;
 		kept.stride = document_row_bytes(frame.width, frame.storage);
-		if (frame.height != 0 && kept.stride > std::numeric_limits<std::size_t>::max() / frame.height) throw std::bad_alloc();
+		if (frame.height != 0 && kept.stride > std::numeric_limits<std::size_t>::max() / frame.height)
+			throw std::bad_alloc();
 		const auto pixels = static_cast<std::uint64_t>(kept.stride) * frame.height;
 		const auto remaining = _maximum_retained_bytes - std::min(_maximum_retained_bytes, _retained_bytes);
 		const auto palette = static_cast<std::uint64_t>(frame.palette.size()) * sizeof(std::uint32_t);
-		if (pixels > remaining ||
-			(_count_palette_in_retained_bytes && palette > remaining - pixels))
+		if (pixels > remaining || (_count_palette_in_retained_bytes && palette > remaining - pixels))
 			throw std::bad_alloc();
 		kept.pixels.resize(kept.stride * frame.height);
 		kept.palette.assign(frame.palette.begin(), frame.palette.end());
@@ -172,8 +172,7 @@ namespace libfiles
 		kept.background = frame.background;
 		kept.delay_ms = frame.delay_ms;
 		kept.disposal = frame.disposal;
-		if (_count_palette_in_retained_bytes)
-			_retained_bytes += palette;
+		if (_count_palette_in_retained_bytes) _retained_bytes += palette;
 		_retained_bytes += pixels;
 		document.frames.push_back(std::move(kept));
 		return true;
@@ -216,15 +215,15 @@ namespace libfiles
 		const auto height = static_cast<std::size_t>(source.height);
 
 		if (static_cast<unsigned>(source.storage) > static_cast<unsigned>(document_storage::bgra32) || width == 0 ||
-			height == 0 || source.stride == 0 || source.stride % 4 != 0 ||
-			source.stride < document_row_bytes(source.width, source.storage) ||
-			source.stride > source.pixels.size() / height)
+		    height == 0 || source.stride == 0 || source.stride % 4 != 0 ||
+		    source.stride < document_row_bytes(source.width, source.storage) ||
+		    source.stride > source.pixels.size() / height)
 		{
 			throw std::invalid_argument("Invalid source pixel storage.");
 		}
 
 		if (stride < width || stride > std::numeric_limits<std::size_t>::max() / height ||
-			destination.size() < stride * height)
+		    destination.size() < stride * height)
 		{
 			throw std::invalid_argument("Invalid destination pixel storage.");
 		}
@@ -240,7 +239,7 @@ namespace libfiles
 		const auto read32 = [](const std::uint8_t* p)
 		{
 			return static_cast<std::uint32_t>(p[0]) | static_cast<std::uint32_t>(p[1]) << 8 |
-				static_cast<std::uint32_t>(p[2]) << 16 | static_cast<std::uint32_t>(p[3]) << 24;
+			       static_cast<std::uint32_t>(p[2]) << 16 | static_cast<std::uint32_t>(p[3]) << 24;
 		};
 
 		for (std::size_t y = 0; y < height; ++y)
@@ -279,7 +278,8 @@ namespace libfiles
 
 				if (indexed)
 				{
-					if (value >= source.palette.size()) throw std::invalid_argument("Image palette index is out of range.");
+					if (value >= source.palette.size())
+						throw std::invalid_argument("Image palette index is out of range.");
 					const auto index = value;
 					value = source.palette[index];
 					if (source.transparent && index == *source.transparent) value &= 0x00ffffffu;

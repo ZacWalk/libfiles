@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Internal types of the XMP implementation: the XMP node tree, the XML tree the parser
 // builds, the namespace and alias tables, and expanded paths. Not part of the public API.
@@ -58,8 +58,8 @@ namespace libfiles::xmp::detail
 	struct xml_node
 	{
 		xml_kind kind = xml_kind::element;
-		std::string ns; // The namespace URI; empty when the name has none.
-		std::string name; // "prefix:local" with the registered prefix, or a bare name.
+		std::string ns;    // The namespace URI; empty when the name has none.
+		std::string name;  // "prefix:local" with the registered prefix, or a bare name.
 		std::string value; // Attribute value, character data, or processing instruction data.
 		xml_node* parent = nullptr;
 		std::vector<std::unique_ptr<xml_node>> attrs;
@@ -106,7 +106,10 @@ namespace libfiles::xmp::detail
 
 	using expanded_path = std::vector<path_step>;
 
-	inline unsigned kind_of(const path_step& s) { return s.options & step_kind_mask; }
+	inline unsigned kind_of(const path_step& s)
+	{
+		return s.options & step_kind_mask;
+	}
 
 	// The actual path an alias names, or null for a name that is not an alias. Both are
 	// "prefix:local" names.

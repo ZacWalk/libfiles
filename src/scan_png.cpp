@@ -1,23 +1,28 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The PNG scanner: one walk over the chunks. IHDR gives the dimensions and pixel format;
-// iCCP, eXIf and the "XML:com.adobe.xmp" text chunk give the metadata. Metadata may follow the image
-// data, so the walk continues to IEND - over chunk headers only, never the image data itself.
+// iCCP, eXIf and the "XML:com.adobe.xmp" text chunk give the metadata, and a cICP naming PQ or HLG that the
+// picture is HDR. Metadata may follow the image data, so the walk continues to IEND - over chunk headers
+// only, never the image data itself. Asked to inspect, it also lists the header's fields, the colour chunks -
+// cICP, cLLI and mDCV - and each chunk type with its count and bytes.
 //
 // The rules are those of the reader this replaced, which was two: libpng's header read, up to the
 // first IDAT, and a walk of every chunk for metadata. What makes a file unreadable is what made
 // libpng 1.6.59 fail - a bad signature or IHDR, an unknown critical chunk, a misplaced IEND, or a
-// palette image without a valid PLTE. The colour profile is libpng's. The XMP and Exif are the walk's:
-// the last valid chunk of each, with a damaged one ending the search. Where the walk ended before
+// palette image without a valid PLTE. The colour profile and cICP are libpng's. The XMP and Exif are the
+// walk's: the last valid chunk of each, with a damaged one ending the search. Where the walk ended before
 // finding one, the chunk libpng accepted before the first IDAT stands in.
 
 #include "scan_internal.h"
 #include "document_internal.h"
+#include "hdr_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <format>
 #include <optional>
 
 namespace libfiles::detail
@@ -31,8 +36,8 @@ namespace libfiles::detail
 		constexpr std::size_t max_metadata_chunk = 16u * 1024u * 1024u;
 		constexpr std::size_t max_decompressed_text = 16u * 1024u * 1024u;
 
-		// libpng's limits: an image edge, and its allocation limit, which bounds profiles, eXIf and
-		// inflated text.
+		// libpng's limits: an image edge, and its allocation limit, which bounds profiles, eXIf, text
+		// chunks and inflated text.
 		constexpr std::uint32_t max_png_dimension = 1000000u;
 		constexpr std::size_t png_chunk_max = 8000000u;
 		constexpr std::uint32_t max_png_uint31 = 0x7fffffffu;
@@ -43,9 +48,9 @@ namespace libfiles::detail
 		constexpr std::uint32_t chunk_type(const char (&name)[5])
 		{
 			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[0])) << 24 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
-				static_cast<std::uint8_t>(name[3]);
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
+			       static_cast<std::uint8_t>(name[3]);
 		}
 
 		constexpr auto IHDR = chunk_type("IHDR");
@@ -53,10 +58,36 @@ namespace libfiles::detail
 		constexpr auto IDAT = chunk_type("IDAT");
 		constexpr auto IEND = chunk_type("IEND");
 		constexpr auto iCCP = chunk_type("iCCP");
+		constexpr auto cICP = chunk_type("cICP");
 		constexpr auto eXIf = chunk_type("eXIf");
 		constexpr auto tEXt = chunk_type("tEXt");
 		constexpr auto zTXt = chunk_type("zTXt");
 		constexpr auto iTXt = chunk_type("iTXt");
+		// An animated PNG's control chunk, which comes before the image data.
+		constexpr auto acTL = chunk_type("acTL");
+		// The colour chunks an HDR picture's description adds beside cICP, with the spellings of the drafts before the
+		// third edition, and the chunk that says a picture is sRGB's.
+		constexpr auto cLLI = chunk_type("cLLI");
+		constexpr auto cLLi = chunk_type("cLLi");
+		constexpr auto mDCV = chunk_type("mDCV");
+		constexpr auto mDCv = chunk_type("mDCv");
+		constexpr auto sRGB = chunk_type("sRGB");
+
+		// The chunk types a listing names, the rest counted together.
+		constexpr std::size_t max_listed_chunk_types = 64;
+
+		std::string colour_type_text(const std::uint8_t color_type)
+		{
+			switch (color_type)
+			{
+			case 0: return "grey";
+			case 2: return "RGB";
+			case 3: return "palette";
+			case 4: return "grey and alpha";
+			case 6: return "RGB and alpha";
+			default: return std::format("{}", color_type);
+			}
+		}
 
 		bool is_critical(const std::uint32_t type)
 		{
@@ -105,8 +136,8 @@ namespace libfiles::detail
 		{
 			key_end = std::find(data.begin(), data.end(), std::uint8_t{0});
 			return key_end != data.end() &&
-				std::string_view(reinterpret_cast<const char*>(data.data()), static_cast<std::size_t>(key_end - data.begin())) ==
-				png_xmp_key;
+			       std::string_view(reinterpret_cast<const char*>(data.data()),
+			                        static_cast<std::size_t>(key_end - data.begin())) == png_xmp_key;
 		}
 
 		// The walk's reading of an XMP text chunk. A packet that fails to inflate reads as empty, and
@@ -200,9 +231,11 @@ namespace libfiles::detail
 		// The colour profile in an iCCP chunk, as libpng 1.6.59 accepts one: the declared number of
 		// bytes inflates, the header is a well-formed ICC header whose colour space suits the image,
 		// and every tag lies inside the profile. libpng examines nothing past the profile - not the
-		// rest of the stream, nor the chunk's CRC.
+		// rest of the stream, nor the chunk's CRC. input_ended, when given, is set when the profile was
+		// refused only because data ran out before the profile did.
 		std::vector<std::uint8_t> read_icc_profile(const std::span<const std::uint8_t> data,
-		                                        const std::uint8_t color_type, document_decode* document)
+		                                           const std::uint8_t color_type, document_decode* document,
+		                                           bool* const input_ended = nullptr)
 		{
 			// The keyword is read from the first 81 bytes, and at least a minimal zlib stream must follow those.
 			const auto read_length = std::min<std::size_t>(81u, data.size());
@@ -219,7 +252,7 @@ namespace libfiles::detail
 
 			std::vector<std::uint8_t> profile;
 			if (document) document->working_bytes(header_size);
-			if (!zlib_inflate_prefix(stream, profile, header_size)) return {};
+			if (!zlib_inflate_prefix(stream, profile, header_size, input_ended)) return {};
 
 			const auto profile_length = icc_field(profile, 0);
 
@@ -230,13 +263,13 @@ namespace libfiles::detail
 			const auto tag_count = icc_field(profile, 128);
 			if (tag_count > 357913930u || profile_length < header_size + 12u * tag_count) return {};
 
-			if (icc_field(profile, 64) >= 0xffff) return {}; // rendering intent
+			if (icc_field(profile, 64) >= 0xffff) return {};     // rendering intent
 			if (icc_field(profile, 36) != 0x61637370) return {}; // 'acsp'
 
 			const auto color_space = icc_field(profile, 16);
 			const auto has_color = (color_type & 2) != 0;
 
-			if (has_color && color_space != 0x52474220) return {}; // 'RGB '
+			if (has_color && color_space != 0x52474220) return {};  // 'RGB '
 			if (!has_color && color_space != 0x47524159) return {}; // 'GRAY'
 
 			const auto device_class = icc_field(profile, 12);
@@ -245,7 +278,7 @@ namespace libfiles::detail
 			const auto pcs = icc_field(profile, 20);
 			if (pcs != 0x58595a20 && pcs != 0x4c616220) return {}; // 'XYZ ', 'Lab '
 
-			if (!zlib_inflate_prefix(stream, profile, profile_length)) return {};
+			if (!zlib_inflate_prefix(stream, profile, profile_length, input_ended)) return {};
 
 			for (std::uint32_t i = 0; i < tag_count; ++i)
 			{
@@ -312,8 +345,8 @@ namespace libfiles::detail
 				}
 				compressed = body[0] == 1;
 				const auto language_end = std::find(body.begin() + 2, body.end(), 0);
-				const auto translated_end = language_end == body.end() ? body.end() :
-					std::find(language_end + 1, body.end(), 0);
+				const auto translated_end = language_end == body.end() ? body.end()
+				                                                       : std::find(language_end + 1, body.end(), 0);
 				if (translated_end == body.end())
 				{
 					document.result.warnings.emplace_back("a PNG international text language is truncated");
@@ -324,8 +357,8 @@ namespace libfiles::detail
 			}
 			if (compressed)
 			{
-				const auto limit = static_cast<std::size_t>(std::min<std::uint64_t>(
-					max_decompressed_text, document.options.maximum_working_bytes));
+				const auto limit = static_cast<std::size_t>(
+					std::min<std::uint64_t>(max_decompressed_text, document.options.maximum_working_bytes));
 				if (!zlib_inflate(body, inflated, limit))
 				{
 					document.result.warnings.emplace_back("a PNG text value could not be inflated within its limit");
@@ -336,8 +369,8 @@ namespace libfiles::detail
 			document.working_bytes(body.size());
 			if (type != iTXt && (key == "Author" || key == "Comment"))
 			{
-				document.output.metadata(key == "Author" ? document_metadata::author :
-					document_metadata::comment, body);
+				document.output.metadata(key == "Author" ? document_metadata::author : document_metadata::comment,
+				                         body);
 				return;
 			}
 			document.working_bytes(4ull + prefix_size + body.size());
@@ -351,12 +384,12 @@ namespace libfiles::detail
 		}
 	}
 
-	scan_result scan_png(reader& r, document_decode* document)
+	scan_result scan_png(reader& r, document_decode* document, const scan_intent intent)
 	{
 		scan_result result;
 
 		if (r.size() < sizeof(png_signature) ||
-			std::memcmp(r.view(0, sizeof(png_signature)).data(), png_signature, sizeof(png_signature)) != 0)
+		    std::memcmp(r.view(0, sizeof(png_signature)).data(), png_signature, sizeof(png_signature)) != 0)
 		{
 			throw format_error("invalid png header");
 		}
@@ -367,8 +400,27 @@ namespace libfiles::detail
 		auto seen_ihdr = false;
 		auto seen_plte = false;
 		auto seen_idat = false;
+		auto have_cicp = false;
 		auto have_profile = false;
 		std::uint8_t color_type = 0;
+
+		// What the listing shows, when one is asked for: the header's fields, the colour chunks the header read
+		// accepts, and each chunk type's count and bytes in the order the file first has them.
+		const auto inspect = intent == scan_intent::inspect;
+		std::uint8_t interlace = 0;
+		auto has_srgb = false;
+		std::optional<std::array<std::uint8_t, 4>> cicp_values;
+		std::optional<std::array<std::uint32_t, 2>> light_level;
+		std::optional<std::array<std::uint32_t, 2>> mastering;
+		std::optional<std::uint32_t> frames;
+		struct chunk_tally
+		{
+			std::uint32_t type = 0;
+			std::uint64_t count = 0;
+			std::uint64_t bytes = 0;
+		};
+		std::vector<chunk_tally> chunks;
+		chunk_tally other_chunks;
 
 		// The walk's finds, and libpng's, kept apart because the walk's take precedence.
 		auto searching = true;
@@ -396,6 +448,16 @@ namespace libfiles::detail
 			if (document && (type == iCCP || type == eXIf || type == tEXt || type == zTXt || type == iTXt))
 				document->working_bytes(length);
 
+			if (inspect && is_valid_type(type))
+			{
+				const auto found = std::ranges::find(chunks, type, &chunk_tally::type);
+				auto& tally = found != chunks.end()                    ? *found
+				              : chunks.size() < max_listed_chunk_types ? chunks.emplace_back(chunk_tally{type})
+				                                                       : other_chunks;
+				++tally.count;
+				tally.bytes += length;
+			}
+
 			if (!seen_idat)
 			{
 				if (length > max_png_uint31) throw format_error("png chunk length out of range");
@@ -409,7 +471,8 @@ namespace libfiles::detail
 
 				if (type == IHDR)
 				{
-					if (seen_ihdr || length != 13u || !crc_matches(r, pos + 4, length)) throw format_error("invalid png IHDR");
+					if (seen_ihdr || length != 13u || !crc_matches(r, pos + 4, length))
+						throw format_error("invalid png IHDR");
 
 					const auto* const ihdr = r.view(data_pos, 13).data();
 					if (!is_valid_ihdr(ihdr)) throw format_error("invalid png IHDR");
@@ -418,6 +481,7 @@ namespace libfiles::detail
 					result.width = load_be32(ihdr);
 					result.height = load_be32(ihdr + 4);
 					color_type = ihdr[9];
+					interlace = ihdr[12];
 
 					// The depth is a sample's, or a palette index's.
 					result.picture.chroma = (color_type & 2) != 0 ? chroma_format::rgb : chroma_format::gray;
@@ -427,16 +491,11 @@ namespace libfiles::detail
 
 					switch (color_type)
 					{
-					case 0: result.pixel_format = "gray";
-						break;
-					case 3: result.pixel_format = "palette";
-						break;
-					case 2: result.pixel_format = "rgb";
-						break;
-					case 6: result.pixel_format = "rgba";
-						break;
-					default:
-						break;
+					case 0: result.pixel_format = "gray"; break;
+					case 3: result.pixel_format = "palette"; break;
+					case 2: result.pixel_format = "rgb"; break;
+					case 6: result.pixel_format = "rgba"; break;
+					default: break;
 					}
 				}
 				else if (type == PLTE)
@@ -467,6 +526,37 @@ namespace libfiles::detail
 				{
 					throw format_error("unknown critical png chunk");
 				}
+				else if (type == cICP)
+				{
+					// The first libpng keeps - before PLTE, of four bytes and an intact CRC, its matrix RGB's own -
+					// which decode_png maps by when it names PQ or HLG. One libpng refuses leaves room for another.
+					if (!have_cicp && !seen_plte && length == 4u && crc_matches(r, pos + 4, length))
+					{
+						const auto* const cicp = r.view(data_pos, 4).data();
+
+						if (cicp[2] == 0)
+						{
+							have_cicp = true;
+							result.hdr = hdr_transfer_of(cicp[1]).has_value();
+							result.colour_primaries = cicp[0];
+							result.colour_transfer = cicp[1];
+							cicp_values = std::array{cicp[0], cicp[1], cicp[2], cicp[3]};
+						}
+					}
+				}
+				else if (inspect && (type == cLLI || type == cLLi || type == mDCV || type == mDCv || type == sRGB))
+				{
+					// For the listing alone, each as the third edition lays it out, in ten-thousandths of a nit.
+					if (length <= 24u && crc_matches(r, pos + 4, length))
+					{
+						const auto* const data = r.view(data_pos, length).data();
+						if ((type == cLLI || type == cLLi) && length == 8u)
+							light_level = std::array{load_be32(data), load_be32(data + 4)};
+						else if ((type == mDCV || type == mDCv) && length == 24u)
+							mastering = std::array{load_be32(data + 20), load_be32(data + 16)};
+						else if (type == sRGB) has_srgb = true;
+					}
+				}
 				else if (type == iCCP)
 				{
 					// One profile, which must precede PLTE. A profile libpng refuses leaves room for a
@@ -474,7 +564,19 @@ namespace libfiles::detail
 					if (!have_profile && !seen_plte && length >= 3u + lz77_min)
 					{
 						if (document) document->working_bytes(length);
-						auto profile = read_icc_profile(r.view(data_pos, length), color_type, document);
+
+						// libpng reads a profile's stream a little at a time and no further than the profile
+						// takes. A window of more than any profile's stream needs gives the same answer for all
+						// but one padded to outlast it, which is read whole as before - so a damaged length is
+						// never allocated whole.
+						const auto window = std::min<std::size_t>(length, max_metadata_chunk);
+						auto input_ended = false;
+						auto profile = read_icc_profile(r.view(data_pos, window), color_type, document, &input_ended);
+
+						if (profile.empty() && input_ended && window < length)
+						{
+							profile = read_icc_profile(r.view(data_pos, length), color_type, document);
+						}
 
 						if (!profile.empty())
 						{
@@ -491,9 +593,18 @@ namespace libfiles::detail
 						if (is_tiff_header(data)) libpng_exif.emplace(data.begin(), data.end());
 					}
 				}
+				else if (type == acTL)
+				{
+					result.animated = true;
+					if (inspect && length >= 8u && crc_matches(r, pos + 4, length)) frames = r.be32(data_pos);
+				}
 				else if (type == tEXt || type == zTXt || type == iTXt)
 				{
-					if (crc_matches(r, pos + 4, length))
+					// libpng reads a text chunk into one buffer within its allocation limit - with room for a
+					// terminator unless it is compressed - and skips a longer one unread.
+					const auto buffer = static_cast<std::size_t>(length) + (type == zTXt ? 0u : 1u);
+
+					if (buffer <= png_chunk_max && crc_matches(r, pos + 4, length))
 					{
 						auto text = libpng_text_chunk(type, r.view(data_pos, length));
 						if (text) libpng_xmp = std::move(text);
@@ -504,15 +615,14 @@ namespace libfiles::detail
 			// The metadata walk reads whole chunks, and stops at the first that runs past the end.
 			if (file_size - pos < 12u || !chunk_fits) break;
 
-			if (document && (type == tEXt || type == zTXt || type == iTXt ||
-				type == chunk_type("iPTC") || type == chunk_type("iPSH") || type == chunk_type("pHYs")))
+			if (document && (type == tEXt || type == zTXt || type == iTXt || type == chunk_type("iPTC") ||
+			                 type == chunk_type("iPSH") || type == chunk_type("pHYs")))
 			{
 				document->working_bytes(length);
 				if (length <= max_metadata_chunk && crc_matches(r, pos + 4, length))
 				{
 					const auto data = r.view(data_pos, length);
-					if (type == tEXt || type == zTXt || type == iTXt)
-						document_text(*document, type, data);
+					if (type == tEXt || type == zTXt || type == iTXt) document_text(*document, type, data);
 					else if (type == chunk_type("pHYs"))
 					{
 						if (length == 9 && data[8] == 1)
@@ -523,8 +633,9 @@ namespace libfiles::detail
 						}
 					}
 					else
-						document->output.metadata(type == chunk_type("iPTC") ? document_metadata::iptc :
-							document_metadata::photoshop, data);
+						document->output.metadata(type == chunk_type("iPTC") ? document_metadata::iptc
+						                                                     : document_metadata::photoshop,
+						                          data);
 				}
 			}
 
@@ -548,7 +659,7 @@ namespace libfiles::detail
 			}
 
 			pos = data_pos + length + 4u;
-			if (type == IEND || (seen_idat && !searching && !document)) break;
+			if (type == IEND || (seen_idat && !searching && !document && !inspect)) break;
 		}
 
 		if (walk_exif) result.metadata.exif = std::move(*walk_exif);
@@ -556,6 +667,69 @@ namespace libfiles::detail
 
 		if (walk_xmp) result.metadata.xmp = std::move(*walk_xmp);
 		else if (libpng_xmp) result.metadata.xmp = std::move(*libpng_xmp);
+
+		if (inspect)
+		{
+			auto& rows = result.structure;
+			add_structure_section(rows, "Summary", "png.summary", true);
+			add_structure_row(rows, "File size", std::format("{} bytes", file_size));
+			add_structure_row(rows, "Dimensions", std::format("{} x {}", result.width, result.height));
+			add_structure_row(rows, "Colour type", colour_type_text(color_type));
+			add_structure_row(rows, "Bit depth",
+			                  std::format("{} bits {}", result.picture.bit_depth,
+			                              color_type == 3 ? "an index" : "a sample"));
+			add_structure_row(rows, "Interlace", interlace == 1 ? "Adam7" : "none");
+			add_structure_row(rows, "Colour profile",
+			                  !result.metadata.icc.empty() ? "ICC"
+			                  : have_cicp                  ? "cICP (coded primaries and transfer)"
+			                  : has_srgb                   ? "sRGB"
+			                                               : "none");
+
+			// What the cICP says, as the decoder maps the picture by it where it names PQ or HLG.
+			if (cicp_values)
+			{
+				const auto& c = *cicp_values;
+				add_structure_row(rows, "Colour",
+				                  std::format("{}, {}, {} range", colour_primaries_text(c[0]), transfer_text(c[1]),
+				                              c[3] ? "full" : "limited"));
+			}
+
+			if (light_level)
+			{
+				add_structure_row(rows, "Content light level",
+				                  light_level_text((*light_level)[0] / 10000.0, (*light_level)[1] / 10000.0));
+			}
+
+			if (mastering)
+			{
+				add_structure_row(rows, "Mastering display",
+				                  std::format("{} to {}", nits_text((*mastering)[0] / 10000.0),
+				                              nits_text((*mastering)[1] / 10000.0)));
+			}
+
+			if (frames) add_structure_row(rows, "Animation", std::format("{} frames", *frames));
+
+			add_structure_section(rows, "Chunks", "png.chunks");
+
+			const auto add_tally = [&rows](const std::string& name, const chunk_tally& tally)
+			{
+				auto& row = add_row(rows, name,
+				                    tally.count == 1 ? std::format("{} bytes", tally.bytes)
+				                                     : std::format("{} chunks, {} bytes", tally.count, tally.bytes));
+				row.depth = 1;
+				row.id = std::format("png.chunk.{}", name);
+			};
+
+			for (const auto& tally : chunks)
+			{
+				const char name[] = {static_cast<char>(tally.type >> 24), static_cast<char>(tally.type >> 16),
+				                     static_cast<char>(tally.type >> 8), static_cast<char>(tally.type)};
+				add_tally(std::string(name, 4), tally);
+			}
+
+			if (other_chunks.count != 0) add_tally("others", other_chunks);
+			finish_structure_sections(rows);
+		}
 
 		if (document)
 		{
@@ -571,7 +745,9 @@ namespace libfiles::detail
 			retain(document_metadata::xmp, result.metadata.xmp);
 			const auto& profile = result.metadata.icc;
 			retain(profile.size() >= 20 && std::memcmp(profile.data() + 16, "RGB ", 4) == 0
-				? document_metadata::icc : document_metadata::source_icc, profile);
+			           ? document_metadata::icc
+			           : document_metadata::source_icc,
+			       profile);
 			document->output.metadata_complete();
 		}
 		return result;

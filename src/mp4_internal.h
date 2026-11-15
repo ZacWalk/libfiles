@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The one reader of ISO base media and QuickTime structure, shared by the MP4 media scan and
 // the MP4 writer: box headers as FFmpeg reads them - the decode HEIF and JPEG XL share, with a 32-bit size
@@ -42,11 +42,10 @@ namespace libfiles::detail::mp4
 	inline constexpr auto xmp_ = fourcc("XMP_");
 	inline constexpr auto xtra = fourcc("Xtra");
 	inline constexpr auto cprt = fourcc("cprt");
-	inline constexpr auto qt__ = fourcc("qt  ");
+	inline constexpr auto qt_ = fourcc("qt  ");
 
-	inline constexpr std::array<std::uint8_t, 16> xmp_uuid = {
-		0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC
-	};
+	inline constexpr std::array<std::uint8_t, 16> xmp_uuid = {0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+	                                                          0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
 
 	// The largest movie box an update reads into memory. read_packet reads no packet from a file whose
 	// movie box is larger, since an update could not write one there.
@@ -147,7 +146,8 @@ namespace libfiles::detail::mp4
 	// The boxes for_each_box finds, of which at most max_boxes are kept and passed to visit as each is
 	// read. The rest are still read, so that damage after them is found, and so is the first user data box.
 	template <typename Visit>
-	box_list list_boxes(reader& r, const std::uint64_t start, const std::uint64_t end, const std::size_t max_boxes, Visit&& visit)
+	box_list list_boxes(reader& r, const std::uint64_t start, const std::uint64_t end, const std::size_t max_boxes,
+	                    Visit&& visit)
 	{
 		box_list list;
 
@@ -172,8 +172,7 @@ namespace libfiles::detail::mp4
 
 	// Passes each top-level box to visit, in file order. Fewer than eight bytes after the last are not a
 	// box. Returns none when the walk reached the end of the file, else the fault that stopped it.
-	template <typename Visit>
-	header_status for_each_top_level_box(reader& r, Visit&& visit)
+	template <typename Visit> header_status for_each_top_level_box(reader& r, Visit&& visit)
 	{
 		std::uint64_t pos = 0;
 
@@ -211,7 +210,7 @@ namespace libfiles::detail::mp4
 	inline bool is_quicktime(reader& r, const box* const first_ftyp)
 	{
 		if (!first_ftyp || first_ftyp->size < first_ftyp->header + 4u) return true;
-		return r.be32(first_ftyp->payload()) == qt__;
+		return r.be32(first_ftyp->payload()) == qt_;
 	}
 
 	inline bool is_quicktime(reader& r, const std::vector<box>& boxes)
@@ -242,10 +241,17 @@ namespace libfiles::detail::mp4
 
 	// The packet read_packet takes: a QuickTime file's from its movie's user data, an ISO file's from its
 	// last XMP uuid box, each from the other place when that is the only one it has.
-	inline std::optional<byte_range> packet_place(const bool quicktime, const std::optional<box>& in_movie, const box* const in_uuid)
+	inline std::optional<byte_range> packet_place(const bool quicktime, const std::optional<box>& in_movie,
+	                                              const box* const in_uuid)
 	{
-		const auto from_movie = [&in_movie] { return byte_range{in_movie->payload(), in_movie->payload_size()}; };
-		const auto from_uuid = [in_uuid] { return byte_range{in_uuid->payload() + 16, in_uuid->payload_size() - 16}; };
+		const auto from_movie = [&in_movie]
+		{
+			return byte_range{in_movie->payload(), in_movie->payload_size()};
+		};
+		const auto from_uuid = [in_uuid]
+		{
+			return byte_range{in_uuid->payload() + 16, in_uuid->payload_size() - 16};
+		};
 
 		if (quicktime)
 		{
@@ -273,8 +279,7 @@ namespace libfiles::detail::mp4
 	};
 
 	// Passes each entry of an Xtra box's payload to visit, to the first whose size does not fit.
-	template <typename Visit>
-	void for_each_xtra_entry(const std::span<const std::uint8_t> content, Visit&& visit)
+	template <typename Visit> void for_each_xtra_entry(const std::span<const std::uint8_t> content, Visit&& visit)
 	{
 		std::size_t pos = 0;
 
@@ -308,8 +313,7 @@ namespace libfiles::detail::mp4
 	};
 
 	// Passes each of an entry's values to visit, to the first that does not fit the entry.
-	template <typename Visit>
-	void for_each_xtra_value(const xtra_entry& entry, Visit&& visit)
+	template <typename Visit> void for_each_xtra_value(const xtra_entry& entry, Visit&& visit)
 	{
 		std::size_t pos = 0;
 

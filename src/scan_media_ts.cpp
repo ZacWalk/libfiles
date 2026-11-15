@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning MPEG transport streams: TS, and the 192-byte packets of M2TS and MTS that Blu-ray
 // discs and AVCHD camcorders write. The program association table leads to the first program's map,
@@ -160,11 +160,11 @@ namespace libfiles::detail
 			case es_syntax::adts: return p[0] == 0xFF && (p[1] & 0xF6) == 0xF0;
 			case es_syntax::ac3: return p[0] == 0x0B && p[1] == 0x77;
 			case es_syntax::dts:
-				{
-					// A DTS core in 16-bit or 14-bit words, either byte order.
-					const auto word = load_be32(p);
-					return word == 0x7FFE8001 || word == 0xFE7F0180 || word == 0x1FFFE800 || word == 0xFF1F00E8;
-				}
+			{
+				// A DTS core in 16-bit or 14-bit words, either byte order.
+				const auto word = load_be32(p);
+				return word == 0x7FFE8001 || word == 0xFE7F0180 || word == 0x1FFFE800 || word == 0xFF1F00E8;
+			}
 			default: return false;
 			}
 		}
@@ -223,9 +223,8 @@ namespace libfiles::detail
 		// "Modified DV pack metadata": an AVCHD camcorder's SEI user data, after this UUID, holds DV packs
 		// of a tag and four bytes each (IEC 61834-4 as AVCHD adapts it; ExifTool's H264.pm and MediaInfo
 		// read them the same way).
-		constexpr std::array<std::uint8_t, 16> mdpm_uuid = {
-			0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66
-		};
+		constexpr std::array<std::uint8_t, 16> mdpm_uuid = {0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9,
+		                                                    0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66};
 
 		int from_bcd(const std::uint8_t b)
 		{
@@ -260,7 +259,7 @@ namespace libfiles::detail
 			media_date d;
 			if (century < 0 || year < 0 || century * 100 + year == 0) return d;
 			if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
-				second < 0 || second > 59)
+			    second < 0 || second > 59)
 			{
 				return d;
 			}
@@ -293,7 +292,7 @@ namespace libfiles::detail
 		bool read_mdpm(const std::span<const std::uint8_t> payload, media_properties& properties)
 		{
 			if (payload.size() < 21 || !std::equal(mdpm_uuid.begin(), mdpm_uuid.end(), payload.begin()) ||
-				!starts_with(payload.subspan(16), "MDPM"))
+			    !starts_with(payload.subspan(16), "MDPM"))
 			{
 				return false;
 			}
@@ -312,20 +311,16 @@ namespace libfiles::detail
 
 				switch (pack[0])
 				{
-				case 0x18: date = pack + 1;
-					break;
-				case 0x19: time = pack + 1;
-					break;
-				case 0xE0: maker = load_be16(pack + 1);
-					break;
+				case 0x18: date = pack + 1; break;
+				case 0x19: time = pack + 1; break;
+				case 0xE0: maker = load_be16(pack + 1); break;
 				case 0xE4:
 				case 0xE5:
 				case 0xE6:
 					std::copy_n(pack + 1, 4, model.begin() + (pack[0] - 0xE4) * 4);
 					has_model = true;
 					break;
-				default:
-					break;
+				default: break;
 				}
 			}
 
@@ -381,12 +376,14 @@ namespace libfiles::detail
 			h.size = 6;
 			out = h;
 			return pes_read::ok;
-		default:
-			break;
+		default: break;
 		}
 
 		// A stated length bounds the header; an open one does not.
-		const auto fits = [&h](const std::size_t size) { return h.packet_length == 0 || size <= 6u + h.packet_length; };
+		const auto fits = [&h](const std::size_t size)
+		{
+			return h.packet_length == 0 || size <= 6u + h.packet_length;
+		};
 
 		if (data.size() < 7) return pes_read::short_data;
 
@@ -546,7 +543,8 @@ namespace libfiles::detail
 		stream.codec = type.codec;
 
 		video_header fixed;
-		if (type.kind == media_stream_kind::video && fixed_video_format(type.codec, fixed)) apply_video_header(fixed, stream.video);
+		if (type.kind == media_stream_kind::video && fixed_video_format(type.codec, fixed))
+			apply_video_header(fixed, stream.video);
 	}
 
 	es_descriptors read_es_descriptors(const std::span<const std::uint8_t> loop)
@@ -602,8 +600,7 @@ namespace libfiles::detail
 					if ((body[1] & 1) && length >= 5) supplementary_language = language_code(body.subspan(2, 3));
 				}
 				break;
-			default:
-				break;
+			default: break;
 			}
 		}
 
@@ -653,7 +650,8 @@ namespace libfiles::detail
 
 			switch (tag)
 			{
-			case 0x05: add(length >= 4 ? "registration " + box_type_text(load_be32(body.data())) : "registration");
+			case 0x05:
+				add(length >= 4 ? "registration " + box_type_text(load_be32(body.data())) : "registration");
 				break;
 			case 0x0A:
 				if (length >= 3 && is_letter(body[0]) && is_letter(body[1]) && is_letter(body[2]))
@@ -665,18 +663,12 @@ namespace libfiles::detail
 					add("language");
 				}
 				break;
-			case 0x56: add("teletext");
-				break;
-			case 0x59: add("DVB subtitles");
-				break;
-			case 0x6A: add("AC-3");
-				break;
-			case 0x7A: add("E-AC-3");
-				break;
-			case 0x7B: add("DTS");
-				break;
-			default: add(std::format("descriptor 0x{:02X}", tag));
-				break;
+			case 0x56: add("teletext"); break;
+			case 0x59: add("DVB subtitles"); break;
+			case 0x6A: add("AC-3"); break;
+			case 0x7A: add("E-AC-3"); break;
+			case 0x7B: add("DTS"); break;
+			default: add(std::format("descriptor 0x{:02X}", tag)); break;
 			}
 		}
 
@@ -684,8 +676,7 @@ namespace libfiles::detail
 	}
 
 	es_probe::es_probe(const es_syntax syntax, const bool camera) :
-		_syntax(syntax),
-		_camera(camera && (syntax == es_syntax::h264 || syntax == es_syntax::video)),
+		_syntax(syntax), _camera(camera && (syntax == es_syntax::h264 || syntax == es_syntax::video)),
 		_done(syntax == es_syntax::none)
 	{
 	}
@@ -727,7 +718,8 @@ namespace libfiles::detail
 		if (stream.kind == media_stream_kind::video)
 		{
 			if (!(stream.video.frame_rate > 0)) return 0;
-			return static_cast<std::uint64_t>(std::floor(static_cast<double>(mpeg_ticks_per_second) / stream.video.frame_rate + 1e-6));
+			return static_cast<std::uint64_t>(
+				std::floor(static_cast<double>(mpeg_ticks_per_second) / stream.video.frame_rate + 1e-6));
 		}
 
 		const auto& audio = stream.audio;
@@ -741,7 +733,8 @@ namespace libfiles::detail
 		{
 			samples = (last_payload - 4) / ((audio.channels + (audio.channels & 1)) * audio.bits_per_sample / 8);
 		}
-		else if (_syntax == es_syntax::lpcm_dvd && audio.bits_per_sample >= 8 && audio.channels != 0 && last_payload >= 3)
+		else if (_syntax == es_syntax::lpcm_dvd && audio.bits_per_sample >= 8 && audio.channels != 0 &&
+		         last_payload >= 3)
 		{
 			samples = 2 * ((last_payload - 3) / (audio.bits_per_sample * 2u / 8u * audio.channels));
 		}
@@ -755,28 +748,19 @@ namespace libfiles::detail
 
 		switch (_syntax)
 		{
-		case es_syntax::h264: read_annexb(stream, properties, final, false);
-			break;
-		case es_syntax::hevc: read_annexb(stream, properties, final, true);
-			break;
-		case es_syntax::mpeg_video: read_mpeg_video(stream, final);
-			break;
-		case es_syntax::mpeg4_video: read_mpeg4_video(stream, final);
-			break;
-		case es_syntax::vc1: read_vc1(stream, final);
-			break;
+		case es_syntax::h264: read_annexb(stream, properties, final, false); break;
+		case es_syntax::hevc: read_annexb(stream, properties, final, true); break;
+		case es_syntax::mpeg_video: read_mpeg_video(stream, final); break;
+		case es_syntax::mpeg4_video: read_mpeg4_video(stream, final); break;
+		case es_syntax::vc1: read_vc1(stream, final); break;
 		case es_syntax::mpeg_audio:
 		case es_syntax::adts:
 		case es_syntax::ac3:
-		case es_syntax::dts: read_frames(stream, final);
-			break;
-		case es_syntax::latm: read_latm(stream);
-			break;
+		case es_syntax::dts: read_frames(stream, final); break;
+		case es_syntax::latm: read_latm(stream); break;
 		case es_syntax::lpcm_bluray:
-		case es_syntax::lpcm_dvd: read_lpcm(stream);
-			break;
-		default: _done = true;
-			break;
+		case es_syntax::lpcm_dvd: read_lpcm(stream); break;
+		default: _done = true; break;
 		}
 
 		if (_done) _data = {};
@@ -791,7 +775,8 @@ namespace libfiles::detail
 		const std::span<const std::uint8_t> data(_data);
 		auto type = es_type{};
 
-		static constexpr std::uint8_t profiles[] = {44, 66, 77, 83, 86, 88, 100, 110, 118, 122, 128, 134, 135, 138, 139, 144, 244};
+		static constexpr std::uint8_t profiles[] = {44,  66,  77,  83,  86,  88,  100, 110, 118,
+		                                            122, 128, 134, 135, 138, 139, 144, 244};
 
 		if (find_start_code(data, 0, [](const std::uint8_t c) { return c == 0xB3; }) != npos)
 		{
@@ -811,7 +796,8 @@ namespace libfiles::detail
 				const auto next = at + 4 < data.size() ? data[at + 4] : 0;
 				const auto after = at + 5 < data.size() ? data[at + 5] : 0;
 
-				if ((code & 0x9F) == 0x07 && std::ranges::find(profiles, next) != std::end(profiles) && (after & 0x03) == 0)
+				if ((code & 0x9F) == 0x07 && std::ranges::find(profiles, next) != std::end(profiles) &&
+				    (after & 0x03) == 0)
 				{
 					type = video_type("h264", es_syntax::h264);
 				}
@@ -898,9 +884,13 @@ namespace libfiles::detail
 	void es_probe::read_mpeg_video(media_stream& stream, const bool final)
 	{
 		const std::span<const std::uint8_t> data(_data);
-		const auto sequence_header = [](const std::uint8_t c) { return c == 0xB3; };
+		const auto sequence_header = [](const std::uint8_t c)
+		{
+			return c == 0xB3;
+		};
 
-		for (auto at = find_start_code(data, 0, sequence_header); at != npos; at = find_start_code(data, at + 4, sequence_header))
+		for (auto at = find_start_code(data, 0, sequence_header); at != npos;
+		     at = find_start_code(data, at + 4, sequence_header))
 		{
 			// The header's fixed eight bytes, then up to two quantiser matrices; the start code after them
 			// says whether a sequence extension follows, which MPEG-2 has and MPEG-1 has not.
@@ -923,7 +913,8 @@ namespace libfiles::detail
 		// From the first visual object sequence, visual object or video object start code, through a
 		// whole video object layer.
 		const std::span<const std::uint8_t> data(_data);
-		const auto first = find_start_code(data, 0, [](const std::uint8_t c) { return c <= 0x2F || c == 0xB0 || c == 0xB5; });
+		const auto first = find_start_code(data, 0,
+		                                   [](const std::uint8_t c) { return c <= 0x2F || c == 0xB0 || c == 0xB5; });
 		if (first == npos) return;
 
 		const auto layer = find_start_code(data, first, [](const std::uint8_t c) { return c >= 0x20 && c <= 0x2F; });
@@ -980,7 +971,8 @@ namespace libfiles::detail
 			{
 				audio_frame following;
 				const auto next = at + length;
-				if (!frame_sync(_syntax, data.data() + next) || !parse_frame(_syntax, data.subspan(next), following)) continue;
+				if (!frame_sync(_syntax, data.data() + next) || !parse_frame(_syntax, data.subspan(next), following))
+					continue;
 			}
 			else if (!final && !(at == 0 && _aligned))
 			{
@@ -1117,8 +1109,8 @@ namespace libfiles::detail
 
 		const auto ahead = (t + _wrap - *_reference) % _wrap;
 		const auto offset = ahead >= _wrap - _before
-			                    ? static_cast<std::int64_t>(ahead) - static_cast<std::int64_t>(_wrap)
-			                    : static_cast<std::int64_t>(ahead);
+		                        ? static_cast<std::int64_t>(ahead) - static_cast<std::int64_t>(_wrap)
+		                        : static_cast<std::int64_t>(ahead);
 		return static_cast<std::int64_t>(*_reference) + offset;
 	}
 
@@ -1166,7 +1158,8 @@ namespace libfiles::detail
 		std::uint64_t read_pcr(const std::uint8_t* const p)
 		{
 			const auto base = static_cast<std::uint64_t>(p[0]) << 25 | static_cast<std::uint64_t>(p[1]) << 17 |
-				static_cast<std::uint64_t>(p[2]) << 9 | static_cast<std::uint64_t>(p[3]) << 1 | static_cast<std::uint64_t>(p[4] >> 7);
+			                  static_cast<std::uint64_t>(p[2]) << 9 | static_cast<std::uint64_t>(p[3]) << 1 |
+			                  static_cast<std::uint64_t>(p[4] >> 7);
 			return base * 300 + (static_cast<std::uint64_t>(p[4] & 1) << 8 | p[5]);
 		}
 
@@ -1192,8 +1185,7 @@ namespace libfiles::detail
 		class section_reader
 		{
 		public:
-			template <typename Take>
-			void add(std::span<const std::uint8_t> payload, const bool start, Take take)
+			template <typename Take> void add(std::span<const std::uint8_t> payload, const bool start, Take take)
 			{
 				if (start)
 				{
@@ -1225,8 +1217,7 @@ namespace libfiles::detail
 			}
 
 		private:
-			template <typename Take>
-			void append(std::span<const std::uint8_t> bytes, Take take)
+			template <typename Take> void append(std::span<const std::uint8_t> bytes, Take take)
 			{
 				while (_active && !bytes.empty())
 				{
@@ -1312,10 +1303,7 @@ namespace libfiles::detail
 		{
 		public:
 			ts_scan(reader& r, const scan_intent intent, media_scan_result& out) :
-				_r(r),
-				_intent(intent),
-				_out(out),
-				_size(r.size())
+				_r(r), _intent(intent), _out(out), _size(r.size())
 			{
 			}
 
@@ -1396,7 +1384,9 @@ namespace libfiles::detail
 
 				for (auto at = from; at < limit && at + _prefix < _size;)
 				{
-					const auto piece = _r.read(at + _prefix, static_cast<std::size_t>(std::min<std::uint64_t>(resync_piece, _size - at - _prefix)));
+					const auto piece = _r.read(at + _prefix,
+					                           static_cast<std::size_t>(
+												   std::min<std::uint64_t>(resync_piece, _size - at - _prefix)));
 
 					for (std::size_t i = 0; i < piece.size() && at + i < limit; ++i)
 					{
@@ -1423,8 +1413,7 @@ namespace libfiles::detail
 				return true;
 			}
 
-			template <typename Visit>
-			std::uint64_t walk(std::uint64_t at, const std::uint64_t end, Visit visit)
+			template <typename Visit> std::uint64_t walk(std::uint64_t at, const std::uint64_t end, Visit visit)
 			{
 				std::array<std::uint8_t, packet_size> packet{};
 
@@ -1490,7 +1479,8 @@ namespace libfiles::detail
 
 				if (pid == 0)
 				{
-					take_sections(_pat_sections, _pat_counter, p, bytes, discontinuity, [this](const std::span<const std::uint8_t> s) { read_pat(s); });
+					take_sections(_pat_sections, _pat_counter, p, bytes, discontinuity,
+					              [this](const std::span<const std::uint8_t> s) { read_pat(s); });
 					return !settled();
 				}
 
@@ -1593,8 +1583,8 @@ namespace libfiles::detail
 			}
 
 			template <typename Take>
-			static void take_sections(section_reader& sections, int& counter, const std::uint8_t* const p, const std::span<const std::uint8_t> bytes,
-			                          const bool discontinuity, Take take)
+			static void take_sections(section_reader& sections, int& counter, const std::uint8_t* const p,
+			                          const std::span<const std::uint8_t> bytes, const bool discontinuity, Take take)
 			{
 				const auto c = check_continuity(counter, p[3] & 0x0F, discontinuity);
 				if (c == continuity::duplicate) return;
@@ -1604,7 +1594,8 @@ namespace libfiles::detail
 
 			void read_pat(const std::span<const std::uint8_t> s)
 			{
-				if (_pmt_read || s.size() < 12 || s[0] != 0x00 || !(s[1] & 0x80) || !(s[5] & 1) || mpeg_crc32(s) != 0) return;
+				if (_pmt_read || s.size() < 12 || s[0] != 0x00 || !(s[1] & 0x80) || !(s[5] & 1) || mpeg_crc32(s) != 0)
+					return;
 
 				const auto first = !_pat_read;
 				_pat_read = true;
@@ -1629,11 +1620,13 @@ namespace libfiles::detail
 			// A program map section, kept for its program until one is chosen.
 			void read_map(const std::span<const std::uint8_t> s, const std::uint16_t pid)
 			{
-				if (_pmt_read || s.size() < 16 || s[0] != 0x02 || !(s[1] & 0x80) || !(s[5] & 1) || mpeg_crc32(s) != 0) return;
+				if (_pmt_read || s.size() < 16 || s[0] != 0x02 || !(s[1] & 0x80) || !(s[5] & 1) || mpeg_crc32(s) != 0)
+					return;
 				if (12u + (load_be16(s.data() + 10) & 0x0FFFu) > s.size() - 4) return;
 
 				const auto number = load_be16(s.data() + 3);
-				const auto program = std::ranges::find_if(_programs, [number, pid](const ts_program& p) { return p.number == number && p.pid == pid; });
+				const auto program = std::ranges::find_if(_programs, [number, pid](const ts_program& p)
+				{ return p.number == number && p.pid == pid; });
 				if (program == _programs.end()) return;
 
 				++program->copies;
@@ -1686,10 +1679,12 @@ namespace libfiles::detail
 				_pmt_read = true;
 			}
 
-			void add_stream(const std::uint8_t stream_type, const std::uint16_t pid, const std::span<const std::uint8_t> descriptors,
-			                const std::uint32_t registration)
+			void add_stream(const std::uint8_t stream_type, const std::uint16_t pid,
+			                const std::span<const std::uint8_t> descriptors, const std::uint32_t registration)
 			{
-				if (_streams.size() >= max_streams || pid == *_pmt_pid || pid == 0 || pid == null_pid || _by_pid[pid] >= 0) return;
+				if (_streams.size() >= max_streams || pid == *_pmt_pid || pid == 0 || pid == null_pid ||
+				    _by_pid[pid] >= 0)
+					return;
 
 				// The stream type names the codec; for private data, a DVB descriptor; else a registration.
 				const auto d = read_es_descriptors(descriptors);
@@ -1700,7 +1695,8 @@ namespace libfiles::detail
 				media_stream stream;
 				apply_es_type(type, stream);
 				stream.id = pid;
-				stream.codec_tag = d.registration != 0 ? box_type_text(d.registration) : std::format("0x{:02X}", stream_type);
+				stream.codec_tag = d.registration != 0 ? box_type_text(d.registration)
+				                                       : std::format("0x{:02X}", stream_type);
 				stream.language = d.language;
 				stream.audio_description = d.audio_description;
 
@@ -1805,7 +1801,8 @@ namespace libfiles::detail
 				// Scrambled payloads keep their PES headers from view, but never the PCRs.
 				if (!(duration > 0) && _pcr.first && _pcr.last && *_pcr.last > *_pcr.first)
 				{
-					duration = static_cast<double>(*_pcr.last - *_pcr.first) / static_cast<double>(mpeg_system_ticks_per_second);
+					duration = static_cast<double>(*_pcr.last - *_pcr.first) /
+					           static_cast<double>(mpeg_system_ticks_per_second);
 				}
 
 				_out.duration = duration;
@@ -1817,12 +1814,14 @@ namespace libfiles::detail
 
 				add_structure_section(rows, "Transport stream", "ts.summary", true);
 				add_structure_row(rows, "Packets",
-				                  _prefix != 0 ? "192 bytes: a 4-byte arrival time, then a 188-byte packet" : "188 bytes",
+				                  _prefix != 0 ? "192 bytes: a 4-byte arrival time, then a 188-byte packet"
+				                               : "188 bytes",
 				                  std::format("{} bytes", _unit));
 				add_structure_row(rows, "First packet", std::format("offset {}", _first));
-				add_structure_row(rows, "Read", tail_start < _size
-					                                ? std::format("{} bytes from the start, and the last {}", head_end - _first, _size - tail_start)
-					                                : std::format("{} bytes from the start", head_end - _first));
+				add_structure_row(rows, "Read",
+				                  tail_start < _size ? std::format("{} bytes from the start, and the last {}",
+				                                                   head_end - _first, _size - tail_start)
+				                                     : std::format("{} bytes from the start", head_end - _first));
 
 				add_structure_section(rows, "Program association table", "ts.pat");
 				add_structure_row(rows, "Transport stream id", std::to_string(_transport_id));
@@ -1830,36 +1829,43 @@ namespace libfiles::detail
 				for (const auto& [program, pid] : _pat_entries)
 				{
 					if (program == 0) add_structure_row(rows, "Network", std::format("PID 0x{:04X}", pid));
-					else add_structure_row(rows, std::format("Program {}", program), std::format("map on PID 0x{:04X}", pid));
+					else
+						add_structure_row(rows, std::format("Program {}", program),
+						                  std::format("map on PID 0x{:04X}", pid));
 				}
 
 				add_structure_section(rows, std::format("Program {}", _program), "ts.program");
-				add_structure_row(rows, "Program map", std::format("PID 0x{:04X}, version {}", *_pmt_pid, _pmt_version));
+				add_structure_row(rows, "Program map",
+				                  std::format("PID 0x{:04X}, version {}", *_pmt_pid, _pmt_version));
 				if (_pcr_pid) add_structure_row(rows, "PCR", std::format("PID 0x{:04X}", *_pcr_pid));
 				if (!_program_descriptors.empty()) add_structure_row(rows, "Descriptors", _program_descriptors);
 
 				for (const auto& s : _streams)
 				{
 					const auto& stream = _out.streams[s.index];
-					auto value = std::format("stream type 0x{:02X}, {}", s.stream_type, stream.codec.empty() ? "unknown" : stream.codec);
+					auto value = std::format("stream type 0x{:02X}, {}", s.stream_type,
+					                         stream.codec.empty() ? "unknown" : stream.codec);
 					if (!s.descriptors.empty()) value += "; " + s.descriptors;
-					add_structure_row(rows, std::format("PID 0x{:04X}", s.pid), std::move(value), std::format("0x{:02X}", s.stream_type));
+					add_structure_row(rows, std::format("PID 0x{:04X}", s.pid), std::move(value),
+					                  std::format("0x{:02X}", s.stream_type));
 				}
 
 				add_structure_section(rows, "Timing", "ts.timing");
 
 				if (_pcr.first && _pcr.last)
 				{
-					add_structure_row(rows, "PCR", std::format("{:.3f} s to {:.3f} s",
-					                                           static_cast<double>(*_pcr.first) / mpeg_system_ticks_per_second,
-					                                           static_cast<double>(*_pcr.last) / mpeg_system_ticks_per_second));
+					add_structure_row(rows, "PCR",
+					                  std::format("{:.3f} s to {:.3f} s",
+					                              static_cast<double>(*_pcr.first) / mpeg_system_ticks_per_second,
+					                              static_cast<double>(*_pcr.last) / mpeg_system_ticks_per_second));
 				}
 
 				for (const auto& s : _streams)
 				{
 					if (!s.clock.first || !s.clock.last) continue;
 					add_structure_row(rows, std::format("PID 0x{:04X} PTS", s.pid),
-					                  std::format("{:.3f} s to {:.3f} s", static_cast<double>(*s.clock.first) / mpeg_ticks_per_second,
+					                  std::format("{:.3f} s to {:.3f} s",
+					                              static_cast<double>(*s.clock.first) / mpeg_ticks_per_second,
 					                              static_cast<double>(*s.clock.last) / mpeg_ticks_per_second));
 				}
 

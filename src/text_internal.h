@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Text rules shared by every reader and writer: whether bytes are UTF-8, what a Windows-1252 byte
 // stands for, a code point written as UTF-8, UTF-16 read and written, and text as tags and blocks store it

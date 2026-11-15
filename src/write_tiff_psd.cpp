@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to a TIFF file, by appending. The packet is tag 700 of IFD0; EXIF lives in
 // the file's own directories, and IPTC in tag 33723 with its digest in the Photoshop resources of tag
@@ -36,8 +36,8 @@ namespace libfiles::detail
 			}
 			else
 			{
-				editor.set(directory::ifd0, tag_xmp, tiff_editor::type_undefined, static_cast<std::uint32_t>(packet.size()),
-				           to_bytes(packet));
+				editor.set(directory::ifd0, tag_xmp, tiff_editor::type_undefined,
+				           static_cast<std::uint32_t>(packet.size()), to_bytes(packet));
 			}
 		}
 
@@ -56,8 +56,8 @@ namespace libfiles::detail
 
 			if (legacy.iptc)
 			{
-				editor.set(directory::ifd0, tag_iptc, tiff_editor::type_undefined, static_cast<std::uint32_t>(legacy.iptc->size()),
-				           *legacy.iptc);
+				editor.set(directory::ifd0, tag_iptc, tiff_editor::type_undefined,
+				           static_cast<std::uint32_t>(legacy.iptc->size()), *legacy.iptc);
 
 				// The digest beside the IPTC tells an Adobe reader the two still agree.
 				if (const auto range = editor.value_range(directory::ifd0, tag_photoshop))
@@ -70,7 +70,8 @@ namespace libfiles::detail
 						set_iptc_resources(resources, *legacy.iptc);
 						auto updated = serialize_photoshop_resources(resources);
 						const auto count = static_cast<std::uint32_t>(updated.size());
-						editor.set(directory::ifd0, tag_photoshop, tiff_editor::type_undefined, count, std::move(updated));
+						editor.set(directory::ifd0, tag_photoshop, tiff_editor::type_undefined, count,
+						           std::move(updated));
 					}
 				}
 			}
@@ -95,9 +96,13 @@ namespace libfiles::detail
 
 		const auto block = r.read(pos + 4, static_cast<std::size_t>(section_length));
 		std::vector<photoshop_resource> resources;
-		if (!parse_photoshop_resources(block, resources)) throw format_error("the PSD's image resources cannot be read");
+		if (!parse_photoshop_resources(block, resources))
+			throw format_error("the PSD's image resources cannot be read");
 
-		const auto find = [&resources](const std::uint16_t id) { return find_photoshop_resource(resources, id); };
+		const auto find = [&resources](const std::uint16_t id)
+		{
+			return find_photoshop_resource(resources, id);
+		};
 
 		std::optional<std::string> packet;
 
@@ -107,7 +112,8 @@ namespace libfiles::detail
 			packet = serialize_packet(*update.xmp, old ? old->data.size() : 0);
 
 			// Only the packet changes and it fits: written where it lies.
-			if (old && packet->size() == old->data.size() && !touches_exif(update.legacy) && !touches_iptc(update.legacy))
+			if (old && packet->size() == old->data.size() && !touches_exif(update.legacy) &&
+			    !touches_iptc(update.legacy))
 			{
 				push_changed(r, plan, section_start + 4 + old->data_offset, to_bytes(*packet));
 				return;

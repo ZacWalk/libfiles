@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: How a Photoshop image resource is read, by every walker of a block of them: the PSD scan,
 // parse_photoshop_resources for JPEG's APP13, the writers and the JPEG encoder. Its data must lie
@@ -39,10 +39,7 @@ namespace libfiles::detail
 
 		// Its size with the pad byte, as it is written. Counted in 64 bits, so a 4 GiB resource cannot
 		// wrap on x86.
-		std::uint64_t padded_size() const noexcept
-		{
-			return std::uint64_t{data_offset} + length + (length & 1u);
-		}
+		std::uint64_t padded_size() const noexcept { return std::uint64_t{data_offset} + length + (length & 1u); }
 
 		bool lacks_pad() const noexcept { return padded_size() > size; }
 	};
@@ -69,7 +66,8 @@ namespace libfiles::detail
 		return resource;
 	}
 
-	inline std::optional<photoshop_resource_header> read_photoshop_resource(const std::span<const std::uint8_t> block) noexcept
+	inline std::optional<photoshop_resource_header> read_photoshop_resource(
+		const std::span<const std::uint8_t> block) noexcept
 	{
 		return read_photoshop_resource(block, block.size());
 	}

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: How FLV's tags and script data are read, by the media scan and the writer alike: the header,
 // each tag's header, and the AMF0 values a script tag holds, walked without trusting any length to lie
@@ -69,7 +69,7 @@ namespace libfiles::detail::flv
 		t.filtered = (h[0] & 0x20) != 0;
 		t.data_size = static_cast<std::uint32_t>(h[1]) << 16 | static_cast<std::uint32_t>(h[2]) << 8 | h[3];
 		t.timestamp = static_cast<std::uint32_t>(h[7]) << 24 | static_cast<std::uint32_t>(h[4]) << 16 |
-			static_cast<std::uint32_t>(h[5]) << 8 | h[6];
+		              static_cast<std::uint32_t>(h[5]) << 8 | h[6];
 
 		if (t.end() > size) return std::nullopt;
 		return t;
@@ -110,9 +110,7 @@ namespace libfiles::detail::flv
 	class amf
 	{
 	public:
-		amf(reader& r, const std::uint64_t end) : _r(r), _end(end)
-		{
-		}
+		amf(reader& r, const std::uint64_t end) : _r(r), _end(end) {}
 
 		std::function<void(const amf_value&)> on_value;
 
@@ -123,7 +121,8 @@ namespace libfiles::detail::flv
 		}
 
 	private:
-		std::optional<std::uint64_t> walk(std::uint64_t pos, const std::string_view key, const int depth, const bool element)
+		std::optional<std::uint64_t> walk(std::uint64_t pos, const std::string_view key, const int depth,
+		                                  const bool element)
 		{
 			if (depth > 16 || pos >= _end) return {};
 
@@ -147,53 +146,49 @@ namespace libfiles::detail::flv
 			case amf_string:
 			case amf_long_string:
 			case amf_xml_document:
-				{
-					const auto wide = type != amf_string;
-					if (_end - pos < (wide ? 4u : 2u)) return {};
-					const std::uint64_t length = wide ? _r.be32(pos) : _r.be16(pos);
-					pos += wide ? 4 : 2;
-					if (_end - pos < length) return {};
-					found(pos, length);
-					return pos + length;
-				}
-			case amf_object:
-				return properties(pos, depth);
+			{
+				const auto wide = type != amf_string;
+				if (_end - pos < (wide ? 4u : 2u)) return {};
+				const std::uint64_t length = wide ? _r.be32(pos) : _r.be16(pos);
+				pos += wide ? 4 : 2;
+				if (_end - pos < length) return {};
+				found(pos, length);
+				return pos + length;
+			}
+			case amf_object: return properties(pos, depth);
 			case amf_null:
-			case amf_undefined:
-				return pos;
-			case amf_reference:
-				return skip(pos, 2);
+			case amf_undefined: return pos;
+			case amf_reference: return skip(pos, 2);
 			case amf_ecma_array: // a count, then named values
 				if (_end - pos < 4) return {};
 				return properties(pos + 4, depth);
 			case amf_strict_array: // a count, then values under the array's name
+			{
+				if (_end - pos < 4) return {};
+				const auto count = _r.be32(pos);
+				pos += 4;
+
+				for (std::uint32_t i = 0; i < count; ++i)
 				{
-					if (_end - pos < 4) return {};
-					const auto count = _r.be32(pos);
-					pos += 4;
-
-					for (std::uint32_t i = 0; i < count; ++i)
-					{
-						const auto next = walk(pos, key, depth + 1, true);
-						if (!next) return {};
-						pos = *next;
-					}
-
-					return pos;
+					const auto next = walk(pos, key, depth + 1, true);
+					if (!next) return {};
+					pos = *next;
 				}
+
+				return pos;
+			}
 			case amf_date:
 				if (_end - pos < 10) return {};
 				found(pos, 10);
 				return pos + 10;
 			case amf_typed_object: // a class name, then named values
-				{
-					if (_end - pos < 2) return {};
-					const auto length = _r.be16(pos);
-					if (_end - pos - 2 < length) return {};
-					return properties(pos + 2 + length, depth);
-				}
-			default:
-				return {};
+			{
+				if (_end - pos < 2) return {};
+				const auto length = _r.be16(pos);
+				if (_end - pos - 2 < length) return {};
+				return properties(pos + 2 + length, depth);
+			}
+			default: return {};
 			}
 		}
 
@@ -222,7 +217,8 @@ namespace libfiles::detail::flv
 				const auto name = _r.read(pos, length);
 				pos += length;
 
-				const auto next = walk(pos, std::string_view(reinterpret_cast<const char*>(name.data()), name.size()), depth + 1, false);
+				const auto next = walk(pos, std::string_view(reinterpret_cast<const char*>(name.data()), name.size()),
+				                       depth + 1, false);
 				if (!next) return {};
 				pos = *next;
 			}

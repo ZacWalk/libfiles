@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Reading what a still image says about itself without decoding it: its format,
 // dimensions and pixel format, the metadata blocks it carries, where its embedded thumbnails are,
@@ -49,10 +49,10 @@ namespace libfiles
 	// megabytes, so the set moves rather than copies; clone() is the copy, spelled out.
 	struct metadata_blocks
 	{
-		std::vector<std::uint8_t> exif; // a TIFF stream, from its byte-order mark
-		std::vector<std::uint8_t> xmp; // the packet
-		std::vector<std::uint8_t> iptc; // IPTC-IIM records
-		std::vector<std::uint8_t> icc; // the colour profile
+		std::vector<std::uint8_t> exif;      // a TIFF stream, from its byte-order mark
+		std::vector<std::uint8_t> xmp;       // the packet
+		std::vector<std::uint8_t> iptc;      // IPTC-IIM records
+		std::vector<std::uint8_t> icc;       // the colour profile
 		std::vector<std::uint8_t> photoshop; // other Photoshop image resources, as '8BIM' blocks
 
 		metadata_blocks() = default;
@@ -103,6 +103,32 @@ namespace libfiles
 		// those of the turned image. An EXIF orientation describes the same turn, and must then not be
 		// applied again.
 		bool container_transform = false;
+
+		// True when the picture is the first of several an animation shows - an animated WebP or PNG, a
+		// JPEG XL with an animation header, a HEIF holding an image sequence, a GIF holding more than one
+		// image - so a decode gives one frame of them, and a picture written back from it would keep that
+		// frame alone.
+		bool animated = false;
+
+		// True when the picture's own colour description names an HDR transfer, PQ or HLG - a PNG's cICP chunk, a
+		// HEIF's nclx colour - so decode() maps it to SDR by that description, or keeps its signal, rather than by an
+		// ICC profile beside it. A JPEG XL's is not looked at.
+		bool hdr = false;
+
+		// True when the photo carries a gain map, which a display that shows HDR brightens it by: Ultra HDR,
+		// ISO 21496-1 or Apple's. A HEIF says so in its items - an ISO 21496-1 tone map derived from the primary
+		// image, or Apple's auxiliary gain map image - and is believed without a read. A JPEG says so beside a
+		// multi-picture index that lists a second image: in its own segments, as Ultra HDR's hdrgm XMP or ISO
+		// 21496-1's APP2 do, or else in the first segments of a listed image that is no thumbnail, which is
+		// where Apple says it, and only then is that image's head read.
+		bool gain_map = false;
+
+		// The ITU-T H.273 code points the picture's own colour description gives its primaries and its transfer - a
+		// HEIF's nclx, a PNG's cICP. Primaries 1 for BT.709, whose primaries are sRGB's, 9 for BT.2020, 12 for
+		// Display P3; transfer 16 for PQ and 18 for HLG, which hdr above follows. 2, unspecified, where the file
+		// describes its colour by an ICC profile alone, or not at all.
+		std::uint8_t colour_primaries = 2;
+		std::uint8_t colour_transfer = 2;
 
 		metadata_blocks metadata;
 

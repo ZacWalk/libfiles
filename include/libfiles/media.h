@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Reading what an audio or video file says about itself without decoding it: its container,
 // its streams and what each carries, how long it plays, the tags an organizer files it by, its XMP

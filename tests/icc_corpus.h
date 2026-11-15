@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The ICC profiles the listing is held to, built in code: each takes a branch of the reader or
 // of the descriptions - every text type, the colorant sets, curves and white points a summary names,
@@ -137,12 +137,12 @@ namespace icc_corpus
 	{
 		std::uint32_t cmm = 0x6C636D73; // 'lcms'
 		std::uint32_t version = 0x04300000;
-		std::uint32_t device_class = 0x6D6E7472; // 'mntr'
-		std::uint32_t colour_space = 0x52474220; // 'RGB '
+		std::uint32_t device_class = 0x6D6E7472;     // 'mntr'
+		std::uint32_t colour_space = 0x52474220;     // 'RGB '
 		std::uint32_t connection_space = 0x58595A20; // 'XYZ '
 		std::uint16_t created[6] = {2026, 10, 31, 12, 30, 15};
 		std::uint32_t signature = 0x61637370; // 'acsp'
-		std::uint32_t platform = 0x4D534654; // 'MSFT'
+		std::uint32_t platform = 0x4D534654;  // 'MSFT'
 		std::uint32_t flags = 0;
 		std::uint32_t manufacturer = 0;
 		std::uint32_t model = 0;
@@ -215,14 +215,17 @@ namespace icc_corpus
 	}
 
 	// Where a profile's directory entry starts.
-	constexpr std::size_t entry(const std::size_t index) { return 132 + index * 12; }
+	constexpr std::size_t entry(const std::size_t index)
+	{
+		return 132 + index * 12;
+	}
 
-	constexpr std::uint32_t red_colorant = 0x7258595A; // 'rXYZ'
+	constexpr std::uint32_t red_colorant = 0x7258595A;   // 'rXYZ'
 	constexpr std::uint32_t green_colorant = 0x6758595A; // 'gXYZ'
-	constexpr std::uint32_t blue_colorant = 0x6258595A; // 'bXYZ'
-	constexpr std::uint32_t red_curve = 0x72545243; // 'rTRC'
-	constexpr std::uint32_t green_curve = 0x67545243; // 'gTRC'
-	constexpr std::uint32_t blue_curve = 0x62545243; // 'bTRC'
+	constexpr std::uint32_t blue_colorant = 0x6258595A;  // 'bXYZ'
+	constexpr std::uint32_t red_curve = 0x72545243;      // 'rTRC'
+	constexpr std::uint32_t green_curve = 0x67545243;    // 'gTRC'
+	constexpr std::uint32_t blue_curve = 0x62545243;     // 'bTRC'
 
 	inline void add_colorants(std::vector<tag>& tags, const double (&v)[9])
 	{
@@ -262,10 +265,10 @@ namespace icc_corpus
 			// sRGB as the version 2 profile cameras embed it: ASCII names, one table curve for all three.
 			header h;
 			h.version = 0x02100000;
-			h.platform = 0x4D534654; // 'MSFT'
+			h.platform = 0x4D534654;     // 'MSFT'
 			h.manufacturer = 0x49454320; // 'IEC '
-			h.model = 0x73524742; // 'sRGB'
-			h.creator = 0x48502020; // 'HP  '
+			h.model = 0x73524742;        // 'sRGB'
+			h.creator = 0x48502020;      // 'HP  '
 			std::vector<tag> tags;
 			tags.push_back({0x63707274, text("Copyright (c) 1998 Hewlett-Packard Company")});
 			tags.push_back({0x64657363, desc("sRGB IEC61966-2.1")});
@@ -285,7 +288,7 @@ namespace icc_corpus
 			header h;
 			h.version = 0x04000000;
 			h.platform = 0x4150504C; // 'APPL'
-			h.creator = 0x6170706C; // 'appl'
+			h.creator = 0x6170706C;  // 'appl'
 			h.cmm = 0x6170706C;
 			std::vector<tag> tags;
 			tags.push_back({0x64657363, mluc({u"Display P3"})});
@@ -303,7 +306,7 @@ namespace icc_corpus
 			h.version = 0x02100000;
 			h.platform = 0x4150504C;
 			h.manufacturer = 0x6E6F6E65; // 'none'
-			h.creator = 0x41444245; // 'ADBE'
+			h.creator = 0x41444245;      // 'ADBE'
 			h.cmm = 0x41444245;
 			std::vector<tag> tags;
 			tags.push_back({0x63707274, text("Copyright 1999 Adobe Systems Incorporated")});
@@ -332,8 +335,8 @@ namespace icc_corpus
 			header h;
 			h.version = 0x02200000;
 			h.device_class = 0x73636E72; // 'scnr'
-			h.platform = 0x53474920; // 'SGI '
-			h.creator = 0x4B4F4441; // 'KODA'
+			h.platform = 0x53474920;     // 'SGI '
+			h.creator = 0x4B4F4441;      // 'KODA'
 			h.intent = 2;
 			h.flags = 3;
 			h.attributes = 0x0000000100000002ull;
@@ -353,10 +356,10 @@ namespace icc_corpus
 			header h;
 			h.cmm = 0;
 			h.creator = 0;
-			h.device_class = 0x73706163; // 'spac'
-			h.colour_space = 0x59436272; // 'YCbr'
+			h.device_class = 0x73706163;     // 'spac'
+			h.colour_space = 0x59436272;     // 'YCbr'
 			h.connection_space = 0x4C616220; // 'Lab '
-			h.platform = 0x5A5A5A5A; // 'ZZZZ'
+			h.platform = 0x5A5A5A5A;         // 'ZZZZ'
 			h.intent = 7;
 			for (auto& v : h.created) v = 0;
 			h.attributes = 0xFEDCBA9876543210ull;
@@ -385,8 +388,8 @@ namespace icc_corpus
 			// A press: CMYK to Lab through tables nothing here reads, so they list by size.
 			header h;
 			h.version = 0x02400000;
-			h.device_class = 0x70727472; // 'prtr'
-			h.colour_space = 0x434D594B; // 'CMYK'
+			h.device_class = 0x70727472;     // 'prtr'
+			h.colour_space = 0x434D594B;     // 'CMYK'
 			h.connection_space = 0x4C616220; // 'Lab '
 			h.platform = 0;
 			h.intent = 3;
@@ -416,7 +419,8 @@ namespace icc_corpus
 			tags.push_back({0x646D6E64, desc(std::string_view("\0\0Maker\0", 8))});
 			tags.push_back({0x646D6464, text("Model", false)});
 			tags.push_back({0x74737431, text(std::string_view("\0\0\0", 3))});
-			tags.push_back({0x74737432, mluc({u"A\xD800" u"B"})});
+			tags.push_back({0x74737432, mluc({u"A\xD800"
+			                                  u"B"})});
 			tags.push_back({0x74737433, mluc({u"\xDC00x"})});
 			tags.push_back({0x74737434, mluc({u"\xD83D\xDE00 smile"})});
 			tags.push_back({0x74737435, mluc({u"Wide", u"Second"}, 16)});
@@ -446,7 +450,8 @@ namespace icc_corpus
 			header h;
 			std::vector<tag> tags;
 			tags.push_back({0x64657363, desc("Directory")});
-			for (std::uint32_t i = 0; i < 6; ++i) tags.push_back({0x64697230 + i, opaque(0x62696E30 + i, 40 + i, static_cast<std::uint8_t>(i))});
+			for (std::uint32_t i = 0; i < 6; ++i)
+				tags.push_back({0x64697230 + i, opaque(0x62696E30 + i, 40 + i, static_cast<std::uint8_t>(i))});
 			tags.push_back({0x64657363, desc("Directory again")});
 			auto p = profile(h, tags);
 			put32(p, entry(1) + 4, static_cast<std::uint32_t>(p.size() + 10));
@@ -457,6 +462,7 @@ namespace icc_corpus
 			all.push_back(p);
 
 			std::vector<tag> overlapping;
+			overlapping.reserve(13);
 			for (std::uint32_t i = 0; i < 12; ++i) overlapping.push_back({0x6F766C30 + i, opaque(0x62696E61, 4, 0)});
 			overlapping.push_back({0x70616431, opaque(0x62696E62, 1200, 5)});
 			auto q = profile(h, overlapping);
@@ -503,6 +509,25 @@ namespace icc_corpus
 		return all;
 	}
 
+	// For the tests of mapping a profile's colours to sRGB: Display P3 as the corpus has it, whose colours move,
+	// and sRGB as its IEC colorants and parametric curve state it, whose colours do not. The corpus' own sRGB is
+	// no such profile: its curve is a linear ramp.
+	inline bytes display_p3()
+	{
+		return profiles()[1];
+	}
+
+	inline bytes srgb_parametric()
+	{
+		constexpr double srgb[9] = {0.4361, 0.2225, 0.0139, 0.3851, 0.7169, 0.0971, 0.1431, 0.0606, 0.7141};
+		std::vector<tag> tags;
+		tags.push_back({0x64657363, text("sRGB")});
+		tags.push_back({0x77747074, xyz(0.9642, 1.0, 0.8249)});
+		add_colorants(tags, srgb);
+		add_shared_curves(tags, parametric(3, {2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045}));
+		return profile({}, tags);
+	}
+
 	// A tag larger than the listing reads, in a profile large enough to hold it.
 	inline bytes oversized()
 	{
@@ -520,8 +545,10 @@ namespace icc_corpus
 		const auto n = p.size();
 		const auto step = n / parts > 0 ? n / parts : 1;
 
-		for (std::size_t length = 0; length < n && length < 140; ++length) out.emplace_back(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(length));
-		for (std::size_t length = 140; length < n; length += step) out.emplace_back(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(length));
+		for (std::size_t length = 0; length < n && length < 140; ++length)
+			out.emplace_back(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(length));
+		for (std::size_t length = 140; length < n; length += step)
+			out.emplace_back(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(length));
 
 		for (std::size_t length = 128; length < n; length += step)
 		{

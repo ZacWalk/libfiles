@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The file interfaces libfiles reads and writes through. The caller opens the file and
 // implements them, so libfiles never names a path or calls the OS. Access is positional: there is no
@@ -48,9 +48,7 @@ namespace libfiles
 	public:
 		memory_stream() = default;
 
-		explicit memory_stream(std::vector<std::uint8_t> bytes) : _bytes(std::move(bytes))
-		{
-		}
+		explicit memory_stream(std::vector<std::uint8_t> bytes) : _bytes(std::move(bytes)) {}
 
 		std::uint64_t size() override { return _bytes.size(); }
 		std::size_t read(std::uint64_t offset, void* data, std::size_t size) override;

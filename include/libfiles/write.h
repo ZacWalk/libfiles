@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Updating the metadata a file stores. An update is planned from a structural read of the
 // file, as source byte ranges replaced in order. A plan that changes no length can be patched where
@@ -91,7 +91,10 @@ namespace libfiles
 		// As XMP writes GPS coordinates: "DDD,MM,SSk" or "DDD,MM.mmk".
 		std::optional<std::string> gps_latitude;
 		std::optional<std::string> gps_longitude;
-		// The EXIF orientation, 1 to 8.
+		// The orientation, 1 to 8 as EXIF numbers them: a photo's EXIF orientation. A HEIF is turned as it shows -
+		// the picture libheif decodes, its images' rotations and mirrors applied - by writing them anew, and its EXIF
+		// takes the orientation they come to; a JPEG XL's codestream takes it, and its EXIF with it - in one made from
+		// a JPEG, only where the EXIF it gives that JPEG back with holds one to take it.
 		std::optional<int> orientation;
 		std::optional<std::string> city;
 		std::optional<std::string> state;
@@ -118,9 +121,7 @@ namespace libfiles
 		metadata_update() = default;
 
 		// Only a packet, every other field left as it is.
-		metadata_update(const xmp::meta* packet) : xmp(packet)
-		{
-		}
+		metadata_update(const xmp::meta* packet) : xmp(packet) {}
 
 		// The packet, serialized here in the form and place the container needs. Null leaves the
 		// file's XMP as it is.
@@ -144,12 +145,13 @@ namespace libfiles
 	//
 	// A JPEG XL container's packet is read from its last 'xml ' box. When that box is Brotli-compressed
 	// ('brob') the packet is read with the decompressor given; the no-argument overload uses libfiles'
-	// bounded decoder when LIBFILES_JXL is enabled. A bare JPEG XL codestream has no packet.
+	// bounded decoder when LIBFILES_JXL is enabled. A bare JPEG XL codestream has no packet. A HEIF's is read
+	// from the XMP item - of type 'mime' and content type application/rdf+xml, or of the older type 'XMP' -
+	// attached to its primary image, as scan() finds it.
 	//
-	// Some formats libfiles reads but does not update have their packets read too: a HEIF's from the XMP
-	// item - of type 'mime' and content type application/rdf+xml, or of the older type 'XMP' - attached to
-	// its primary image, as scan() finds it; an AIFF's from its last APPL chunk signed "XMP "; and a FLAC's
-	// from the ID3v2 tag some taggers put before it, by the rule an MP3's is read by.
+	// Some formats libfiles reads but does not update have their packets read too: an AIFF's from its last
+	// APPL chunk signed "XMP ", and a FLAC's from the ID3v2 tag some taggers put before it, by the rule an
+	// MP3's is read by.
 	struct packet_reading
 	{
 		bool readable = false;

@@ -1,13 +1,15 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Encoding a WebP with libwebp - lossless, or lossy from packed pixels or straight from NV12
-// planes - its ICC profile, EXIF and XMP muxed in. Moved from Diffractor's files_webp.cpp.
+// planes - its ICC profile, EXIF and XMP muxed in, and reading how one was compressed, so that it can be
+// written again as it was. Moved from Diffractor's files_webp.cpp.
 
 #include "libfiles/encode.h"
 #include "encode_internal.h"
 
+#include <extras/extras.h>
 #include <webp/encode.h>
 #include <webp/mux.h>
 
@@ -54,13 +56,12 @@ namespace libfiles
 
 			for (auto i = 0; i < 256; ++i)
 			{
-				luma_map[i] = full_range
-					              ? static_cast<std::uint8_t>(std::clamp(16 + std::lround(i * 219.0 / 255.0), 16L, 235L))
-					              : static_cast<std::uint8_t>(i);
-				chroma_map[i] = full_range
-					                ? static_cast<std::uint8_t>(std::clamp(128 + std::lround((i - 128) * 224.0 / 255.0),
-					                                                       16L, 240L))
-					                : static_cast<std::uint8_t>(i);
+				luma_map[i] = full_range ? static_cast<std::uint8_t>(
+											   std::clamp(16 + std::lround(i * 219.0 / 255.0), 16L, 235L))
+				                         : static_cast<std::uint8_t>(i);
+				chroma_map[i] = full_range ? static_cast<std::uint8_t>(
+												 std::clamp(128 + std::lround((i - 128) * 224.0 / 255.0), 16L, 240L))
+				                           : static_cast<std::uint8_t>(i);
 			}
 
 			const auto src_stride = image.stride;
@@ -107,10 +108,17 @@ namespace libfiles
 	{
 		encoded result;
 
+		// A WebP says nothing of PQ or HLG, so a signal written as it is would show as SDR, washed out.
+		if (metadata.hdr)
+		{
+			result.notes.emplace_back("a WebP cannot hold an HDR picture's signal: map it to SDR first");
+			return result;
+		}
+
 		// Lossless is an ARGB codec; there is no planar form of it. And one chroma pair per 2x2 luma
 		// block: an odd side would leave libwebp's last chroma column unwritten.
 		const auto planar = image.format == pixel_format::nv12 && !options.lossless &&
-			((image.width | image.height) & 1) == 0;
+		                    ((image.width | image.height) & 1) == 0;
 
 		if (!planar && image.format != pixel_format::bgrx8 && image.format != pixel_format::bgra8)
 		{
@@ -140,9 +148,8 @@ namespace libfiles
 			else
 			{
 				picture.use_argb = true;
-				ok = use_alpha
-					     ? WebPPictureImportBGRA(&picture, image.pixels, static_cast<int>(image.stride)) != 0
-					     : WebPPictureImportBGRX(&picture, image.pixels, static_cast<int>(image.stride)) != 0;
+				ok = use_alpha ? WebPPictureImportBGRA(&picture, image.pixels, static_cast<int>(image.stride)) != 0
+				               : WebPPictureImportBGRX(&picture, image.pixels, static_cast<int>(image.stride)) != 0;
 			}
 
 			if (ok)
@@ -194,8 +201,8 @@ namespace libfiles
 
 				if (valid_config && !success)
 				{
-					result.notes.push_back(std::format("webp encode failed with error {}",
-					                                   static_cast<int>(picture.error_code)));
+					result.notes.push_back(
+						std::format("webp encode failed with error {}", static_cast<int>(picture.error_code)));
 				}
 
 				if (success)
@@ -206,14 +213,14 @@ namespace libfiles
 					if (img_err == WEBP_MUX_OK)
 					{
 						auto metadata_ok = true;
-						const auto set_chunk = [&mux, &metadata_ok, &result](const char fourcc[5],
-						                                                     const WebPData& chunk_data)
+						const auto set_chunk =
+							[&mux, &metadata_ok, &result](const char fourcc[5], const WebPData& chunk_data)
 						{
 							if (s_fail_next_webp_chunk == fourcc)
 							{
 								s_fail_next_webp_chunk.clear();
-								result.notes.push_back(std::format("webp {} chunk insertion failed by test hook",
-								                                   fourcc));
+								result.notes.push_back(
+									std::format("webp {} chunk insertion failed by test hook", fourcc));
 								metadata_ok = false;
 								return;
 							}
@@ -284,5 +291,14 @@ namespace libfiles
 		}
 
 		return result;
+	}
+
+	std::optional<webp_compression> read_webp_compression(const std::span<const std::uint8_t> webp)
+	{
+		// 101 says lossless, and a negative answer an animation or a header that cannot be read.
+		const auto estimate = VP8EstimateQuality(webp.data(), webp.size());
+		if (estimate < 0 || estimate > 101) return std::nullopt;
+		if (estimate == 101) return webp_compression{.lossless = true, .quality = 100};
+		return webp_compression{.lossless = false, .quality = estimate};
 	}
 }

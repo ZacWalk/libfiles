@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the HEIF and JPEG XL scanners and their packet reads. Each file is built here box
 // by box and, for JPEG XL, header bit by header bit, so every field a scanner reports is one the test
@@ -34,9 +34,7 @@ namespace
 	class counting_stream final : public libfiles::stream
 	{
 	public:
-		explicit counting_stream(bytes data) : _data(std::move(data))
-		{
-		}
+		explicit counting_stream(bytes data) : _data(std::move(data)) {}
 
 		std::uint64_t size() override { return _data.size(); }
 
@@ -81,13 +79,15 @@ namespace
 	}
 
 	// Every file a test scans is also swept, once for each way it is scanned.
-	libfiles::scan_result scan_bytes(const bytes& file, const libfiles::scan_intent intent = libfiles::scan_intent::index,
+	libfiles::scan_result scan_bytes(const bytes& file,
+	                                 const libfiles::scan_intent intent = libfiles::scan_intent::index,
 	                                 const libfiles::scan_limits& limits = {})
 	{
 		// Keyed by a string: GCC 13, optimizing a three-way comparison of byte vectors, warns of a memcmp
 		// past any object.
 		static std::set<std::pair<std::string, bool>> swept;
-		if (swept.emplace(std::string(file.begin(), file.end()), static_cast<bool>(limits.brotli)).second) sweep_truncations(file, limits);
+		if (swept.emplace(std::string(file.begin(), file.end()), static_cast<bool>(limits.brotli)).second)
+			sweep_truncations(file, limits);
 
 		libfiles::reader r(file);
 		return libfiles::scan(r, intent, limits);
@@ -99,7 +99,8 @@ namespace
 		return libfiles::read_packet(r);
 	}
 
-	const libfiles::structure_row* find_row(const std::vector<libfiles::structure_row>& rows, const std::string_view key)
+	const libfiles::structure_row* find_row(const std::vector<libfiles::structure_row>& rows,
+	                                        const std::string_view key)
 	{
 		const auto it = std::ranges::find(rows, key, &libfiles::structure_row::key);
 		return it == rows.end() ? nullptr : &*it;
@@ -116,45 +117,39 @@ namespace
 		return row ? row->value : std::string("(none)");
 	}
 
-	// A big-endian TIFF stream with one IFD0 orientation entry.
-	bytes tiff_with_orientation(const unsigned orientation)
-	{
-		return builder().raw("MM").be16(42).be32(8).be16(1).be16(0x0112).be16(3).be32(1).be16(orientation).be16(0).be32(0).zeros(8).b;
-	}
-
 	// --- HEIF
 
-	bytes ispe(const std::uint32_t width, const std::uint32_t height)
+	bytes irot(const unsigned degrees)
 	{
-		return iso_full_box("ispe", 0, 0, builder().be32(width).be32(height).b);
+		return iso_box("irot", builder().u8(degrees / 90).b);
 	}
-
-	bytes irot(const unsigned degrees) { return iso_box("irot", builder().u8(degrees / 90).b); }
-	bytes imir(const unsigned axis) { return iso_box("imir", builder().u8(axis).b); }
+	bytes imir(const unsigned axis)
+	{
+		return iso_box("imir", builder().u8(axis).b);
+	}
 
 	bytes clap(const std::uint32_t width, const std::uint32_t height)
 	{
 		return iso_box("clap", builder().be32(width).be32(1).be32(height).be32(1).be32(0).be32(1).be32(0).be32(1).b);
 	}
 
-	bytes hvcc(const unsigned chroma, const unsigned luma_bits = 8, const unsigned chroma_bits = 8)
-	{
-		return iso_box("hvcC", builder().u8(1).u8(1).be32(0x60000000).zeros(6).u8(90).be16(0xF000).u8(0xFC)
-		                                .u8(0xFC | chroma).u8(0xF8 | (luma_bits - 8)).u8(0xF8 | (chroma_bits - 8))
-		                                .be16(0).u8(0x0F).u8(0).b);
-	}
-
 	bytes av1c(const bool monochrome, const unsigned subsampling_x, const unsigned subsampling_y, const unsigned bits)
 	{
 		const auto high = bits > 8 ? 1u : 0u;
 		const auto twelve = bits == 12 ? 1u : 0u;
-		return iso_box("av1C", builder().u8(0x81).u8(bits == 12 ? 0x40 : 0).u8(high << 6 | twelve << 5 | (monochrome ? 1u : 0u) << 4 |
-		                                                                        subsampling_x << 3 | subsampling_y << 2).u8(0).b);
+		return iso_box("av1C", builder()
+		                           .u8(0x81)
+		                           .u8(bits == 12 ? 0x40 : 0)
+		                           .u8(high << 6 | twelve << 5 | (monochrome ? 1u : 0u) << 4 | subsampling_x << 3 |
+		                               subsampling_y << 2)
+		                           .u8(0)
+		                           .b);
 	}
 
 	bytes colr_nclx(const unsigned primaries, const unsigned transfer, const unsigned matrix, const bool full_range)
 	{
-		return iso_box("colr", builder().raw("nclx").be16(primaries).be16(transfer).be16(matrix).u8(full_range ? 0x80 : 0).b);
+		return iso_box("colr",
+		               builder().raw("nclx").be16(primaries).be16(transfer).be16(matrix).u8(full_range ? 0x80 : 0).b);
 	}
 
 	bytes colr_icc(const std::string_view type, const std::string_view profile)
@@ -162,7 +157,10 @@ namespace
 		return iso_box("colr", builder().raw(type).raw(profile).b);
 	}
 
-	bytes pasp(const std::uint32_t h, const std::uint32_t v) { return iso_box("pasp", builder().be32(h).be32(v).b); }
+	bytes pasp(const std::uint32_t h, const std::uint32_t v)
+	{
+		return iso_box("pasp", builder().be32(h).be32(v).b);
+	}
 
 	bytes auxc(const std::string_view urn)
 	{
@@ -189,198 +187,6 @@ namespace
 		return iso_box("cmpd", b.b);
 	}
 
-	struct heif_item
-	{
-		std::uint32_t id = 0;
-		std::string type;
-		bytes data;
-		bool hidden = false;
-		std::string content_type;
-		std::string content_encoding;
-		bool in_idat = false;
-		std::size_t extents = 1;
-		// ipco indices, from 1, and whether each is essential.
-		std::vector<std::pair<unsigned, bool>> properties;
-	};
-
-	struct heif_reference
-	{
-		std::string type;
-		std::uint32_t from = 0;
-		std::vector<std::uint32_t> to;
-	};
-
-	struct heif_spec
-	{
-		std::string major = "heic";
-		std::vector<std::string> brands = {"mif1", "heic"};
-		std::uint32_t primary = 1;
-		std::vector<bytes> properties;
-		std::vector<heif_item> items;
-		std::vector<heif_reference> references;
-		// Boxes the scan has no use for: in the meta box after its own, and between the file type
-		// and meta boxes.
-		std::vector<bytes> meta_boxes;
-		bytes before_meta;
-		bool mdat_first = false;
-		bool large_meta_header = false;
-		bool mdat_to_end = false;
-	};
-
-	bytes make_meta(const heif_spec& s, const std::uint32_t mdat_payload)
-	{
-		builder iinf;
-		iinf.be16(static_cast<unsigned>(s.items.size()));
-
-		for (const auto& item : s.items)
-		{
-			builder infe;
-			infe.be16(item.id).be16(0).raw(item.type).u8(0);
-			if (item.type == "mime") infe.raw(item.content_type).u8(0).raw(item.content_encoding).u8(0);
-			iinf.raw(iso_full_box("infe", 2, item.hidden ? 1u : 0u, infe.b));
-		}
-
-		// iloc version 1: four-byte offsets, lengths and base offsets, and a construction method.
-		builder iloc;
-		iloc.be16(0x4440).be16(static_cast<unsigned>(s.items.size()));
-		std::uint32_t mdat_at = 0;
-		std::uint32_t idat_at = 0;
-		bytes idat;
-
-		for (const auto& item : s.items)
-		{
-			iloc.be16(item.id).be16(item.in_idat ? 1 : 0).be16(0);
-			iloc.be32(item.in_idat ? 0 : mdat_payload);
-			iloc.be16(static_cast<unsigned>(item.extents));
-
-			auto& at = item.in_idat ? idat_at : mdat_at;
-			const auto size = static_cast<std::uint32_t>(item.data.size());
-
-			for (std::size_t e = 0; e < item.extents; ++e)
-			{
-				const auto begin = static_cast<std::uint32_t>(size * e / item.extents);
-				const auto end = static_cast<std::uint32_t>(size * (e + 1) / item.extents);
-				iloc.be32(at + begin).be32(end - begin);
-			}
-
-			if (item.in_idat) idat.insert(idat.end(), item.data.begin(), item.data.end());
-			at += size;
-		}
-
-		builder ipco;
-		for (const auto& p : s.properties) ipco.raw(p);
-
-		builder ipma;
-		ipma.be32(static_cast<std::uint32_t>(s.items.size()));
-
-		for (const auto& item : s.items)
-		{
-			ipma.be16(item.id).u8(static_cast<unsigned>(item.properties.size()));
-			for (const auto& [index, essential] : item.properties) ipma.u8((essential ? 0x80u : 0u) | index);
-		}
-
-		builder iref;
-
-		for (const auto& ref : s.references)
-		{
-			builder entry;
-			entry.be16(ref.from).be16(static_cast<unsigned>(ref.to.size()));
-			for (const auto to : ref.to) entry.be16(to);
-			iref.raw(iso_box(ref.type, entry.b));
-		}
-
-		builder meta;
-		meta.raw(iso_full_box("hdlr", 0, 0, builder().be32(0).raw("pict").zeros(12).u8(0).b));
-		meta.raw(iso_full_box("pitm", 0, 0, builder().be16(s.primary).b));
-		meta.raw(iso_full_box("iinf", 0, 0, iinf.b));
-		meta.raw(iso_full_box("iloc", 1, 0, iloc.b));
-		meta.raw(iso_box("iprp", builder().raw(iso_box("ipco", ipco.b)).raw(iso_full_box("ipma", 0, 0, ipma.b)).b));
-		if (!s.references.empty()) meta.raw(iso_full_box("iref", 0, 0, iref.b));
-		if (!idat.empty()) meta.raw(iso_box("idat", idat));
-		for (const auto& box : s.meta_boxes) meta.raw(box);
-
-		const auto payload = builder().be32(0).raw(meta.b).b;
-
-		if (s.large_meta_header)
-		{
-			return builder().be32(1).raw("meta").be32(0).be32(static_cast<std::uint32_t>(payload.size() + 16)).raw(payload).b;
-		}
-
-		return iso_box("meta", payload);
-	}
-
-	bytes make_heif(const heif_spec& s)
-	{
-		builder ftyp_payload;
-		ftyp_payload.raw(s.major).be32(0);
-		for (const auto& brand : s.brands) ftyp_payload.raw(brand);
-		const auto ftyp = iso_box("ftyp", ftyp_payload.b);
-
-		bytes mdat_payload;
-		for (const auto& item : s.items)
-		{
-			if (!item.in_idat) mdat_payload.insert(mdat_payload.end(), item.data.begin(), item.data.end());
-		}
-
-		const auto mdat = s.mdat_to_end ? builder().be32(0).raw("mdat").raw(mdat_payload).b : iso_box("mdat", mdat_payload);
-
-		// The meta box's size does not depend on the offsets it holds, so it is built twice.
-		const auto probe = make_meta(s, 0);
-		const auto mdat_payload_at = static_cast<std::uint32_t>(ftyp.size() + s.before_meta.size() + (s.mdat_first ? 0 : probe.size()) + 8);
-		const auto meta = make_meta(s, mdat_payload_at);
-
-		builder file;
-		file.raw(ftyp).raw(s.before_meta);
-		if (s.mdat_first) file.raw(mdat).raw(meta);
-		else file.raw(meta).raw(mdat);
-		return file.b;
-	}
-
-	heif_item image_item(const std::uint32_t id, const std::string_view type, std::vector<std::pair<unsigned, bool>> properties)
-	{
-		heif_item item;
-		item.id = id;
-		item.type = type;
-		item.data = bytes(32, 0x55);
-		item.properties = std::move(properties);
-		return item;
-	}
-
-	heif_item exif_item(const std::uint32_t id, const unsigned orientation)
-	{
-		heif_item item;
-		item.id = id;
-		item.type = "Exif";
-		item.data = builder().be32(6).raw(lit("Exif\0\0")).raw(tiff_with_orientation(orientation)).b;
-		return item;
-	}
-
-	heif_item mime_item(const std::uint32_t id, const std::string_view content_type, const std::string_view text)
-	{
-		heif_item item;
-		item.id = id;
-		item.type = "mime";
-		item.content_type = content_type;
-		item.data = to_bytes(text);
-		return item;
-	}
-
-	// A HEVC still: one image of 640 x 480, 4:2:0, with the given extra properties after ispe and hvcC.
-	heif_spec simple_heic(std::vector<bytes> extra = {})
-	{
-		heif_spec s;
-		s.properties = {ispe(640, 480), hvcc(1)};
-		std::vector<std::pair<unsigned, bool>> props = {{1, false}, {2, true}};
-
-		for (auto& p : extra)
-		{
-			s.properties.push_back(std::move(p));
-			props.emplace_back(static_cast<unsigned>(s.properties.size()), false);
-		}
-
-		s.items.push_back(image_item(1, "hvc1", props));
-		return s;
-	}
 }
 
 TEST("heif scan reads the primary image's size, pixel format and metadata")
@@ -400,7 +206,7 @@ TEST("heif scan reads the primary image's size, pixel format and metadata")
 	CHECK_EQ(result.width, 640u);
 	CHECK_EQ(result.height, 480u);
 	CHECK_STR(result.pixel_format, "yuv420");
-	CHECK(result.metadata.exif == tiff_with_orientation(6));
+	CHECK(result.metadata.exif == big_endian_orientation_tiff(6));
 	CHECK(result.orientation == 6);
 	CHECK(!result.container_transform);
 	CHECK_STR(to_string(result.metadata.xmp), "<x:xmpmeta/>");
@@ -535,7 +341,7 @@ TEST("heif metadata: idat, several extents, the older XMP type, IPTC, and the la
 	const auto result = scan_bytes(file, libfiles::scan_intent::inspect);
 
 	CHECK(result.success);
-	CHECK(result.metadata.exif == tiff_with_orientation(3));
+	CHECK(result.metadata.exif == big_endian_orientation_tiff(3));
 	CHECK(result.orientation == 3);
 	CHECK_STR(to_string(result.metadata.xmp), "<older-xmp-type/>");
 	CHECK_STR(to_string(result.metadata.iptc), "iptc records");
@@ -552,7 +358,8 @@ TEST("heif metadata: idat, several extents, the older XMP type, IPTC, and the la
 
 TEST("heif colour profiles: prof, rICC and nclx with an identity matrix")
 {
-	const auto icc = scan_bytes(make_heif(simple_heic({colr_icc("rICC", "restricted")})), libfiles::scan_intent::inspect);
+	const auto icc = scan_bytes(make_heif(simple_heic({colr_icc("rICC", "restricted")})),
+	                            libfiles::scan_intent::inspect);
 	CHECK_STR(to_string(icc.metadata.icc), "restricted");
 	CHECK_STR(row_value(icc.structure, "Colour profile"), "ICC");
 
@@ -561,13 +368,57 @@ TEST("heif colour profiles: prof, rICC and nclx with an identity matrix")
 	CHECK_STR(rgb.pixel_format, "yuv444");
 	CHECK(rgb.metadata.icc.empty());
 	CHECK_STR(row_value(rgb.structure, "Colour profile"), "nclx (coded primaries and transfer)");
+	CHECK_STR(row_value(rgb.structure, "Colour"), "BT.709 primaries, sRGB transfer, identity matrix (RGB), full range");
 
 	// Unspecified everything, full range, is libheif's own default: no profile at all.
 	const auto none = scan_bytes(make_heif(simple_heic({colr_nclx(2, 2, 2, true)})), libfiles::scan_intent::inspect);
 	CHECK_STR(row_value(none.structure, "Colour profile"), "none");
+	CHECK_STR(row_value(none.structure, "Colour"), "(none)");
+
+	// The primaries and transfer an nclx names are reported, whatever the profile beside them; without one, none are.
+	CHECK_EQ(rgb.colour_primaries, 1);
+	CHECK_EQ(rgb.colour_transfer, 13);
+	const auto pq = scan_bytes(make_heif(simple_heic({colr_nclx(12, 16, 0, true)})));
+	CHECK_EQ(pq.colour_primaries, 12);
+	CHECK_EQ(pq.colour_transfer, 16);
+	CHECK(pq.hdr);
+	CHECK_EQ(none.colour_primaries, 2);
+	CHECK_EQ(icc.colour_primaries, 2);
 
 	// A colour description of a type libheif does not know refuses the file.
 	CHECK(!scan_bytes(make_heif(simple_heic({iso_box("colr", to_bytes("what"))}))).error.empty());
+}
+
+TEST("heif scan says the primary carries Apple's gain map from its items, reading none of them")
+{
+	const auto with_aux = [](const std::string_view type, const std::size_t data_bytes = 32)
+	{
+		auto s = simple_heic();
+		s.properties.push_back(auxc(type));
+		s.items.push_back(image_item(2, "hvc1", {{1, false}, {2, true}, {3, false}}));
+		s.items.back().data = bytes(data_bytes, 0x22);
+		s.references.push_back({"auxl", 2, {1}});
+		s.mdat_first = true;
+		return make_heif(s);
+	};
+
+	constexpr std::string_view apple_type = "urn:com:apple:photo:2020:aux:hdrgainmap";
+	const auto apple = with_aux(apple_type);
+	const auto scanned = scan_bytes(apple);
+	CHECK(scanned.success);
+	CHECK(scanned.gain_map);
+	CHECK(scan_bytes(apple, libfiles::scan_intent::inspect).gain_map);
+
+	// Over a stream, the gain map's own data is never read to say so.
+	const auto large = with_aux(apple_type, 300000);
+	counting_stream s(large);
+	libfiles::reader r(s);
+	CHECK(libfiles::scan(r).gain_map);
+	CHECK(r.source_bytes() < large.size() / 2);
+
+	// Another auxiliary image - a depth map - is no gain map, and nor is a picture without any.
+	CHECK(!scan_bytes(with_aux("urn:mpeg:hevc:2015:auxid:2")).gain_map);
+	CHECK(!scan_bytes(make_heif(simple_heic())).gain_map);
 }
 
 TEST("heif auxiliary images: alpha with premultiplication, depth, and thumbnails")
@@ -676,7 +527,9 @@ TEST("avif scan reads the AV1 configuration's chroma and depth")
 	CHECK_STR(scan_bytes(avif(av1c(false, 1, 1, 10))).pixel_format, "yuv420");
 	CHECK_STR(scan_bytes(avif(av1c(false, 1, 0, 8))).pixel_format, "yuv422");
 	CHECK_STR(scan_bytes(avif(av1c(false, 0, 0, 12))).pixel_format, "yuv444");
-	CHECK_STR(row_value(scan_bytes(avif(av1c(false, 0, 0, 12)), libfiles::scan_intent::inspect).structure, "Luma depth"), "12 bits");
+	CHECK_STR(row_value(scan_bytes(avif(av1c(false, 0, 0, 12)), libfiles::scan_intent::inspect).structure,
+	                    "Luma depth"),
+	          "12 bits");
 
 	// The picture names the depth the configuration states, as a video stream's does.
 	CHECK_STR(scan_bytes(avif(av1c(false, 1, 1, 10))).picture.name(), "yuv420 10bit");
@@ -717,7 +570,8 @@ TEST("a HEIF still and a video read the same hvcC and av1C records as the same p
 		return v.picture();
 	};
 
-	for (const auto& [chroma, bits] : std::vector<std::pair<unsigned, unsigned>>{{0, 8}, {1, 8}, {1, 10}, {2, 10}, {3, 12}})
+	for (const auto& [chroma, bits] :
+	     std::vector<std::pair<unsigned, unsigned>>{{0, 8}, {1, 8}, {1, 10}, {2, 10}, {3, 12}})
 	{
 		const auto config = hvcc(chroma, bits, bits);
 		CHECK(still(config, "hvc1").chroma != libfiles::chroma_format::unknown);
@@ -725,8 +579,11 @@ TEST("a HEIF still and a video read the same hvcC and av1C records as the same p
 	}
 
 	for (const auto& [monochrome, x, y, bits] : std::vector<std::tuple<bool, unsigned, unsigned, unsigned>>{
-		     {true, 1, 1, 8}, {false, 1, 1, 10}, {false, 1, 0, 8}, {false, 0, 0, 12},
-	     })
+			 {true, 1, 1, 8},
+			 {false, 1, 1, 10},
+			 {false, 1, 0, 8},
+			 {false, 0, 0, 12},
+		 })
 	{
 		const auto config = av1c(monochrome, x, y, bits);
 		CHECK(still(config, "av01").chroma != libfiles::chroma_format::unknown);
@@ -812,7 +669,8 @@ TEST("heif files libheif refuses are refused")
 	CHECK(!scan_bytes(make_heif(simple_heic({required({"dimg", "tbas"})}))).error.empty());
 
 	// A scaling with a zero term, and a property cut short that libheif parses only to keep.
-	CHECK(!scan_bytes(make_heif(simple_heic({iso_full_box("iscl", 0, 0, builder().be16(1).be16(0).be16(1).be16(1).b)}))).error.empty());
+	CHECK(!scan_bytes(make_heif(simple_heic({iso_full_box("iscl", 0, 0, builder().be16(1).be16(0).be16(1).be16(1).b)})))
+	           .error.empty());
 	CHECK(scan_bytes(make_heif(simple_heic({iso_box("a1op", builder().u8(0).b)}))).success);
 	CHECK(!scan_bytes(make_heif(simple_heic({iso_box("a1op", {})}))).error.empty());
 }
@@ -857,7 +715,8 @@ TEST("heif boxes the scan has no use for are checked as libheif checks them")
 	};
 
 	auto well_formed = simple_heic();
-	well_formed.meta_boxes = {iso_box("grpl", builder().raw(group("altr", {1, 2})).raw(group("ster", {1, 2})).b), dref(1)};
+	well_formed.meta_boxes = {iso_box("grpl", builder().raw(group("altr", {1, 2})).raw(group("ster", {1, 2})).b),
+	                          dref(1)};
 	const auto file = make_heif(well_formed);
 	CHECK(scan_bytes(file).success);
 
@@ -896,7 +755,8 @@ TEST("heif boxes the scan has no use for are checked as libheif checks them")
 	// Every meta box is parsed, and the last one read: an earlier one libheif cannot parse refuses the
 	// file, and one it can is passed over.
 	auto earlier = simple_heic();
-	earlier.before_meta = iso_full_box("meta", 0, 0, iso_full_box("hdlr", 0, 0, builder().be32(0).raw("none").zeros(12).u8(0).b));
+	earlier.before_meta = iso_full_box("meta", 0, 0,
+	                                   iso_full_box("hdlr", 0, 0, builder().be32(0).raw("none").zeros(12).u8(0).b));
 	CHECK(scan_bytes(make_heif(earlier)).success);
 	earlier.before_meta = iso_full_box("meta", 1, 0, {});
 	CHECK(!scan_bytes(make_heif(earlier)).error.empty());
@@ -939,7 +799,7 @@ namespace
 
 	bytes exif_box(const unsigned orientation)
 	{
-		return iso_box("Exif", builder().be32(0).raw(tiff_with_orientation(orientation)).b);
+		return iso_box("Exif", builder().be32(0).raw(big_endian_orientation_tiff(orientation)).b);
 	}
 }
 
@@ -978,12 +838,13 @@ TEST("jxl bare codestream gives its size, orientation and channels")
 
 TEST("jxl container gives its metadata boxes, and the EXIF orientation wins")
 {
-	const auto file = container({exif_box(8), iso_box("xml ", to_bytes("<x:xmpmeta/>")), iso_box("jxlc", codestream({.orientation = 3}))});
+	const auto file = container(
+		{exif_box(8), iso_box("xml ", to_bytes("<x:xmpmeta/>")), iso_box("jxlc", codestream({.orientation = 3}))});
 	const auto result = scan_bytes(file, libfiles::scan_intent::inspect);
 
 	CHECK(result.success);
 	CHECK_EQ(result.width, 64u);
-	CHECK(result.metadata.exif == tiff_with_orientation(8));
+	CHECK(result.metadata.exif == big_endian_orientation_tiff(8));
 	CHECK(result.orientation == 8);
 	CHECK_STR(to_string(result.metadata.xmp), "<x:xmpmeta/>");
 	CHECK(has_row_named(result.structure, "Boxes (5)"));
@@ -1000,7 +861,8 @@ TEST("jxl headers split across partial codestream boxes read whole")
 	const std::span<const std::uint8_t> all(stream);
 
 	// The headers cut after five bytes, with the metadata boxes between the two parts.
-	const auto file = container({jxlp(0, false, all.first(5)), exif_box(1), iso_box("xml ", to_bytes("<p/>")), jxlp(1, true, all.subspan(5))});
+	const auto file = container(
+		{jxlp(0, false, all.first(5)), exif_box(1), iso_box("xml ", to_bytes("<p/>")), jxlp(1, true, all.subspan(5))});
 	const auto result = scan_bytes(file);
 
 	CHECK(result.success);
@@ -1011,7 +873,8 @@ TEST("jxl headers split across partial codestream boxes read whole")
 	CHECK_STR(to_string(result.metadata.xmp), "<p/>");
 
 	// A part out of order is a fault in a version 0 file: the boxes before it stand.
-	const auto disordered = scan_bytes(container({exif_box(2), jxlp(1, true, all.subspan(5)), jxlp(0, false, all.first(5))}));
+	const auto disordered = scan_bytes(
+		container({exif_box(2), jxlp(1, true, all.subspan(5)), jxlp(0, false, all.first(5))}));
 	CHECK(!disordered.success);
 	CHECK(disordered.orientation == 2);
 }
@@ -1049,7 +912,8 @@ TEST("jxl headers cut into a part for every byte read as they do whole")
 
 TEST("jxl compressed boxes need a decompressor, and one that fails stops the boxes")
 {
-	const auto file = container({iso_box("jxlc", codestream({})), brob("Exif", builder().be32(0).raw(tiff_with_orientation(5)).b),
+	const auto file = container({iso_box("jxlc", codestream({})),
+	                             brob("Exif", builder().be32(0).raw(big_endian_orientation_tiff(5)).b),
 	                             brob("xml ", to_bytes("<compressed/>"))});
 
 	// Without one, the compressed boxes are left out.
@@ -1067,7 +931,8 @@ TEST("jxl compressed boxes need a decompressor, and one that fails stops the box
 
 	// A box the decompressor refuses ends the boxes, as libjxl ends at it.
 	const auto broken = container({iso_box("jxlc", codestream({})), iso_box("xml ", to_bytes("<before/>")),
-	                               iso_box("brob", builder().raw("Exif").raw("not brotli").b), iso_box("xml ", to_bytes("<after/>"))});
+	                               iso_box("brob", builder().raw("Exif").raw("not brotli").b),
+	                               iso_box("xml ", to_bytes("<after/>"))});
 	const auto stopped = scan_bytes(broken, libfiles::scan_intent::index, with_brotli());
 	CHECK(stopped.success);
 	CHECK_STR(to_string(stopped.metadata.xmp), "<before/>");
@@ -1092,7 +957,8 @@ TEST("jxl compressed boxes decompress to a bounded total, however many there are
 		returned = 0;
 
 		libfiles::scan_limits limits;
-		limits.brotli = [&](std::span<const std::uint8_t>, std::string_view, const std::size_t max_size) -> std::optional<bytes>
+		limits.brotli = [&](std::span<const std::uint8_t>, std::string_view,
+		                    const std::size_t max_size) -> std::optional<bytes>
 		{
 			asked.push_back(max_size);
 			const auto size = expand(max_size);
@@ -1166,16 +1032,18 @@ TEST("jxl partial codestream boxes are not kept, however many there are")
 TEST("jxl boxes count only once the decoder moves past them")
 {
 	// The last packet wins, but only a box followed by a whole box or the end of the file counts.
-	const auto both = scan_bytes(container({iso_box("jxlc", codestream({})), iso_box("xml ", to_bytes("<one/>")),
-	                                        iso_box("xml ", to_bytes("<two/>"))}));
+	const auto both = scan_bytes(container(
+		{iso_box("jxlc", codestream({})), iso_box("xml ", to_bytes("<one/>")), iso_box("xml ", to_bytes("<two/>"))}));
 	CHECK_STR(to_string(both.metadata.xmp), "<two/>");
 
-	auto trailing = container({iso_box("jxlc", codestream({})), iso_box("xml ", to_bytes("<one/>")), iso_box("xml ", to_bytes("<two/>"))});
+	auto trailing = container(
+		{iso_box("jxlc", codestream({})), iso_box("xml ", to_bytes("<one/>")), iso_box("xml ", to_bytes("<two/>"))});
 	trailing.insert(trailing.end(), {1, 2, 3});
 	CHECK_STR(to_string(scan_bytes(trailing).metadata.xmp), "<one/>");
 
 	// A container whose codestream never comes keeps nothing of its last box.
-	const auto no_codestream = scan_bytes(container({iso_box("xml ", to_bytes("<one/>")), iso_box("xml ", to_bytes("<two/>"))}));
+	const auto no_codestream = scan_bytes(
+		container({iso_box("xml ", to_bytes("<one/>")), iso_box("xml ", to_bytes("<two/>"))}));
 	CHECK(!no_codestream.success);
 	CHECK(no_codestream.error.empty());
 	CHECK_STR(to_string(no_codestream.metadata.xmp), "<one/>");
@@ -1195,13 +1063,15 @@ TEST("jxl boxes count only once the decoder moves past them")
 	CHECK_STR(to_string(unfinished.metadata.xmp), "<one/>");
 
 	// So does a codestream box: nothing after it is a box.
-	const auto open_stream = scan_bytes(container({iso_box("xml ", to_bytes("<x/>")), builder().be32(0).raw("jxlc").raw(codestream({})).b}));
+	const auto open_stream = scan_bytes(
+		container({iso_box("xml ", to_bytes("<x/>")), builder().be32(0).raw("jxlc").raw(codestream({})).b}));
 	CHECK(open_stream.success);
 	CHECK_STR(to_string(open_stream.metadata.xmp), "<x/>");
 
 	// A 64-bit box size reads as any other.
 	const auto stream = codestream({.width = 96});
-	const auto wide = container({builder().be32(1).raw("jxlc").be32(0).be32(static_cast<std::uint32_t>(stream.size() + 16)).raw(stream).b});
+	const auto wide = container(
+		{builder().be32(1).raw("jxlc").be32(0).be32(static_cast<std::uint32_t>(stream.size() + 16)).raw(stream).b});
 	CHECK_EQ(scan_bytes(wide).width, 96u);
 }
 

@@ -1,10 +1,11 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Listing a Commodore 64 image - a D64, D71 or D81 disk's directory, a T64 tape's, a CRT
-// cartridge's name, a P00 or PRG program - and drawing the listing in the C64's 8x8 character set.
-// Moved from Diffractor unchanged, its fields read a byte at a time rather than through packed structs.
+// cartridge's name, a P00 or PRG program - with the name the image gives itself, and drawing the listing
+// in the C64's 8x8 character set. Moved from Diffractor unchanged, its fields read a byte at a time rather
+// than through packed structs.
 
 #include "libfiles/commodore.h"
 
@@ -26,7 +27,20 @@ namespace
 		std::uint8_t file_type = 0;
 		std::vector<std::uint8_t> pet_name;
 		std::uint32_t file_size = 0;
+		bool space_padded = false; // a T64 pads its names with spaces rather than $A0
 	};
+
+	// A name as a drive compares it: up to the first $A0 padding byte or NUL, and for a T64 without
+	// the spaces it pads with.
+	std::vector<std::uint8_t> stored_name(const media_entry& entry)
+	{
+		const auto& n = entry.pet_name;
+		const auto end = std::find_if(n.begin(), n.end(), [](const std::uint8_t c) { return c == 0xA0 || c == 0; });
+		std::vector<std::uint8_t> name(n.begin(), end);
+		if (entry.space_padded)
+			while (!name.empty() && name.back() == 0x20) name.pop_back();
+		return name;
+	}
 
 	using media_entries = std::vector<media_entry>;
 
@@ -99,18 +113,18 @@ namespace
 		{0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00}, // 0x3D =
 		{0x70, 0x18, 0x0C, 0x06, 0x0C, 0x18, 0x70, 0x00}, // 0x3E >
 		{0x3C, 0x66, 0x06, 0x0C, 0x18, 0x00, 0x18, 0x00}, // 0x3F ?
-		// 0x40-0x7F: the CBM graphics characters, blank.
+														  // 0x40-0x7F: the CBM graphics characters, blank.
 	};
 
 	// The C64 screen code, which indexes c64_font_8x8, for a PETSCII code.
 	std::uint8_t petscii_to_screen_code(const std::uint8_t c)
 	{
-		if (c < 0x40) return c; // 0x20-0x3F: punctuation and digits
+		if (c < 0x40) return c;                                   // 0x20-0x3F: punctuation and digits
 		if (c < 0x60) return static_cast<std::uint8_t>(c - 0x40); // 0x40-0x5F: @ A-Z [ pound ] up-arrow left-arrow
 		if (c < 0x80) return static_cast<std::uint8_t>(c - 0x20); // 0x60-0x7F: graphics
 		if (c < 0xC0) return static_cast<std::uint8_t>(c - 0x40); // 0xA0-0xBF: graphics
 		if (c < 0xFF) return static_cast<std::uint8_t>(c - 0x80); // 0xC0-0xFE: graphics
-		return 0x5E; // 0xFF
+		return 0x5E;                                              // 0xFF
 	}
 
 	// The screen code a raw PETSCII or ASCII byte is drawn with. Control codes, space and shifted space
@@ -128,6 +142,33 @@ namespace
 		if (c >= 0x20 && c <= 0x5A) return static_cast<char>(c);
 		if (c >= 0xC1 && c <= 0xDA) return static_cast<char>(c - 0x80); // shifted A-Z
 		return ' ';
+	}
+
+	// A name an image's header holds, in the plain text of the listing, without the shifted spaces, spaces or
+	// NULs that pad it.
+	std::string trimmed_text(const std::string& text)
+	{
+		const auto first = text.find_first_not_of(' ');
+		if (first == std::string::npos) return {};
+		return text.substr(first, text.find_last_not_of(' ') - first + 1);
+	}
+
+	std::string header_text(const std::uint8_t* const data, const std::size_t len)
+	{
+		std::string text;
+		text.reserve(len);
+		for (std::size_t i = 0; i < len; ++i) text += to_ascii(data[i]);
+		return trimmed_text(text);
+	}
+
+	// A cartridge's name, which its header holds as ASCII rather than PETSCII, so a lower-case letter is a letter.
+	std::string ascii_header_text(const std::uint8_t* const data, const std::size_t len)
+	{
+		std::string text;
+		text.reserve(len);
+		for (std::size_t i = 0; i < len; ++i)
+			text += data[i] >= 0x20 && data[i] < 0x7F ? static_cast<char>(data[i]) : ' ';
+		return trimmed_text(text);
 	}
 
 	// A real 1581 directory holds at most 296 entries, so this only bites on a corrupt or hostile image,
@@ -163,8 +204,7 @@ namespace
 				do
 				{
 					push(' ');
-				}
-				while (line.size() < 4);
+				} while (line.size() < 4);
 
 				push('\"');
 
@@ -201,7 +241,7 @@ namespace
 				}
 
 				result.columns = std::max(result.columns, static_cast<std::uint32_t>(codes.size()));
-				result.rows.push_back({std::move(line), std::move(codes)});
+				result.rows.push_back({std::move(line), std::move(codes), stored_name(entry), entry.file_type});
 			}
 		}
 
@@ -213,7 +253,7 @@ namespace
 		unknown,
 		d64, // 1541 single sided (35 or 40 tracks, optional error info)
 		d71, // 1571 double sided (70 tracks, optional error info)
-		d81 // 1581 3.5" (80 tracks)
+		d81  // 1581 3.5" (80 tracks)
 	};
 
 	disk_format classify_disk(const std::size_t len)
@@ -230,8 +270,7 @@ namespace
 			return disk_format::d71;
 		case 819200: // 80 tracks
 			return disk_format::d81;
-		default:
-			return disk_format::unknown;
+		default: return disk_format::unknown;
 		}
 	}
 
@@ -266,12 +305,26 @@ namespace
 		return (sectors + sector) * sector_size;
 	}
 
+	// A disk's name, from the header the C64 lists above its directory: at 0x90 in a 1541's or 1571's track 18
+	// sector 0, at 4 in a 1581's track 40 sector 0.
+	std::string disk_title(const std::uint8_t* const data, const std::size_t data_len)
+	{
+		const auto fmt = classify_disk(data_len);
+		if (fmt == disk_format::unknown) return {};
+
+		constexpr std::size_t name_len = 16;
+		const auto at = fmt == disk_format::d81 ? disk_sector_offset(fmt, 40, 0) + 0x04
+		                                        : disk_sector_offset(fmt, 18, 0) + 0x90;
+
+		if (at < 0 || static_cast<std::size_t>(at) + name_len > data_len) return {};
+		return header_text(data + at, name_len);
+	}
+
 	media_entries parse_disk(const std::uint8_t* const data, const std::size_t data_len)
 	{
 		const auto fmt = classify_disk(data_len);
 
-		if (fmt == disk_format::unknown)
-			return {};
+		if (fmt == disk_format::unknown) return {};
 
 		constexpr int sector_size = 256;
 		constexpr int dir_entry_size = 32;
@@ -288,12 +341,9 @@ namespace
 		{
 			const auto dir_sector_offset = disk_sector_offset(fmt, next_track, next_sector);
 
-			if (dir_sector_offset < 0 ||
-				dir_sector_offset + sector_size > static_cast<int>(data_len))
-				break;
+			if (dir_sector_offset < 0 || dir_sector_offset + sector_size > static_cast<int>(data_len)) break;
 
-			if (!visited.insert(dir_sector_offset).second)
-				break; // a sector already visited: the chain loops
+			if (!visited.insert(dir_sector_offset).second) break; // a sector already visited: the chain loops
 
 			for (int i = 0; i < sector_size; i += dir_entry_size)
 			{
@@ -330,8 +380,7 @@ namespace
 	{
 		media_entries result;
 
-		if (data_len < t64_header_size)
-			return result;
+		if (data_len < t64_header_size) return result;
 
 		const std::uint16_t entry_room = load_le16(data + 34);
 		const std::uint16_t used_entries = load_le16(data + 36);
@@ -344,13 +393,11 @@ namespace
 		{
 			const auto dir_offset = t64_header_size + i * t64_entry_size;
 
-			if (dir_offset + t64_entry_size > data_len)
-				break;
+			if (dir_offset + t64_entry_size > data_len) break;
 
 			const auto* const file = data + dir_offset;
 
-			if (file[0] == 0)
-				continue; // a free entry
+			if (file[0] == 0) continue; // a free entry
 
 			const std::uint8_t type_1541 = file[1];
 			const std::uint16_t start_address = load_le16(file + 2);
@@ -359,10 +406,11 @@ namespace
 			media_entry entry;
 			entry.file_type = type_1541 ? type_1541 : 0x82; // PRG unless it says otherwise
 			entry.pet_name.assign(file + 16, file + 16 + 16);
+			entry.space_padded = true;
 
 			const std::uint32_t data_bytes = end_address > start_address
-				                                 ? static_cast<std::uint32_t>(end_address - start_address)
-				                                 : 0u;
+			                                     ? static_cast<std::uint32_t>(end_address - start_address)
+			                                     : 0u;
 			entry.file_size = (data_bytes + 2 + 253) / 254; // the load address and the data, in disk blocks
 			result.push_back(entry);
 		}
@@ -374,8 +422,7 @@ namespace
 	{
 		media_entries result;
 
-		if (data_len < crt_header_size)
-			return result;
+		if (data_len < crt_header_size) return result;
 
 		// A cartridge is one item however many ROM (CHIP) banks it holds, so it is listed once, by name.
 		media_entry entry;
@@ -393,8 +440,7 @@ namespace
 	{
 		media_entries result;
 
-		if (data_len < 26)
-			return result;
+		if (data_len < 26) return result;
 
 		media_entry entry;
 		entry.file_type = 0x82; // PRG
@@ -412,11 +458,10 @@ namespace
 	{
 		media_entries result;
 
-		if (data_len < 2)
-			return result;
+		if (data_len < 2) return result;
 
 		media_entry entry;
-		entry.file_type = 0x82; // PRG
+		entry.file_type = 0x82;          // PRG
 		entry.pet_name.assign(16, 0xA0); // shifted spaces, which draw as blanks
 		// The load address counts towards the blocks, as it does inside a P00.
 		entry.file_size = static_cast<std::uint32_t>((data_len + 253) / 254);
@@ -432,28 +477,31 @@ libfiles::c64_listing libfiles::list_c64_media(const std::span<const std::uint8_
 	const auto len = file.size();
 
 	media_entries media;
+	std::string title;
 
-	if (len >= 8 &&
-		std::memcmp(data, "C64File", 7) == 0)
+	if (len >= 8 && std::memcmp(data, "C64File", 7) == 0)
 	{
 		media = parse_p00(data, len);
+		if (len >= 26) title = header_text(data + 8, 16);
 	}
-	else if (len > 32 &&
-		std::memcmp(data, "C64", 3) == 0 &&
-		// The 32-byte description is not fixed text: writers emit "C64 tape image file", "C64S tape
-		// image file" and "C64S tape file", so match what they share rather than one spelling.
-		std::string_view(reinterpret_cast<const char*>(data), 32).find("tape") != std::string_view::npos)
+	else if (len > 32 && std::memcmp(data, "C64", 3) == 0 &&
+	         // The 32-byte description is not fixed text: writers emit "C64 tape image file", "C64S tape
+	         // image file" and "C64S tape file", so match what they share rather than one spelling.
+	         std::string_view(reinterpret_cast<const char*>(data), 32).find("tape") != std::string_view::npos)
 	{
 		media = parse_t64(data, len);
+		// The tape's own name follows the counts and two reserved bytes, to the end of the header.
+		if (len >= t64_header_size) title = header_text(data + 40, t64_header_size - 40);
 	}
-	else if (len >= crt_header_size &&
-		std::memcmp(data, "C64 CARTRIDGE   ", 16) == 0)
+	else if (len >= crt_header_size && std::memcmp(data, "C64 CARTRIDGE   ", 16) == 0)
 	{
 		media = parse_crt(data, len);
+		title = ascii_header_text(data + 32, 32);
 	}
 	else if (classify_disk(len) != disk_format::unknown)
 	{
 		media = parse_disk(data, len);
+		title = disk_title(data, len);
 	}
 	else if (len <= 65538)
 	{
@@ -463,7 +511,9 @@ libfiles::c64_listing libfiles::list_c64_media(const std::span<const std::uint8_
 		media = parse_prg(len);
 	}
 
-	return dir_list(media);
+	auto listing = dir_list(media);
+	listing.title = std::move(title);
+	return listing;
 }
 
 void libfiles::draw_c64_listing(const c64_listing& listing, const pixel_buffer pixels, const std::uint32_t foreground,

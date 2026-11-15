@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for read_exif, for summarize_exif's agreement with it, and for the EXIF writers. Each
 // EXIF block is laid out here entry by entry, in both byte orders, so every value the reader reports is
@@ -51,9 +51,7 @@ namespace
 	class tiff
 	{
 	public:
-		explicit tiff(const bool little) : _little(little)
-		{
-		}
+		explicit tiff(const bool little) : _little(little) {}
 
 		bool little() const { return _little; }
 
@@ -129,7 +127,8 @@ namespace
 				offsets.push_back(pos);
 				pos += static_cast<std::uint32_t>(2 + 12 * d.size() + 4);
 				for (const auto& f : d)
-					if (f.directory < 0 && f.value.size() > 4) pos += static_cast<std::uint32_t>((f.value.size() + 1) & ~std::size_t{1});
+					if (f.directory < 0 && f.value.size() > 4)
+						pos += static_cast<std::uint32_t>((f.value.size() + 1) & ~std::size_t{1});
 			}
 
 			bytes out = _little ? bytes{'I', 'I'} : bytes{'M', 'M'};
@@ -201,7 +200,10 @@ namespace
 		return out;
 	}
 
-	bool near(const double a, const double b) { return std::fabs(a - b) < 1e-6; }
+	bool near(const double a, const double b)
+	{
+		return std::fabs(a - b) < 1e-6;
+	}
 }
 
 TEST("exif reads the camera, the exposure and the dates, in both byte orders")
@@ -262,12 +264,8 @@ TEST("tiff scan reads camera exposure and dates without reading image data")
 	{
 		const tiff t(little);
 		const directory ifd0 = {
-			t.short_field(0x0100, 640),
-			t.short_field(0x0101, 480),
-			t.ascii_field(0x010f, "Canon"),
-			t.ascii_field(0x0110, "EOS R5"),
-			t.short_field(0x0112, 6),
-			t.ascii_field(0x0132, "2024:05:06 07:08:09"),
+			t.short_field(0x0100, 640),      t.short_field(0x0101, 480), t.ascii_field(0x010f, "Canon"),
+			t.ascii_field(0x0110, "EOS R5"), t.short_field(0x0112, 6),   t.ascii_field(0x0132, "2024:05:06 07:08:09"),
 			tiff::pointer(0x8769, 1),
 		};
 		const directory exif = {
@@ -342,7 +340,8 @@ TEST("exif decodes text however a camera or Windows wrote it")
 		const tiff t(little);
 
 		bytes ascii_comment = {'A', 'S', 'C', 'I', 'I', 0, 0, 0};
-		for (const auto c : std::string_view("  shot at dawn\0\0", 16)) ascii_comment.push_back(static_cast<std::uint8_t>(c));
+		for (const auto c : std::string_view("  shot at dawn\0\0", 16))
+			ascii_comment.push_back(static_cast<std::uint8_t>(c));
 
 		bytes unicode_comment = {'U', 'N', 'I', 'C', 'O', 'D', 'E', 0};
 		const auto text = utf16(u"caf\u00e9 \U0001F600", little);
@@ -470,24 +469,26 @@ TEST("exif reads where a photograph was taken, and how high and fast")
 	const tiff t(true);
 
 	// The equator is a place; exactly 0, 0 is a receiver with no fix; one coordinate alone is none.
-	const auto equator = libfiles::read_exif(t.build({{tiff::pointer(0x8825, 1)},
-	                                                  {{0x0002, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})},
-	                                                   {0x0004, type_rational, 3, t.rationals({{36, 1}, {49, 1}, {0, 1}})}}}));
+	const auto equator = libfiles::read_exif(
+		t.build({{tiff::pointer(0x8825, 1)},
+	             {{0x0002, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})},
+	              {0x0004, type_rational, 3, t.rationals({{36, 1}, {49, 1}, {0, 1}})}}}));
 	CHECK(equator.latitude && *equator.latitude == 0.0);
 	CHECK(equator.longitude && near(*equator.longitude, 36 + 49 / 60.0));
 
-	const auto no_fix = libfiles::read_exif(t.build({{tiff::pointer(0x8825, 1)},
-	                                                 {{0x0002, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})},
-	                                                  {0x0004, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})}}}));
+	const auto no_fix = libfiles::read_exif(
+		t.build({{tiff::pointer(0x8825, 1)},
+	             {{0x0002, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})},
+	              {0x0004, type_rational, 3, t.rationals({{0, 1}, {0, 1}, {0, 1}})}}}));
 	CHECK(!no_fix.latitude && !no_fix.longitude);
 
-	const auto alone = libfiles::read_exif(t.build({{tiff::pointer(0x8825, 1)},
-	                                                {{0x0002, type_rational, 3, t.rationals({{10, 1}, {0, 1}, {0, 1}})}}}));
+	const auto alone = libfiles::read_exif(
+		t.build({{tiff::pointer(0x8825, 1)}, {{0x0002, type_rational, 3, t.rationals({{10, 1}, {0, 1}, {0, 1}})}}}));
 	CHECK(!alone.latitude && !alone.longitude);
 
 	// A time stamp of fewer than three rationals is not a time.
-	const auto short_time = libfiles::read_exif(t.build({{tiff::pointer(0x8825, 1)},
-	                                                     {{0x0007, type_rational, 2, t.rationals({{14, 1}, {30, 1}})}}}));
+	const auto short_time = libfiles::read_exif(
+		t.build({{tiff::pointer(0x8825, 1)}, {{0x0007, type_rational, 2, t.rationals({{14, 1}, {30, 1}})}}}));
 	CHECK(!short_time.gps_time);
 }
 
@@ -512,7 +513,8 @@ TEST("exif names a canon lens from its maker note, unless LensModel follows")
 	{
 		directory exif = {{0x927c, type_undefined, 4, {}, 2}};
 		if (lens_model) exif.push_back(t.ascii_field(0xa434, "RF 24-105mm"));
-		return libfiles::read_exif(t.build({{t.ascii_field(0x010f, "CANON"), tiff::pointer(0x8769, 1)}, exif, {camera_settings}}));
+		return libfiles::read_exif(
+			t.build({{t.ascii_field(0x010f, "CANON"), tiff::pointer(0x8769, 1)}, exif, {camera_settings}}));
 	};
 
 	// Id 4 names two lenses; the first is taken.
@@ -523,7 +525,8 @@ TEST("exif names a canon lens from its maker note, unless LensModel follows")
 
 	// Not Canon's camera, so not Canon's maker note.
 	const auto other = libfiles::read_exif(t.build({{t.ascii_field(0x010f, "Nikon"), tiff::pointer(0x8769, 1)},
-	                                               {{0x927c, type_undefined, 4, {}, 2}}, {settings(4, 0, 0, 0)}}));
+	                                                {{0x927c, type_undefined, 4, {}, 2}},
+	                                                {settings(4, 0, 0, 0)}}));
 	CHECK(other.lens.empty());
 }
 
@@ -557,7 +560,8 @@ TEST("exif summary and reading agree on the orientation of a damaged block")
 		const tiff t(little_endian);
 		auto block = t.build({{t.ascii_field(0x010f, "Canon"), t.short_field(0x0112, 6), tiff::pointer(0x8769, 1)},
 		                      {t.short_field(0x0112, 3), t.rational_field(0x829d, 28, 10)},
-		                      {t.short_field(0x0112, 8)}}, 2);
+		                      {t.short_field(0x0112, 8)}},
+		                     2);
 		auto readings = 0;
 		auto disagreements = 0;
 
@@ -568,7 +572,8 @@ TEST("exif summary and reading agree on the orientation of a damaged block")
 			for (const auto value : {0, 1, 3, 8, 12, 0xff, original ^ 0xff})
 			{
 				block[at] = static_cast<std::uint8_t>(value);
-				if (libfiles::summarize_exif(block).orientation != libfiles::read_exif(block).orientation) ++disagreements;
+				if (libfiles::summarize_exif(block).orientation != libfiles::read_exif(block).orientation)
+					++disagreements;
 				++readings;
 			}
 
@@ -586,11 +591,13 @@ TEST("exif counts only well-formed entries, and reads a damaged block as far as 
 
 	// An unknown type, DOUBLE, no values, or values past the end are not counted.
 	const directory ifd0 = {
+		// clang-format off
 		{0x010f, 0xfc, 2, {'a', 0, 0, 0}},
 		{0x0110, 12, 1, t.rationals({{1, 1}})},
 		{0x0112, type_short, 0, {6, 0, 0, 0}},
 		{0x0131, type_ascii, 0x100000, {8, 0, 0, 0}},
 		t.ascii_field(0x013b, "ok"),
+		// clang-format on
 	};
 	const auto m = libfiles::read_exif(t.build({ifd0}));
 	CHECK(m.camera_make.empty());
@@ -601,8 +608,9 @@ TEST("exif counts only well-formed entries, and reads a damaged block as far as 
 	CHECK_STR(m.artist, "ok");
 
 	// A directory that points back at itself, or at IFD0, is read once.
-	const auto loop = libfiles::read_exif(t.build({{t.ascii_field(0x010f, "make"), tiff::pointer(0x8769, 1)},
-	                                              {tiff::pointer(0x8769, 1), tiff::pointer(0xa005, 0), t.short_field(0x8827, 200)}}));
+	const auto loop = libfiles::read_exif(
+		t.build({{t.ascii_field(0x010f, "make"), tiff::pointer(0x8769, 1)},
+	             {tiff::pointer(0x8769, 1), tiff::pointer(0xa005, 0), t.short_field(0x8827, 200)}}));
 	CHECK_STR(loop.camera_make, "make");
 	CHECK_EQ(loop.iso_speed, 200u);
 
@@ -747,18 +755,20 @@ TEST("exif numbers are overwritten where they stand, and nothing else changes")
 	for (const auto little : {true, false})
 	{
 		const tiff t(little);
-		const auto original = t.build({
-			{t.short_field(0x0112, 6), tiff::pointer(0x8769, 1)},
+		const auto original = t.build(
 			{
-				{0xa002, type_long, 1, t.u32(4000)},
-				t.short_field(0xa003, 3000),
-				tiff::pointer(0xa005, 2),
-				tiff::bytes_field(0x927c, type_undefined, to_bytes("maker note, offsets inside")),
-				t.rational_field(0x829d, 28, 10),
+				{t.short_field(0x0112, 6), tiff::pointer(0x8769, 1)},
+				{
+					{0xa002, type_long, 1, t.u32(4000)},
+					t.short_field(0xa003, 3000),
+					tiff::pointer(0xa005, 2),
+					tiff::bytes_field(0x927c, type_undefined, to_bytes("maker note, offsets inside")),
+					t.rational_field(0x829d, 28, 10),
+				},
+				{t.short_field(0x1001, 4000), {0x1002, type_long, 1, t.u32(3000)}},
+				{t.short_field(0x0112, 8)},
 			},
-			{t.short_field(0x1001, 4000), {0x1002, type_long, 1, t.u32(3000)}},
-			{t.short_field(0x0112, 8)},
-		}, 3);
+			3);
 
 		auto block = original;
 		const libfiles::exif_number numbers[] = {
@@ -840,11 +850,13 @@ TEST("exif's thumbnail directory is unlinked where it stands, and nothing else c
 	for (const auto little : {true, false})
 	{
 		const tiff t(little);
-		const auto original = t.build({
-			{t.short_field(0x0112, 1), tiff::pointer(0x8769, 1)},
-			{t.short_field(0xa002, 4000)},
-			{t.short_field(0x0112, 8)},
-		}, 2);
+		const auto original = t.build(
+			{
+				{t.short_field(0x0112, 1), tiff::pointer(0x8769, 1)},
+				{t.short_field(0xa002, 4000)},
+				{t.short_field(0x0112, 8)},
+			},
+			2);
 
 		// IFD0's Orientation is the picture's, whatever IFD1 says of the thumbnail.
 		auto block = original;
@@ -860,8 +872,10 @@ TEST("exif's thumbnail directory is unlinked where it stands, and nothing else c
 		CHECK(libfiles::read_exif(block).orientation == 1);
 
 		// With none in IFD0, IFD1's is read - until IFD1 is unlinked.
-		const auto thumbnail_only = t.build({{tiff::pointer(0x8769, 1)}, {t.short_field(0xa002, 4000)},
-		                                     {t.short_field(0x0112, 8)}}, 2);
+		const auto thumbnail_only = t.build({{tiff::pointer(0x8769, 1)},
+		                                     {t.short_field(0xa002, 4000)},
+		                                     {t.short_field(0x0112, 8)}},
+		                                    2);
 		auto unlinked = thumbnail_only;
 		CHECK(libfiles::read_exif(unlinked).orientation == 8);
 		CHECK(libfiles::unlink_exif_thumbnail(unlinked));
@@ -887,24 +901,14 @@ TEST("exif written fresh is laid out as libexif lays out a new block")
 	// IFD0 at 8 with the four entries libexif makes mandatory and the Exif pointer, sorted by tag, its
 	// two resolutions after it; then the Exif directory with its six.
 	const bytes expected = {
-		'I', 'I', 42, 0, 8, 0, 0, 0,
-		5, 0,
-		0x1a, 0x01, 5, 0, 1, 0, 0, 0, 74, 0, 0, 0,
-		0x1b, 0x01, 5, 0, 1, 0, 0, 0, 82, 0, 0, 0,
-		0x28, 0x01, 3, 0, 1, 0, 0, 0, 2, 0, 0, 0,
-		0x13, 0x02, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
-		0x69, 0x87, 4, 0, 1, 0, 0, 0, 90, 0, 0, 0,
-		0, 0, 0, 0,
-		72, 0, 0, 0, 1, 0, 0, 0,
-		72, 0, 0, 0, 1, 0, 0, 0,
-		6, 0,
-		0x00, 0x90, 7, 0, 4, 0, 0, 0, '0', '2', '1', '0',
-		0x01, 0x91, 7, 0, 4, 0, 0, 0, 1, 2, 3, 0,
-		0x00, 0xa0, 7, 0, 4, 0, 0, 0, '0', '1', '0', '0',
-		0x01, 0xa0, 3, 0, 1, 0, 0, 0, 0xff, 0xff, 0, 0,
-		0x02, 0xa0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-		0x03, 0xa0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0,
+		'I',  'I',  42,   0,    8, 0,  0, 0,  5,   0,   0x1a, 0x01, 5,    0,    1,    0,    0, 0, 74, 0, 0,  0,    0x1b,
+		0x01, 5,    0,    1,    0, 0,  0, 82, 0,   0,   0,    0x28, 0x01, 3,    0,    1,    0, 0, 0,  2, 0,  0,    0,
+		0x13, 0x02, 3,    0,    1, 0,  0, 0,  1,   0,   0,    0,    0x69, 0x87, 4,    0,    1, 0, 0,  0, 90, 0,    0,
+		0,    0,    0,    0,    0, 72, 0, 0,  0,   1,   0,    0,    0,    72,   0,    0,    0, 1, 0,  0, 0,  6,    0,
+		0x00, 0x90, 7,    0,    4, 0,  0, 0,  '0', '2', '1',  '0',  0x01, 0x91, 7,    0,    4, 0, 0,  0, 1,  2,    3,
+		0,    0x00, 0xa0, 7,    0, 4,  0, 0,  0,   '0', '1',  '0',  '0',  0x01, 0xa0, 3,    0, 1, 0,  0, 0,  0xff, 0xff,
+		0,    0,    0x02, 0xa0, 4, 0,  1, 0,  0,   0,   0,    0,    0,    0,    0x03, 0xa0, 4, 0, 1,  0, 0,  0,    0,
+		0,    0,    0,    0,    0, 0,  0,
 	};
 
 	CHECK(libfiles::make_exif({}) == expected);
@@ -928,7 +932,10 @@ namespace
 	bytes listed_block(const tiff& t)
 	{
 		bytes note;
-		const auto append = [](bytes& out, const bytes& more) { out.insert(out.end(), more.begin(), more.end()); };
+		const auto append = [](bytes& out, const bytes& more)
+		{
+			out.insert(out.end(), more.begin(), more.end());
+		};
 		append(note, t.u16(1));
 		append(note, t.u16(6));
 		append(note, t.u16(2));
@@ -937,18 +944,22 @@ namespace
 		append(note, t.u32(0));
 		const auto build = [&](const std::uint32_t thumbnail)
 		{
-			return t.build({
-				{t.ascii_field(0x010f, "Canon"), t.short_field(0x0112, 6), tiff::pointer(0x8769, 1)},
+			return t.build(
 				{
-					t.rational_field(0x829a, 1, 60),
-					t.rational_field(0x829d, 28, 10),
-					t.short_field(0x8827, 400),
-					t.short_field(0xfde8, 0x1234),
-					{0xfde9, 12, 1, bytes(8, 0)},
-					tiff::bytes_field(0x927c, type_undefined, note),
+					{t.ascii_field(0x010f, "Canon"), t.short_field(0x0112, 6), tiff::pointer(0x8769, 1)},
+					{
+						t.rational_field(0x829a, 1, 60),
+						t.rational_field(0x829d, 28, 10),
+						t.short_field(0x8827, 400),
+						t.short_field(0xfde8, 0x1234),
+						{0xfde9, 12, 1, bytes(8, 0)},
+						tiff::bytes_field(0x927c, type_undefined, note),
+					},
+					{t.short_field(0x0103, 6),
+			         {0x0201, type_long, 1, t.u32(thumbnail)},
+			         {0x0202, type_long, 1, t.u32(4)}},
 				},
-				{t.short_field(0x0103, 6), {0x0201, type_long, 1, t.u32(thumbnail)}, {0x0202, type_long, 1, t.u32(4)}},
-			}, 2);
+				2);
 		};
 
 		// The thumbnail lies in the room the builder leaves after the last value.
@@ -980,7 +991,10 @@ namespace
 		const auto build = [&](const std::uint32_t at)
 		{
 			bytes note;
-			const auto append = [&note](const bytes& more) { note.insert(note.end(), more.begin(), more.end()); };
+			const auto append = [&note](const bytes& more)
+			{
+				note.insert(note.end(), more.begin(), more.end());
+			};
 			append(t.u16(1));
 			append(t.u16(1));
 			append(t.u16(3));
@@ -999,7 +1013,8 @@ namespace
 		// TIFF header, where the block starts.
 		auto b = build(0);
 		bytes pattern;
-		for (const auto& part : {t.u16(1), t.u16(1), t.u16(3), t.u32(7)}) pattern.insert(pattern.end(), part.begin(), part.end());
+		for (const auto& part : {t.u16(1), t.u16(1), t.u16(3), t.u32(7)})
+			pattern.insert(pattern.end(), part.begin(), part.end());
 		const auto found = std::search(b.begin(), b.end(), pattern.begin(), pattern.end());
 		return build(static_cast<std::uint32_t>(found - b.begin()) + 18);
 	}
@@ -1018,7 +1033,8 @@ TEST("exif listing names and renders every entry, and decodes the maker note")
 		CHECK(l.little_endian == little);
 		CHECK_EQ(l.directories.size(), 3u);
 		CHECK(l.directories.size() == 3 && l.directories[0].directory == exif_directory::primary &&
-			l.directories[1].directory == exif_directory::thumbnail && l.directories[2].directory == exif_directory::exif);
+		      l.directories[1].directory == exif_directory::thumbnail &&
+		      l.directories[2].directory == exif_directory::exif);
 
 		const auto* const make = listed(l, exif_directory::primary, 0x010f);
 		CHECK(make && make->name == "Make" && make->value == "Canon" && make->type == 2 && make->count == 6);
@@ -1042,7 +1058,7 @@ TEST("exif listing names and renders every entry, and decodes the maker note")
 
 		CHECK_EQ(l.maker_note.size(), 1u);
 		CHECK(!l.maker_note.empty() && l.maker_note[0].id == 6 && l.maker_note[0].name == "ImageType" &&
-			l.maker_note[0].value == "IMG");
+		      l.maker_note[0].value == "IMG");
 
 		CHECK(l.thumbnail == bytes({0xff, 0xd8, 0xff, 0xd9}));
 
@@ -1051,7 +1067,7 @@ TEST("exif listing names and renders every entry, and decodes the maker note")
 		signed_block.insert(signed_block.end(), block.begin(), block.end());
 		const auto s = libfiles::list_exif(signed_block);
 		CHECK(s.directories.size() == l.directories.size() && s.maker_note.size() == l.maker_note.size() &&
-			s.thumbnail == l.thumbnail);
+		      s.thumbnail == l.thumbnail);
 	}
 
 	CHECK_STR(std::string(libfiles::exif_type_name(3)), "Short");
@@ -1072,13 +1088,14 @@ TEST("exif listing gives libexif's titles and descriptions, by the entry's direc
 
 		const auto* const make = listed(l, exif_directory::primary, 0x010f);
 		CHECK(make && make->title == "Manufacturer");
-		CHECK(make && make->description ==
-			"The manufacturer of the recording equipment. This is the manufacturer of the DSC, scanner, video "
-			"digitizer or other equipment that generated the image. When the field is left blank, it is "
-			"treated as unknown.");
+		CHECK(make &&
+		      make->description ==
+		          "The manufacturer of the recording equipment. This is the manufacturer of the DSC, scanner, video "
+		          "digitizer or other equipment that generated the image. When the field is left blank, it is "
+		          "treated as unknown.");
 		const auto* const exposure = listed(l, exif_directory::exif, 0x829a);
 		CHECK(exposure && exposure->title == "Exposure Time" &&
-			exposure->description == "Exposure time, given in seconds (sec).");
+		      exposure->description == "Exposure time, given in seconds (sec).");
 		const auto* const unknown = listed(l, exif_directory::exif, 0xfde8);
 		CHECK(unknown && !unknown->title && !unknown->description);
 
@@ -1129,7 +1146,7 @@ TEST("exif listing leaves out what libexif's defaults ignored, when asked to")
 			CHECK(all.maker_note[0].name == "Macro Mode" && all.maker_note[0].value == "Normal");
 			CHECK(known.maker_note[0].name == "Macro Mode" && known.maker_note[0].title == "Macro Mode");
 			CHECK(all.maker_note[5].name == "Settings1" && all.maker_note[5].title == "Settings (First Part)" &&
-				all.maker_note[5].value == "0x0007");
+			      all.maker_note[5].value == "0x0007");
 			CHECK(!known.maker_note[5].name && !known.maker_note[5].title && known.maker_note[5].value == "0x0007");
 		}
 	}

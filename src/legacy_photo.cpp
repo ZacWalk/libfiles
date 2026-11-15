@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: A photo's legacy metadata after an edit. Each field the edit sets is written to EXIF and
 // IPTC where the toolkit reconciled it, and nothing else in either block changes. IPTC is written as
@@ -91,7 +91,8 @@ namespace libfiles::detail
 
 		void replace_all(std::vector<iptc_dataset>& datasets, const iim field, const std::vector<std::string>& values)
 		{
-			std::erase_if(datasets, [field](const iptc_dataset& d) { return d.record == 2 && d.number == field.number; });
+			std::erase_if(datasets,
+			              [field](const iptc_dataset& d) { return d.record == 2 && d.number == field.number; });
 
 			for (const auto& value : values)
 			{
@@ -107,7 +108,8 @@ namespace libfiles::detail
 			replace_all(datasets, field, {*value});
 		}
 
-		void write_iptc_date(std::vector<iptc_dataset>& datasets, const iim date, const iim time, const std::string& xmp_date)
+		void write_iptc_date(std::vector<iptc_dataset>& datasets, const iim date, const iim time,
+		                     const std::string& xmp_date)
 		{
 			const auto d = parse_xmp_date(xmp_date);
 			if (!d) return;
@@ -121,8 +123,9 @@ namespace libfiles::detail
 			else if (d->zoned())
 			{
 				const auto zone = std::abs(d->offset_minutes);
-				replace_all(datasets, time, {std::format("{:02}{:02}{:02}{}{:02}{:02}", d->hour, d->minute, d->second,
-				                                         d->offset_minutes < 0 ? '-' : '+', zone / 60, zone % 60)});
+				replace_all(datasets, time,
+				            {std::format("{:02}{:02}{:02}{}{:02}{:02}", d->hour, d->minute, d->second,
+				                         d->offset_minutes < 0 ? '-' : '+', zone / 60, zone % 60)});
 			}
 			else
 			{
@@ -140,13 +143,13 @@ namespace libfiles::detail
 	bool touches_iptc(const legacy_edits& e)
 	{
 		return e.title || e.description || e.copyright || e.creators || e.keywords || e.city || e.state || e.country ||
-			e.credit || e.source || e.date_original || e.date_digitized;
+		       e.credit || e.source || e.date_original || e.date_digitized;
 	}
 
 	bool touches_exif(const legacy_edits& e)
 	{
-		return e.description || e.copyright || e.creators || e.rating || e.rating_percent || e.keywords || e.orientation ||
-			e.date_original || e.date_digitized || e.gps_latitude || e.gps_longitude;
+		return e.description || e.copyright || e.creators || e.rating || e.rating_percent || e.keywords ||
+		       e.orientation || e.date_original || e.date_digitized || e.gps_latitude || e.gps_longitude;
 	}
 
 	std::vector<iptc_dataset> parse_iptc(const std::span<const std::uint8_t> block)
@@ -258,8 +261,8 @@ namespace libfiles::detail
 		return out;
 	}
 
-	void apply_photo_legacy(const legacy_edits& e, const std::span<const std::uint8_t> existing_iptc, const bool allow_iptc,
-	                        photo_legacy& out)
+	void apply_photo_legacy(const legacy_edits& e, const std::span<const std::uint8_t> existing_iptc,
+	                        const bool allow_iptc, photo_legacy& out)
 	{
 		if (auto* const x = out.exif)
 		{
@@ -274,14 +277,17 @@ namespace libfiles::detail
 			ascii(directory::ifd0, tag_copyright, e.copyright);
 			if (e.creators) ascii(directory::ifd0, tag_artist, join(*e.creators, "; "));
 
-			if (e.rating) x->set_short(directory::ifd0, tag_rating, static_cast<std::uint16_t>(std::clamp(*e.rating, 0, 5)));
+			if (e.rating)
+				x->set_short(directory::ifd0, tag_rating, static_cast<std::uint16_t>(std::clamp(*e.rating, 0, 5)));
 
 			// A reader takes the later of the two tags, so a percent the file holds follows the stars, on Windows'
 			// scale, unless the edit gives one; a block without one gains none, so a patch stays a patch.
 			if (e.rating_percent)
-				x->set_short(directory::ifd0, tag_rating_percent, static_cast<std::uint16_t>(std::clamp(*e.rating_percent, 0, 100)));
+				x->set_short(directory::ifd0, tag_rating_percent,
+				             static_cast<std::uint16_t>(std::clamp(*e.rating_percent, 0, 100)));
 			else if (e.rating && x->has(directory::ifd0, tag_rating_percent))
-				x->set_short(directory::ifd0, tag_rating_percent, static_cast<std::uint16_t>(percent_from_stars(*e.rating)));
+				x->set_short(directory::ifd0, tag_rating_percent,
+				             static_cast<std::uint16_t>(percent_from_stars(*e.rating)));
 
 			if (e.keywords)
 			{
@@ -313,10 +319,9 @@ namespace libfiles::detail
 				x->set_ascii(directory::exif, tag, exif_date_text(*d));
 			}
 
-			for (const auto& [value, ref_tag, tag] : {
-				     std::tuple{&e.gps_latitude, tag_gps_latitude_ref, tag_gps_latitude},
-				     std::tuple{&e.gps_longitude, tag_gps_longitude_ref, tag_gps_longitude}
-			     })
+			for (const auto& [value, ref_tag, tag] :
+			     {std::tuple{&e.gps_latitude, tag_gps_latitude_ref, tag_gps_latitude},
+			      std::tuple{&e.gps_longitude, tag_gps_longitude_ref, tag_gps_longitude}})
 			{
 				if (!*value) continue;
 				const auto g = parse_xmp_gps(**value);
@@ -324,7 +329,8 @@ namespace libfiles::detail
 
 				x->set_ascii(directory::gps, ref_tag, std::string(1, g->reference));
 				x->set_rationals(directory::gps, tag, g->rationals);
-				if (!x->has(directory::gps, tag_gps_version)) x->set(directory::gps, tag_gps_version, tiff_editor::type_byte, 4, {2, 2, 0, 0});
+				if (!x->has(directory::gps, tag_gps_version))
+					x->set(directory::gps, tag_gps_version, tiff_editor::type_byte, 4, {2, 2, 0, 0});
 			}
 		}
 
@@ -364,9 +370,7 @@ namespace libfiles::detail
 
 		// Record by record, and within a record by dataset, keeping the order of repeated datasets.
 		std::ranges::stable_sort(datasets, [](const iptc_dataset& a, const iptc_dataset& b)
-		{
-			return a.record != b.record ? a.record < b.record : a.number < b.number;
-		});
+		{ return a.record != b.record ? a.record < b.record : a.number < b.number; });
 
 		out.iptc = serialize_iptc(datasets);
 	}

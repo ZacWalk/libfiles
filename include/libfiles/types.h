@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The values every area of libfiles shares - so a photo, a raw file and a recording describe the
 // same thing the same way, and a reader and a writer convert it by the same rule.

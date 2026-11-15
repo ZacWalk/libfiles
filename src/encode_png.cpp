@@ -1,12 +1,13 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Purpose: Encoding a PNG with libpng, its ICC profile, XMP and EXIF included. Moved from Diffractor's
-// files_png.cpp.
+// Purpose: Encoding a PNG with libpng, its ICC profile - or an HDR picture's cICP, cLLI and mDCV chunks in its
+// place - XMP and EXIF included. Moved from Diffractor's files_png.cpp.
 
 #include "libfiles/encode.h"
 #include "encode_internal.h"
+#include "hdr_internal.h"
 
 #include <png.h>
 
@@ -60,10 +61,7 @@ namespace libfiles
 				}
 			}
 
-			~png_writer()
-			{
-				png_destroy_write_struct(&_png, &_info);
-			}
+			~png_writer() { png_destroy_write_struct(&_png, &_info); }
 
 			png_writer(const png_writer&) = delete;
 			png_writer& operator=(const png_writer&) = delete;
@@ -85,17 +83,32 @@ namespace libfiles
 		const png_writer png(result.notes);
 		auto* const info_ptr = png.info();
 
-		const auto is_rgb = image.format == pixel_format::bgrx8;
+		const auto wide = image.format == pixel_format::rgbx16 || image.format == pixel_format::rgba16;
+		const auto is_rgb = image.format == pixel_format::bgrx8 || image.format == pixel_format::rgbx16;
 
 		png_set_write_fn(png.get(), &result.data, png_write_callback, nullptr);
 
-		png_set_IHDR(png.get(), info_ptr, image.width, image.height, 8,
-		             is_rgb ? PNG_COLOR_TYPE_RGB : PNG_COLOR_TYPE_RGBA,
-		             PNG_INTERLACE_NONE,
-		             PNG_COMPRESSION_TYPE_DEFAULT,
-		             PNG_FILTER_TYPE_DEFAULT);
+		png_set_IHDR(png.get(), info_ptr, image.width, image.height, wide ? 16 : 8,
+		             is_rgb ? PNG_COLOR_TYPE_RGB : PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE,
+		             PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
-		if (!metadata.icc.empty())
+		if (metadata.hdr)
+		{
+			// The description says what the pixels are, so no profile goes beside it: cICP takes precedence over iCCP
+			// for a reader that knows both, and one that knows only iCCP would read the signal as the profile said.
+			const auto& hdr = *metadata.hdr;
+			png_set_cICP(png.get(), info_ptr, hdr.colour_primaries,
+			             static_cast<png_byte>(detail::code_point_of(hdr.transfer)), 0, 1);
+			if (hdr.max_cll > 0.0 || hdr.max_fall > 0.0) png_set_cLLI(png.get(), info_ptr, hdr.max_cll, hdr.max_fall);
+
+			if (hdr.mastering)
+			{
+				const auto& p = hdr.mastering->primaries;
+				png_set_mDCV(png.get(), info_ptr, p.white_x, p.white_y, p.red_x, p.red_y, p.green_x, p.green_y,
+				             p.blue_x, p.blue_y, hdr.mastering->max_luminance, hdr.mastering->min_luminance);
+			}
+		}
+		else if (!metadata.icc.empty())
 		{
 			png_set_iCCP(png.get(), info_ptr, "icc", PNG_COMPRESSION_TYPE_BASE, metadata.icc.data(),
 			             static_cast<png_uint_32>(metadata.icc.size()));
@@ -140,8 +153,11 @@ namespace libfiles
 		png_set_compression_level(png.get(), 6);
 		png_set_rows(png.get(), info_ptr, rows.data());
 
+		// Sixteen-bit samples are red first and in the machine's order, which PNG stores big-endian; bytes are
+		// blue first.
 		png_write_png(png.get(), info_ptr,
-		              PNG_TRANSFORM_BGR | (is_rgb ? PNG_TRANSFORM_STRIP_FILLER_AFTER : PNG_TRANSFORM_IDENTITY),
+		              (wide ? PNG_TRANSFORM_SWAP_ENDIAN : PNG_TRANSFORM_BGR) |
+		                  (is_rgb ? PNG_TRANSFORM_STRIP_FILLER_AFTER : PNG_TRANSFORM_IDENTITY),
 		              nullptr);
 
 		return result;

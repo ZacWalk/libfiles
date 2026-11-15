@@ -1,4 +1,4 @@
-# NASM for the codecs whose x86 SIMD is assembly - libjpeg-turbo's and dav1d's - on x86-64 and x86. A
+# NASM for the codecs whose x86 SIMD is assembly - libjpeg-turbo's, dav1d's and libaom's - on x86-64 and x86. A
 # consumer that has enabled ASM_NASM already lends its assembler; otherwise one on the path is used,
 # and on Windows, where none usually is, the release build pinned in the manifest is fetched. Afterwards
 # CMAKE_ASM_NASM_COMPILER_LOADED says whether there is one. Included by each recipe that assembles.

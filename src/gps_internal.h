@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The rule a GPS coordinate is read by in the text XMP writes it as - "DDD,MM,SSk" or "DDD,MM.mmk"
 // - for the writer, which keeps it in EXIF as rationals, and for a reader of properties, which takes it in

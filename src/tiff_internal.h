@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Reading TIFF directories, which an EXIF block and a TIFF file are built from alike. Every
 // TIFF reading in libfiles goes through these - read_exif, summarize_exif and with it the JPEG
@@ -108,14 +108,9 @@ namespace libfiles::detail
 		const bool _little_endian;
 
 	public:
-		tiff_bytes(reader& r, const bool little_endian) : _reader(r), _little_endian(little_endian)
-		{
-		}
+		tiff_bytes(reader& r, const bool little_endian) : _reader(r), _little_endian(little_endian) {}
 
-		bool overflows(const std::uint64_t i, const std::uint64_t size) const
-		{
-			return !_reader.contains(i, size);
-		}
+		bool overflows(const std::uint64_t i, const std::uint64_t size) const { return !_reader.contains(i, size); }
 
 		// Borrows [i, i + size), valid until the next read; null when that is not inside the stream.
 		const std::uint8_t* at(const std::uint64_t i, const std::uint32_t size) const
@@ -123,20 +118,11 @@ namespace libfiles::detail
 			return overflows(i, size) ? nullptr : _reader.view(i, size).data();
 		}
 
-		std::uint16_t u16(const std::uint64_t i) const
-		{
-			return _little_endian ? _reader.le16(i) : _reader.be16(i);
-		}
+		std::uint16_t u16(const std::uint64_t i) const { return _little_endian ? _reader.le16(i) : _reader.be16(i); }
 
-		std::uint32_t u32(const std::uint64_t i) const
-		{
-			return _little_endian ? _reader.le32(i) : _reader.be32(i);
-		}
+		std::uint32_t u32(const std::uint64_t i) const { return _little_endian ? _reader.le32(i) : _reader.be32(i); }
 
-		std::int16_t s16(const std::uint64_t i) const
-		{
-			return static_cast<std::int16_t>(u16(i));
-		}
+		std::int16_t s16(const std::uint64_t i) const { return static_cast<std::int16_t>(u16(i)); }
 
 		// A text value. UserComment says how it is encoded in its first eight bytes; the rest is
 		// recognised as UTF-16 or UTF-8, and anything else is shown as "?".
@@ -173,15 +159,9 @@ namespace libfiles::detail
 			return count * bytes_per_type[type];
 		}
 
-		std::uint32_t value_offset() const
-		{
-			return size() <= 4 ? offset + 8u : data.u32(offset + 8);
-		}
+		std::uint32_t value_offset() const { return size() <= 4 ? offset + 8u : data.u32(offset + 8); }
 
-		bool well_formed() const
-		{
-			return type < type_limit && count > 0 && !data.overflows(value_offset(), size());
-		}
+		bool well_formed() const { return type < type_limit && count > 0 && !data.overflows(value_offset(), size()); }
 
 		// The value field, read as one number whatever the type.
 		std::uint16_t field_u16() const { return data.u16(offset + 8); }

@@ -1,11 +1,12 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding WebPs: lossy and lossless, with and without alpha, to NV12 with an odd edge
-// cropped, reduced while decoding to scaled_size_for's size, the orientation from an EXIF chunk, and what
-// decode() reports for a file cut short, an animation or a refusal. The files are libwebp's own, written
-// by its encoder and mux, and the pixels expected are what libwebp's simple decoder makes of them.
+// cropped, reduced while decoding to scaled_size_for's size, the orientation from an EXIF chunk, an
+// animation's first frame, and what decode() reports for a file cut short or a refusal; and for reading how
+// a WebP was compressed. The files are libwebp's own, written by its encoder and mux, and the pixels
+// expected are what libwebp's simple decoder makes of them.
 
 #include "test.h"
 
@@ -13,12 +14,15 @@
 
 #include "builders.h"
 #include "libfiles/decode.h"
+#include "libfiles/encode.h"
+#include "libfiles/scan.h"
 
 #include <webp/decode.h>
 #include <webp/encode.h>
 #include <webp/mux.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -44,14 +48,10 @@ namespace
 
 			switch (i % 4)
 			{
-			case 0: bgra[i] = static_cast<std::uint8_t>(x * 255 / std::max(1, width - 1));
-				break;
-			case 1: bgra[i] = static_cast<std::uint8_t>(y * 255 / std::max(1, height - 1));
-				break;
-			case 2: bgra[i] = static_cast<std::uint8_t>(96 + noise);
-				break;
-			default: bgra[i] = alpha ? static_cast<std::uint8_t>(1 + (x * 37 + y * 11) % 255) : 0xFF;
-				break;
+			case 0: bgra[i] = static_cast<std::uint8_t>(x * 255 / std::max(1, width - 1)); break;
+			case 1: bgra[i] = static_cast<std::uint8_t>(y * 255 / std::max(1, height - 1)); break;
+			case 2: bgra[i] = static_cast<std::uint8_t>(96 + noise); break;
+			default: bgra[i] = alpha ? static_cast<std::uint8_t>(1 + (x * 37 + y * 11) % 255) : 0xFF; break;
 			}
 		}
 
@@ -62,9 +62,8 @@ namespace
 	{
 		const auto bgra = make_bgra(width, height, alpha);
 		std::uint8_t* out = nullptr;
-		const auto size = lossless
-			                  ? WebPEncodeLosslessBGRA(bgra.data(), width, height, width * 4, &out)
-			                  : WebPEncodeBGRA(bgra.data(), width, height, width * 4, 85.f, &out);
+		const auto size = lossless ? WebPEncodeLosslessBGRA(bgra.data(), width, height, width * 4, &out)
+		                           : WebPEncodeBGRA(bgra.data(), width, height, width * 4, 85.f, &out);
 		bytes file(out, out + size);
 		WebPFree(out);
 		return file;
@@ -87,8 +86,40 @@ namespace
 
 	bytes orientation_exif(const std::uint16_t value)
 	{
-		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0)
-		                .le32(0).b;
+		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0).le32(0).b;
+	}
+
+	// Three frames of 16 by 16, each one grey: black, then 0x40 and 0x80 in every channel.
+	bytes animation()
+	{
+		WebPAnimEncoderOptions options;
+		WebPAnimEncoderOptionsInit(&options);
+		auto* const encoder = WebPAnimEncoderNew(16, 16, &options);
+
+		for (auto frame = 0; frame < 3; ++frame)
+		{
+			WebPPicture picture;
+			WebPPictureInit(&picture);
+			picture.width = 16;
+			picture.height = 16;
+			picture.use_argb = 1;
+			WebPPictureAlloc(&picture);
+			for (auto i = 0; i < 16 * 16; ++i)
+				picture.argb[i] = 0xFF000000u | static_cast<std::uint32_t>(frame * 0x404040);
+			WebPConfig config;
+			WebPConfigInit(&config);
+			config.lossless = 1;
+			WebPAnimEncoderAdd(encoder, &picture, frame * 100, &config);
+			WebPPictureFree(&picture);
+		}
+
+		WebPAnimEncoderAdd(encoder, nullptr, 300, nullptr);
+		WebPData assembled{};
+		WebPAnimEncoderAssemble(encoder, &assembled);
+		bytes file(assembled.bytes, assembled.bytes + assembled.size);
+		WebPDataClear(&assembled);
+		WebPAnimEncoderDelete(encoder);
+		return file;
 	}
 
 	// Memory filled with a byte the decoder never writes, with padding after each row.
@@ -134,7 +165,8 @@ namespace
 		}
 	};
 
-	libfiles::decode_result decode_file(const bytes& file, webp_sink& sink, const libfiles::decode_options& options = {})
+	libfiles::decode_result decode_file(const bytes& file, webp_sink& sink,
+	                                    const libfiles::decode_options& options = {})
 	{
 		libfiles::reader r{std::span<const std::uint8_t>(file)};
 		return libfiles::decode(r, sink, options);
@@ -374,7 +406,9 @@ TEST("Should take a WebP's orientation from its first EXIF chunk, with or withou
 
 	// A chunk with no orientation, and none at all, leave the image as stored.
 	webp_sink none_sink;
-	CHECK_EQ(decode_file(with_exif(encode(37, 23, false, false), lit("II*\0\x08\0\0\0\0\0")), none_sink).frame.orientation, 1u);
+	CHECK_EQ(decode_file(with_exif(encode(37, 23, false, false), lit("II*\0\x08\0\0\0\0\0")), none_sink)
+	             .frame.orientation,
+	         1u);
 }
 
 TEST("Should report a WebP cut short or damaged, and refuse what the sink refuses")
@@ -405,40 +439,74 @@ TEST("Should report a WebP cut short or damaged, and refuse what the sink refuse
 	CHECK(refusing.told.format == libfiles::pixel_format::nv12);
 }
 
-TEST("Should not decode an animated WebP")
+TEST("Should decode an animated WebP's first frame at its canvas's size, and scan it as an animation")
 {
-	WebPAnimEncoderOptions options;
-	WebPAnimEncoderOptionsInit(&options);
-	auto* const encoder = WebPAnimEncoderNew(16, 16, &options);
+	const auto file = animation();
+	CHECK(!file.empty());
 
-	for (auto frame = 0; frame < 3; ++frame)
+	// Asked for less, as a thumbnail asks: the animation decoder does not scale.
+	libfiles::decode_options options;
+	options.target_width = 8;
+	options.target_height = 8;
+	webp_sink sink;
+	const auto result = decode_file(file, sink, options);
+	CHECK(result.success);
+	CHECK(result.error.empty());
+	CHECK_EQ(sink.calls, 1);
+	CHECK_EQ(sink.told.width, 16u);
+	CHECK_EQ(sink.told.height, 16u);
+
+	// The first frame's black, opaque, in every pixel.
+	const auto rows = sink.rows(16 * 4, 16);
+	for (std::size_t i = 0; i < rows.size(); i += 4)
 	{
-		WebPPicture picture;
-		WebPPictureInit(&picture);
-		picture.width = 16;
-		picture.height = 16;
-		picture.use_argb = 1;
-		WebPPictureAlloc(&picture);
-		for (auto i = 0; i < 16 * 16; ++i) picture.argb[i] = 0xFF000000u | static_cast<std::uint32_t>(frame * 0x404040);
-		WebPConfig config;
-		WebPConfigInit(&config);
-		WebPAnimEncoderAdd(encoder, &picture, frame * 100, &config);
-		WebPPictureFree(&picture);
+		CHECK(rows[i] == 0 && rows[i + 1] == 0 && rows[i + 2] == 0 && rows[i + 3] == 0xFF);
 	}
 
-	WebPAnimEncoderAdd(encoder, nullptr, 300, nullptr);
-	WebPData assembled{};
-	CHECK(WebPAnimEncoderAssemble(encoder, &assembled) != 0);
-	const bytes file(assembled.bytes, assembled.bytes + assembled.size);
-	WebPDataClear(&assembled);
-	WebPAnimEncoderDelete(encoder);
+	libfiles::reader r{std::span<const std::uint8_t>(file)};
+	CHECK(libfiles::scan(r).animated);
 
-	webp_sink sink;
-	const auto result = decode_file(file, sink);
-	CHECK(!result.success);
-	CHECK(!result.truncated);
-	CHECK(!result.error.empty());
-	CHECK_EQ(sink.calls, 1);
+	const auto still = encode(16, 16, false, true);
+	libfiles::reader still_reader{std::span<const std::uint8_t>(still)};
+	CHECK(!libfiles::scan(still_reader).animated);
+
+	// The demuxer reads only a whole file: one cut short says so.
+	const bytes cut(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(file.size() - 10));
+	webp_sink cut_sink;
+	const auto cut_result = decode_file(cut, cut_sink);
+	CHECK(!cut_result.success);
+	CHECK(cut_result.truncated);
+}
+
+TEST("Should read how a WebP was compressed, so it can be written again as it was")
+{
+	const auto lossless = libfiles::read_webp_compression(encode(64, 48, true, true));
+	CHECK(lossless && lossless->lossless);
+
+	// libwebp's own estimate, from the quantizers: near the quality asked, and higher for a higher one.
+	auto previous = -1;
+	for (const auto quality : {20.f, 60.f, 95.f})
+	{
+		const auto bgra = make_bgra(64, 48, false);
+		std::uint8_t* out = nullptr;
+		const auto size = WebPEncodeBGRA(bgra.data(), 64, 48, 64 * 4, quality, &out);
+		const bytes file(out, out + size);
+		WebPFree(out);
+
+		const auto read = libfiles::read_webp_compression(file);
+		CHECK(read && !read->lossless);
+		if (!read) continue;
+		CHECK(std::abs(read->quality - static_cast<int>(quality)) <= 20);
+		CHECK(read->quality > previous);
+		previous = read->quality;
+	}
+
+	// Lossy with alpha, in the extended format, reads the same way.
+	const auto with_alpha = libfiles::read_webp_compression(encode(64, 48, true, false));
+	CHECK(with_alpha && !with_alpha->lossless && with_alpha->quality > 0);
+
+	CHECK(!libfiles::read_webp_compression(animation()).has_value());
+	CHECK(!libfiles::read_webp_compression(bytes{'R', 'I', 'F', 'F', 0, 0, 0, 0}).has_value());
 }
 
 TEST("Should decode a WebP from a stream as from memory")

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the format scanners share and do not export: byte-order loads, the structure-row
 // helpers, each format's scanner, and the zlib inflate and CRC-32 that PNG needs.
@@ -48,20 +48,20 @@ namespace libfiles::detail
 	inline std::uint32_t load_be32(const std::uint8_t* const p)
 	{
 		return static_cast<std::uint32_t>(p[0]) << 24 | static_cast<std::uint32_t>(p[1]) << 16 |
-			static_cast<std::uint32_t>(p[2]) << 8 | p[3];
+		       static_cast<std::uint32_t>(p[2]) << 8 | p[3];
 	}
 
 	inline std::uint32_t load_le32(const std::uint8_t* const p)
 	{
 		return static_cast<std::uint32_t>(p[3]) << 24 | static_cast<std::uint32_t>(p[2]) << 16 |
-			static_cast<std::uint32_t>(p[1]) << 8 | p[0];
+		       static_cast<std::uint32_t>(p[1]) << 8 | p[0];
 	}
 
 	inline bool starts_with(const std::span<const std::uint8_t> bytes, const std::string_view prefix)
 	{
 		return bytes.size() >= prefix.size() &&
-			std::equal(prefix.begin(), prefix.end(), bytes.begin(),
-			           [](const char a, const std::uint8_t b) { return static_cast<std::uint8_t>(a) == b; });
+		       std::equal(prefix.begin(), prefix.end(), bytes.begin(),
+		                  [](const char a, const std::uint8_t b) { return static_cast<std::uint8_t>(a) == b; });
 	}
 
 	// The structure report's rows. A leaf row sits at depth 1 under the section before it.
@@ -78,7 +78,7 @@ namespace libfiles::detail
 
 	scan_result scan_jpeg(reader& r, scan_intent intent, const scan_limits& limits);
 	struct document_decode;
-	scan_result scan_png(reader& r, document_decode* document = nullptr);
+	scan_result scan_png(reader& r, document_decode* document = nullptr, scan_intent intent = scan_intent::index);
 	scan_result scan_webp(reader& r, scan_intent intent);
 	scan_result scan_gif(reader& r);
 	scan_result scan_psd(reader& r);
@@ -103,7 +103,8 @@ namespace libfiles::detail
 	inline constexpr std::size_t max_jxl_decompressed = 32u * 1024u * 1024u;
 
 	// The signature box that begins a JPEG XL container, and so every JPEG XL file but a bare codestream.
-	inline constexpr std::uint8_t jxl_container_signature[12] = {0, 0, 0, 0x0C, 'J', 'X', 'L', ' ', 0x0D, 0x0A, 0x87, 0x0A};
+	inline constexpr std::uint8_t jxl_container_signature[12] = {0,   0,   0,    0x0C, 'J',  'X',
+	                                                             'L', ' ', 0x0D, 0x0A, 0x87, 0x0A};
 
 	// A box of a JPEG XL container, where the read passed it.
 	struct jxl_box_place
@@ -140,11 +141,33 @@ namespace libfiles::detail
 		bool jpeg_reconstruction = false;
 		// Where the codestream's first box begins.
 		std::uint64_t codestream_box = 0;
+		// The part of the codestream its header lies in: where its bytes start and how many it holds, and whether
+		// libjxl reads it first - the 'jxlc' box, the first 'jxlp', or a bare codestream.
+		std::uint64_t codestream_data = 0;
+		std::uint64_t codestream_part = 0;
+		bool codestream_first = false;
+		// A 'jxli' box, whose offsets count the codestream's bytes.
+		bool frame_index = false;
 	};
 
 	// The file read as scan_jxl reads it, with the caller's decompressor for its compressed boxes, if any.
 	// A null pointer is the built-in bounded decoder when LIBFILES_JXL is enabled.
 	jxl_layout read_jxl_layout(reader& r, const brotli_decompressor* brotli);
+
+	// A JPEG XL codestream's first bytes rewritten: its first `replaced` bytes give way to `bytes`.
+	struct jxl_header_edit
+	{
+		std::size_t replaced = 0;
+		std::vector<std::uint8_t> bytes;
+	};
+
+	// The codestream's header with its orientation, 1 to 8, as libjxl reads it: rewritten where the header holds one,
+	// else written in, with what makes the bits added a whole number of bytes - an explicit default tone mapping, or
+	// a bit depth of 8 in its longest form - so every byte after the header keeps its alignment. Nothing replaced
+	// for 1 in a header that holds none, which is its default. Nothing when the header cannot be read from these
+	// bytes.
+	std::optional<jxl_header_edit> jxl_orientation_edit(std::span<const std::uint8_t> codestream,
+	                                                    std::uint32_t orientation);
 
 	// The most codestream parts a JPEG XL file's read holds at once - parts not yet read, and parts
 	// held until their turn - which stays small however many 'jxlp' boxes the file has. For tests.
@@ -162,8 +185,10 @@ namespace libfiles::detail
 	bool zlib_inflate(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out, std::size_t max_output);
 
 	// Inflates only the first `length` bytes of a zlib stream, as libpng reads a colour profile: what
-	// follows them, the Adler-32 included, is never examined. False if the stream fails or ends first.
-	bool zlib_inflate_prefix(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out, std::size_t length);
+	// follows them, the Adler-32 included, is never examined. False if the stream fails or ends first;
+	// input_ended, when given, tells whether it failed only by running out of input.
+	bool zlib_inflate_prefix(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out, std::size_t length,
+	                         bool* input_ended = nullptr);
 
 	// The CRC-32 of ISO 3309, as PNG and zip use it. Pass 0 to start.
 	std::uint32_t crc32(std::uint32_t crc, std::span<const std::uint8_t> data) noexcept;

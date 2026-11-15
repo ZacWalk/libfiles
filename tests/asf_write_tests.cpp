@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for writing ASF files. Every update here is applied as a live file would take it, in
 // place, unless it must rewrite the file; the media bytes are checked to survive, and the fields are
@@ -25,15 +25,24 @@ namespace
 {
 	using guid = std::array<std::uint8_t, 16>;
 
-	constexpr guid header_id = {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-	constexpr guid data_id = {0x36, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-	constexpr guid file_properties_id = {0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
-	constexpr guid content_description_id = {0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
-	constexpr guid extended_content_id = {0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11, 0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50};
-	constexpr guid header_extension_id = {0xB5, 0x03, 0xBF, 0x5F, 0x2E, 0xA9, 0xCF, 0x11, 0x8E, 0xE3, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
-	constexpr guid padding_id = {0x74, 0xD4, 0x06, 0x18, 0xDF, 0xCA, 0x09, 0x45, 0xA4, 0xBA, 0x9A, 0xAB, 0xCB, 0x96, 0xAA, 0xE8};
-	constexpr guid xmp_id = {0xCB, 0xCF, 0x7A, 0xBE, 0xA9, 0x97, 0xE8, 0x42, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
-	constexpr guid simple_index_id = {0x90, 0x08, 0x00, 0x33, 0xB1, 0xE5, 0xCF, 0x11, 0x89, 0xF4, 0x00, 0xA0, 0xC9, 0x03, 0x49, 0xCB};
+	constexpr guid header_id = {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+	                            0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
+	constexpr guid data_id = {0x36, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+	                          0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
+	constexpr guid file_properties_id = {0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11,
+	                                     0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
+	constexpr guid content_description_id = {0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+	                                         0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
+	constexpr guid extended_content_id = {0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11,
+	                                      0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50};
+	constexpr guid header_extension_id = {0xB5, 0x03, 0xBF, 0x5F, 0x2E, 0xA9, 0xCF, 0x11,
+	                                      0x8E, 0xE3, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
+	constexpr guid padding_id = {0x74, 0xD4, 0x06, 0x18, 0xDF, 0xCA, 0x09, 0x45,
+	                             0xA4, 0xBA, 0x9A, 0xAB, 0xCB, 0x96, 0xAA, 0xE8};
+	constexpr guid xmp_id = {0xCB, 0xCF, 0x7A, 0xBE, 0xA9, 0x97, 0xE8, 0x42,
+	                         0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
+	constexpr guid simple_index_id = {0x90, 0x08, 0x00, 0x33, 0xB1, 0xE5, 0xCF, 0x11,
+	                                  0x89, 0xF4, 0x00, 0xA0, 0xC9, 0x03, 0x49, 0xCB};
 
 	const bytes media = bytes(64, 0xAB);
 
@@ -63,7 +72,8 @@ namespace
 
 	bool is(const bytes& file, const std::size_t at, const guid& id)
 	{
-		return file.size() >= at + 16 && std::equal(id.begin(), id.end(), file.begin() + static_cast<std::ptrdiff_t>(at));
+		return file.size() >= at + 16 &&
+		       std::equal(id.begin(), id.end(), file.begin() + static_cast<std::ptrdiff_t>(at));
 	}
 
 	bytes utf16z(const std::string_view text)
@@ -106,17 +116,23 @@ namespace
 		if (p.extension_padding != 0) extension_data = object(padding_id, bytes(p.extension_padding - 24, 0));
 
 		builder extension;
-		extension.raw(bytes{0x11, 0xD2, 0xD3, 0xAB, 0xBA, 0xA9, 0xCF, 0x11, 0x8E, 0xE6, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65});
+		extension.raw(
+			bytes{0x11, 0xD2, 0xD3, 0xAB, 0xBA, 0xA9, 0xCF, 0x11, 0x8E, 0xE6, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65});
 		extension.le16(6).le32(static_cast<std::uint32_t>(extension_data.size())).raw(extension_data);
 
-		std::vector<bytes> children = {object(file_properties_id, properties.b), object(header_extension_id, extension.b)};
+		std::vector<bytes> children = {object(file_properties_id, properties.b),
+		                               object(header_extension_id, extension.b)};
 
 		if (p.content_description)
 		{
 			const auto title = utf16z("Old title");
 			const auto rating = utf16z("PG");
 			builder cd;
-			cd.le16(static_cast<unsigned>(title.size())).le16(0).le16(0).le16(0).le16(static_cast<unsigned>(rating.size()));
+			cd.le16(static_cast<unsigned>(title.size()))
+				.le16(0)
+				.le16(0)
+				.le16(0)
+				.le16(static_cast<unsigned>(rating.size()));
 			cd.raw(title).raw(rating);
 			children.push_back(object(content_description_id, cd.b));
 		}
@@ -205,7 +221,8 @@ namespace
 			if (after_data && is(file, pos, xmp_id))
 			{
 				libfiles::xmp::meta meta;
-				meta.parse(std::string(file.begin() + static_cast<std::ptrdiff_t>(pos + 24), file.begin() + static_cast<std::ptrdiff_t>(pos + size)));
+				meta.parse(std::string(file.begin() + static_cast<std::ptrdiff_t>(pos + 24),
+				                       file.begin() + static_cast<std::ptrdiff_t>(pos + size)));
 				std::int32_t rating = -98;
 				meta.get_property_int(libfiles::xmp::ns::xmp, "Rating", &rating);
 				return rating;
@@ -273,7 +290,8 @@ namespace
 				for (auto i = 0u; i < 5; ++i)
 				{
 					const auto length = load_le16(file, pos + 24 + 2 * i);
-					v.description_fields.emplace_back(file.begin() + static_cast<std::ptrdiff_t>(at), file.begin() + static_cast<std::ptrdiff_t>(at + length));
+					v.description_fields.emplace_back(file.begin() + static_cast<std::ptrdiff_t>(at),
+					                                  file.begin() + static_cast<std::ptrdiff_t>(at + length));
 					at += length;
 				}
 			}
@@ -283,19 +301,24 @@ namespace
 				for (auto i = 0u; i < load_le16(file, pos + 24); ++i)
 				{
 					const auto name_length = load_le16(file, at);
-					const bytes name(file.begin() + static_cast<std::ptrdiff_t>(at + 2), file.begin() + static_cast<std::ptrdiff_t>(at + 2 + name_length));
+					const bytes name(file.begin() + static_cast<std::ptrdiff_t>(at + 2),
+					                 file.begin() + static_cast<std::ptrdiff_t>(at + 2 + name_length));
 					const auto value_at = at + 2 + name_length + 4;
 					const auto value_length = load_le16(file, value_at - 2);
-					const bytes value(file.begin() + static_cast<std::ptrdiff_t>(value_at), file.begin() + static_cast<std::ptrdiff_t>(value_at + value_length));
+					const bytes value(file.begin() + static_cast<std::ptrdiff_t>(value_at),
+					                  file.begin() + static_cast<std::ptrdiff_t>(value_at + value_length));
 
 					if (name == utf16z("WM/Category")) v.categories.push_back(value);
-					if (name == utf16z("WM/SharedUserRating")) v.shared_rating = static_cast<std::uint32_t>(value[0] | value[1] << 8 | value[2] << 16 | value[3] << 24);
+					if (name == utf16z("WM/SharedUserRating"))
+						v.shared_rating = static_cast<std::uint32_t>(value[0] | value[1] << 8 | value[2] << 16 |
+						                                             value[3] << 24);
 					at = value_at + value_length;
 				}
 			}
 			else if (is(file, pos, header_extension_id))
 			{
-				for (auto at = pos + 46; at + 24 <= pos + size; at += static_cast<std::size_t>(load_le64(file, at + 16)))
+				for (auto at = pos + 46; at + 24 <= pos + size;
+				     at += static_cast<std::size_t>(load_le64(file, at + 16)))
 				{
 					if (is(file, at, padding_id)) v.padding += load_le64(file, at + 16);
 				}

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The WebP scanner. The dimensions and pixel format come from the RIFF header and the first
 // image chunk, read the way libwebp's WebPGetFeatures reads them. The metadata chunks follow the
@@ -51,9 +51,7 @@ namespace libfiles::detail
 			}
 
 		public:
-			explicit header_parser(reader& r) : _r(r), _size(r.size())
-			{
-			}
+			explicit header_parser(reader& r) : _r(r), _size(r.size()) {}
 
 			bool parse(webp_features& f)
 			{
@@ -101,7 +99,8 @@ namespace libfiles::detail
 						canvas_width = 1 + static_cast<int>(x[12] | x[13] << 8 | x[14] << 16);
 						canvas_height = 1 + static_cast<int>(x[15] | x[16] << 8 | x[17] << 16);
 
-						if (static_cast<std::uint64_t>(canvas_width) * static_cast<std::uint64_t>(canvas_height) >= 1ull << 32)
+						if (static_cast<std::uint64_t>(canvas_width) * static_cast<std::uint64_t>(canvas_height) >=
+						    1ull << 32)
 						{
 							return false;
 						}
@@ -220,7 +219,8 @@ namespace libfiles::detail
 					const auto h = (d[9] << 8 | d[8]) & 0x3fff;
 
 					if (!key_frame) return false;
-					if (((bits >> 1) & 7u) > 3u || ((bits >> 4) & 1u) == 0 || (bits >> 5) >= compressed_size) return false;
+					if (((bits >> 1) & 7u) > 3u || ((bits >> 4) & 1u) == 0 || (bits >> 5) >= compressed_size)
+						return false;
 					if (w == 0 || h == 0) return false;
 
 					image_width = w;
@@ -296,9 +296,8 @@ namespace libfiles::detail
 				if (!description.empty()) value = std::format("{}, {}", description, value);
 
 				// A FourCC is four bytes, and a NUL among them ends the name as the C string it was.
-				const std::string name{
-					static_cast<char>(c.id), static_cast<char>(c.id >> 8), static_cast<char>(c.id >> 16), static_cast<char>(c.id >> 24)
-				};
+				const std::string name{static_cast<char>(c.id), static_cast<char>(c.id >> 8),
+				                       static_cast<char>(c.id >> 16), static_cast<char>(c.id >> 24)};
 				auto& row = add_row(kv, name.substr(0, name.find('\0')), std::move(value));
 				row.depth = 1;
 				row.id = std::format("webp.chunk.{}", c.start);
@@ -345,10 +344,10 @@ namespace libfiles::detail
 
 			// Lossless WebP stores RGB(A) directly; lossy WebP is always 4:2:0, with any alpha riding
 			// alongside in its own plane.
-			result.pixel_format = lossless
-				                      ? (features.has_alpha ? "rgba" : "rgb")
-				                      : (features.has_alpha ? "yuva420" : "yuv420");
+			result.pixel_format = lossless ? (features.has_alpha ? "rgba" : "rgb")
+			                               : (features.has_alpha ? "yuva420" : "yuv420");
 			result.picture = {lossless ? chroma_format::rgb : chroma_format::yuv420, 8, features.has_alpha};
+			result.animated = features.has_animation;
 
 			// The metadata chunks, by their headers. A writer may emit a chunk the VP8X flags do not
 			// declare; it is read all the same, where libwebp's mux refused the whole file.
@@ -389,7 +388,8 @@ namespace libfiles::detail
 			});
 		}
 
-		if (intent == scan_intent::inspect && r.size() >= 12u && r.le32(0) == riff::riff_id && r.le32(8) == riff::webp_type)
+		if (intent == scan_intent::inspect && r.size() >= 12u && r.le32(0) == riff::riff_id &&
+		    r.le32(8) == riff::webp_type)
 		{
 			result.structure = webp_structure(r);
 		}
@@ -406,8 +406,7 @@ namespace libfiles
 		webp_header result;
 		try
 		{
-			if (detail::header_parser(input).parse(result) && result.width > 0 && result.height > 0)
-				return result;
+			if (detail::header_parser(input).parse(result) && result.width > 0 && result.height > 0) return result;
 		}
 		catch (const read_error&)
 		{

@@ -1,17 +1,23 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to a JPEG: the XMP packet in its APP1, EXIF in its APP1 and IPTC in the
 // Photoshop resources of APP13. EXIF is edited where it lies, so an edit that fits is a patch and one
 // that does not grows the segment at its end; nothing in the EXIF block moves. A packet that fits the
 // old one is a patch. Segments the file lacks are added after its leading APP0 and APP1 segments, and
-// every other segment keeps its place and its bytes. Extended XMP segments are left as they are: the
-// main packet keeps the GUID that names them.
+// every other segment keeps its place and its bytes, but for a multi-picture index, whose sizes and
+// offsets follow the pictures as the header grows or shrinks. Extended XMP segments are left as they are:
+// the main packet keeps the GUID that names them. The packet's gain map signalling is kept true to the
+// file: the length of the gain map the index locates, or, when nothing follows the primary, nothing said
+// of one - and then an index pointing past the end, and ISO 21496-1's version segment, go too.
 
 #include "legacy.h"
 
+#include "gain_map_internal.h"
+
 #include <algorithm>
+#include <optional>
 
 namespace libfiles::detail
 {
@@ -36,7 +42,8 @@ namespace libfiles::detail
 			std::uint64_t end() const { return start + 2 + length; }
 		};
 
-		bytes make_segment(const std::uint8_t marker, const std::string_view signature, const std::span<const std::uint8_t> data)
+		bytes make_segment(const std::uint8_t marker, const std::string_view signature,
+		                   const std::span<const std::uint8_t> data)
 		{
 			const auto length = 2 + signature.size() + data.size();
 			bytes s = {0xFF, marker, static_cast<std::uint8_t>(length >> 8), static_cast<std::uint8_t>(length)};
@@ -77,6 +84,57 @@ namespace libfiles::detail
 		{
 			if (auto* const existing = find_photoshop_resource(resources, id)) existing->data = std::move(data);
 			else resources.push_back({id, {}, std::move(data)});
+		}
+
+		// The gain map a multi-picture index locates: the first picture after the primary whose own
+		// metadata marks it as one. dangling when the index points at a picture the file does not hold.
+		struct located_gain_map
+		{
+			std::optional<gain_map_signal> gain_map;
+			bool dangling = false;
+		};
+
+		located_gain_map locate_gain_map(reader& r, const std::uint64_t index_at, const mpf_index& mpf)
+		{
+			// A gain map's metadata comes long before its first scan.
+			constexpr std::uint64_t header_bytes = 256 * 1024;
+			located_gain_map located;
+
+			for (std::size_t e = 1; e < mpf.entries.size(); ++e)
+			{
+				const auto& entry = mpf.entries[e];
+				if (entry.offset == 0) continue;
+
+				const auto start = index_at + entry.offset;
+
+				if (!r.contains(start, std::max<std::uint64_t>(entry.size, 2)) || r.be16(start) != 0xFFD8)
+				{
+					located.dangling = true;
+					continue;
+				}
+
+				if (located.gain_map) continue;
+				const auto head = r.read(start,
+				                         static_cast<std::size_t>(std::min<std::uint64_t>(entry.size, header_bytes)));
+				const auto schemes = read_gain_map_schemes(head);
+				if (schemes.any()) located.gain_map = gain_map_signal{entry.size, schemes.adobe};
+			}
+
+			return located;
+		}
+
+		// True when the primary is all the file holds, its EOI the file's end, so no picture follows it.
+		bool primary_is_whole_file(reader& r)
+		{
+			// Read whole only for a file whose signalling is at odds with its index, which a photo this
+			// large is not worth.
+			constexpr std::uint64_t most = 512ull * 1024 * 1024;
+			if (r.size() > most) return false;
+
+			const auto resident = r.resident();
+			if (!resident.empty()) return jpeg_end(resident) == resident.size();
+			const auto whole = r.read(0, static_cast<std::size_t>(r.size()));
+			return jpeg_end(whole) == whole.size();
 		}
 	}
 
@@ -123,7 +181,8 @@ namespace libfiles::detail
 			if (size - pos < 4) break;
 
 			const std::uint32_t length = r.be16(pos + 2);
-			if (length < 2 || length > size - pos - 2) throw format_error("a JPEG segment runs past the end of the file");
+			if (length < 2 || length > size - pos - 2)
+				throw format_error("a JPEG segment runs past the end of the file");
 
 			segments.push_back({pos, marker, length});
 			pos += 2 + length;
@@ -134,7 +193,9 @@ namespace libfiles::detail
 
 		const segment* exif = nullptr;
 		const segment* xmp = nullptr;
+		const segment* mpf_segment = nullptr;
 		std::vector<const segment*> photoshop;
+		std::vector<const segment*> iso_versions;
 		std::uint64_t insert_at = 2;
 		auto leading = true;
 
@@ -145,16 +206,61 @@ namespace libfiles::detail
 
 			if (s.marker == 0xE1)
 			{
-				const auto head = r.view(s.payload(), static_cast<std::size_t>(std::min<std::uint64_t>(s.payload_size(), xmp_signature.size())));
+				const auto head = r.view(s.payload(),
+				                         static_cast<std::size_t>(
+											 std::min<std::uint64_t>(s.payload_size(), xmp_signature.size())));
 				if (!exif && starts_with(head, exif_signature)) exif = &s;
 				else if (!xmp && starts_with(head, xmp_signature)) xmp = &s;
 			}
+			else if (s.marker == 0xE2)
+			{
+				constexpr auto iso_version_size = iso_gain_map_identifier.size() + iso_version_bytes;
+				const auto head = r.view(s.payload(), static_cast<std::size_t>(
+														  std::min<std::uint64_t>(s.payload_size(), iso_version_size)));
+				if (!mpf_segment && starts_with(head, mpf_identifier)) mpf_segment = &s;
+				else if (s.payload_size() == iso_version_size && is_iso_version_segment(head))
+					iso_versions.push_back(&s);
+			}
 			else if (s.marker == 0xED &&
-				starts_with(r.view(s.payload(), static_cast<std::size_t>(std::min<std::uint64_t>(s.payload_size(), photoshop_signature.size()))),
-				            photoshop_signature))
+			         starts_with(r.view(s.payload(),
+			                            static_cast<std::size_t>(
+											std::min<std::uint64_t>(s.payload_size(), photoshop_signature.size()))),
+			                     photoshop_signature))
 			{
 				photoshop.push_back(&s);
 			}
+		}
+
+		// What the multi-picture index says follows the primary, and the gain map among it.
+		std::uint64_t index_at = 0;
+		bytes index;
+		std::optional<mpf_index> mpf;
+		located_gain_map located;
+
+		if (mpf_segment && mpf_segment->payload_size() > mpf_identifier.size())
+		{
+			index_at = mpf_segment->payload() + mpf_identifier.size();
+			index = r.read(index_at, static_cast<std::size_t>(mpf_segment->payload_size() - mpf_identifier.size()));
+			mpf = read_mpf_index(index);
+			if (mpf) located = locate_gain_map(r, index_at, *mpf);
+		}
+
+		std::optional<bool> whole_file;
+		const auto nothing_follows = [&r, &whole_file]
+		{
+			if (!whole_file) whole_file = primary_is_whole_file(r);
+			return *whole_file;
+		};
+
+		// An index pointing past the end and a version segment saying a gain map follows go when nothing does.
+		auto drop_mpf = false;
+
+		if (!located.gain_map && ((mpf && located.dangling) || !iso_versions.empty()) && nothing_follows())
+		{
+			drop_mpf = mpf && located.dangling;
+			if (drop_mpf)
+				plan.replacements.push_back({mpf_segment->start, mpf_segment->end() - mpf_segment->start, {}});
+			for (const auto* s : iso_versions) plan.replacements.push_back({s->start, s->end() - s->start, {}});
 		}
 
 		bytes new_exif;
@@ -201,15 +307,23 @@ namespace libfiles::detail
 				apply_photo_legacy(update.legacy, {}, false, legacy);
 
 				const auto block = apply_changes(empty, editor.changes(empty.size()));
-				if (block.size() + exif_signature.size() > max_segment_payload) throw format_error("the EXIF block is too large for a JPEG segment");
+				if (block.size() + exif_signature.size() > max_segment_payload)
+					throw format_error("the EXIF block is too large for a JPEG segment");
 				new_exif = make_segment(0xE1, exif_signature, block);
 			}
 		}
 
 		if (update.xmp)
 		{
+			// The packet says a gain map follows exactly when one does: with the length of the one the
+			// index locates, or nothing said of one when nothing follows the primary.
+			auto signalled = *update.xmp;
+			const auto resignalled = signal_gain_map(signalled, located.gain_map) &&
+			                         (located.gain_map || nothing_follows());
+			const auto& packet_meta = resignalled ? signalled : *update.xmp;
+
 			const auto old_size = xmp ? xmp->payload_size() - xmp_signature.size() : 0;
-			const auto packet = jpeg_packet(*update.xmp, old_size);
+			const auto packet = jpeg_packet(packet_meta, old_size);
 
 			if (xmp && packet.size() == old_size)
 			{
@@ -217,12 +331,15 @@ namespace libfiles::detail
 			}
 			else if (xmp)
 			{
-				plan.replacements.push_back({xmp->start, xmp->end() - xmp->start,
-				                             make_segment(0xE1, xmp_signature, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()})});
+				plan.replacements.push_back(
+					{xmp->start, xmp->end() - xmp->start,
+				     make_segment(0xE1, xmp_signature,
+				                  {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()})});
 			}
 			else
 			{
-				new_xmp = make_segment(0xE1, xmp_signature, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()});
+				new_xmp = make_segment(0xE1, xmp_signature,
+				                       {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()});
 			}
 		}
 
@@ -238,10 +355,12 @@ namespace libfiles::detail
 			}
 
 			std::vector<photoshop_resource> resources;
-			if (!parse_photoshop_resources(block, resources)) throw format_error("the JPEG's Photoshop resources cannot be read");
+			if (!parse_photoshop_resources(block, resources))
+				throw format_error("the JPEG's Photoshop resources cannot be read");
 
 			const auto* const existing = find_photoshop_resource(resources, 0x0404);
-			const auto existing_iptc = existing ? std::span<const std::uint8_t>(existing->data) : std::span<const std::uint8_t>{};
+			const auto existing_iptc = existing ? std::span<const std::uint8_t>(existing->data)
+			                                    : std::span<const std::uint8_t>{};
 
 			photo_legacy legacy;
 			apply_photo_legacy(update.legacy, existing_iptc, true, legacy);
@@ -266,18 +385,21 @@ namespace libfiles::detail
 				{
 					new_photoshop = std::move(segments_bytes);
 				}
-				else if (photoshop.size() == 1 && segments_bytes.size() == photoshop.front()->end() - photoshop.front()->start)
+				else if (photoshop.size() == 1 &&
+				         segments_bytes.size() == photoshop.front()->end() - photoshop.front()->start)
 				{
 					push_changed(r, plan, photoshop.front()->start, segments_bytes);
 				}
 				else
 				{
-					plan.replacements.push_back({photoshop.front()->start, photoshop.front()->end() - photoshop.front()->start,
+					plan.replacements.push_back({photoshop.front()->start,
+					                             photoshop.front()->end() - photoshop.front()->start,
 					                             std::move(segments_bytes)});
 
 					for (std::size_t i = 1; i < photoshop.size(); ++i)
 					{
-						plan.replacements.push_back({photoshop[i]->start, photoshop[i]->end() - photoshop[i]->start, {}});
+						plan.replacements.push_back(
+							{photoshop[i]->start, photoshop[i]->end() - photoshop[i]->start, {}});
 					}
 				}
 			}
@@ -289,5 +411,35 @@ namespace libfiles::detail
 		added.insert(added.end(), new_xmp.begin(), new_xmp.end());
 		added.insert(added.end(), new_photoshop.begin(), new_photoshop.end());
 		if (!added.empty()) plan.replacements.push_back({insert_at, 0, std::move(added)});
+
+		// The pictures after the primary move with what changes before them, and the primary's size with
+		// all of it; offsets are measured from the index, which moves with what changes before it.
+		if (mpf && !drop_mpf)
+		{
+			std::int64_t before = 0;
+			std::int64_t after = 0;
+
+			for (const auto& c : plan.replacements)
+			{
+				const auto delta = static_cast<std::int64_t>(c.data.size()) - static_cast<std::int64_t>(c.length);
+				if (c.offset + c.length <= mpf_segment->start) before += delta;
+				else if (c.offset >= mpf_segment->end()) after += delta;
+			}
+
+			if (before != 0 || after != 0)
+			{
+				auto updated = index;
+
+				for (std::size_t e = 0; e < mpf->entries.size(); ++e)
+				{
+					auto entry = mpf->entries[e];
+					if (e == 0) entry.size = static_cast<std::uint32_t>(entry.size + before + after);
+					else if (entry.offset != 0) entry.offset = static_cast<std::uint32_t>(entry.offset + after);
+					write_mpf_entry(updated, *mpf, entry);
+				}
+
+				push_changed(r, plan, index_at, updated);
+			}
+		}
 	}
 }

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning FLV files: onMetaData's values as tags, and what they say of the file and its
 // streams; the first audio and video tags' codecs, with the sequence headers of AVC and AAC and of the
@@ -118,25 +118,32 @@ namespace libfiles::detail
 
 			switch (b.u(3))
 			{
-			case 0: width = b.u(8);
+			case 0:
+				width = b.u(8);
 				height = b.u(8);
 				break;
-			case 1: width = b.u(16);
+			case 1:
+				width = b.u(16);
 				height = b.u(16);
 				break;
-			case 2: width = 352;
+			case 2:
+				width = 352;
 				height = 288;
 				break;
-			case 3: width = 176;
+			case 3:
+				width = 176;
 				height = 144;
 				break;
-			case 4: width = 128;
+			case 4:
+				width = 128;
 				height = 96;
 				break;
-			case 5: width = 320;
+			case 5:
+				width = 320;
 				height = 240;
 				break;
-			case 6: width = 160;
+			case 6:
+				width = 160;
 				height = 120;
 				break;
 			default: return false;
@@ -219,9 +226,7 @@ namespace libfiles::detail
 		{
 		public:
 			tag_reader(reader& r, const scan_intent intent, media_scan_result& out) :
-				_r(r),
-				_inspect(intent == scan_intent::inspect),
-				_out(out)
+				_r(r), _inspect(intent == scan_intent::inspect), _out(out)
 			{
 			}
 
@@ -300,7 +305,10 @@ namespace libfiles::detail
 
 				_metadata_read = true;
 				flv::amf a(_r, t.data() + t.data_size);
-				a.on_value = [this](const flv::amf_value& v) { metadata_value(v); };
+				a.on_value = [this](const flv::amf_value& v)
+				{
+					metadata_value(v);
+				};
 				a.value(after);
 				return true;
 			}
@@ -324,31 +332,28 @@ namespace libfiles::detail
 				switch (v.type)
 				{
 				case flv::amf_number:
-					{
-						const auto n = std::bit_cast<double>(_r.be64(v.at));
-						if (!std::isfinite(n)) return;
+				{
+					const auto n = std::bit_cast<double>(_r.be64(v.at));
+					if (!std::isfinite(n)) return;
 
-						remember(key, n);
-						text = number_text(n);
-						break;
-					}
+					remember(key, n);
+					text = number_text(n);
+					break;
+				}
 				case flv::amf_boolean:
-					{
-						const auto b = _r.u8(v.at) != 0;
-						if (key == "stereo") _metadata.stereo = b;
-						text = b ? "true" : "false";
-						break;
-					}
+				{
+					const auto b = _r.u8(v.at) != 0;
+					if (key == "stereo") _metadata.stereo = b;
+					text = b ? "true" : "false";
+					break;
+				}
 				case flv::amf_string:
 				case flv::amf_long_string:
 					if (v.length > max_text) return;
 					text = text_from_unknown(_r.view(v.at, static_cast<std::size_t>(v.length)));
 					break;
-				case flv::amf_date:
-					text = date_text(v.at);
-					break;
-				default:
-					return;
+				case flv::amf_date: text = date_text(v.at); break;
+				default: return;
 				}
 
 				add_tag(_out, tag_family::flv, key, text);
@@ -376,7 +381,8 @@ namespace libfiles::detail
 				const auto d = utc_date_from_seconds(static_cast<std::int64_t>(std::floor(milliseconds / 1000)));
 				if (!d.valid()) return {};
 
-				return std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", d.year, d.month, d.day, d.hour, d.minute, d.second);
+				return std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", d.year, d.month, d.day, d.hour, d.minute,
+				                   d.second);
 			}
 
 			media_stream& stream(track& t, const media_stream_kind kind, const std::uint64_t id, bool& created)
@@ -404,7 +410,8 @@ namespace libfiles::detail
 				std::span<const std::uint8_t> body;
 			};
 
-			static bool read_enhanced(const std::span<const std::uint8_t> data, const unsigned multitrack, enhanced_header& out)
+			static bool read_enhanced(const std::span<const std::uint8_t> data, const unsigned multitrack,
+			                          enhanced_header& out)
 			{
 				std::size_t p = 1;
 				auto type = data[0] & 0x0Fu;
@@ -451,7 +458,8 @@ namespace libfiles::detail
 					if (tracks != one_track)
 					{
 						if (data.size() - p < 3) return false;
-						const auto track_size = static_cast<std::size_t>(data[p]) << 16 | static_cast<std::size_t>(data[p + 1]) << 8 | data[p + 2];
+						const auto track_size = static_cast<std::size_t>(data[p]) << 16 |
+						                        static_cast<std::size_t>(data[p + 1]) << 8 | data[p + 2];
 						p += 3;
 						size = std::min(data.size() - p, track_size);
 					}
@@ -499,37 +507,38 @@ namespace libfiles::detail
 						s.codec = "pcm";
 						s.audio.bits_per_sample = (flags & 2) != 0 ? 16 : 8;
 						break;
-					case 1: s.codec = "adpcm_swf";
-						break;
-					case 2: s.codec = "mp3";
-						break;
-					case 14: s.codec = "mp3";
+					case 1: s.codec = "adpcm_swf"; break;
+					case 2: s.codec = "mp3"; break;
+					case 14:
+						s.codec = "mp3";
 						s.audio.sample_rate = 8000;
 						break;
-					case 4: s.codec = "nellymoser";
+					case 4:
+						s.codec = "nellymoser";
 						s.audio.sample_rate = 16000;
 						s.audio.channels = 1;
 						break;
-					case 5: s.codec = "nellymoser";
+					case 5:
+						s.codec = "nellymoser";
 						s.audio.sample_rate = 8000;
 						s.audio.channels = 1;
 						break;
-					case 6: s.codec = "nellymoser";
-						break;
-					case 7: s.codec = "alaw";
+					case 6: s.codec = "nellymoser"; break;
+					case 7:
+						s.codec = "alaw";
 						s.audio.sample_rate = 8000;
 						break;
-					case 8: s.codec = "mulaw";
+					case 8:
+						s.codec = "mulaw";
 						s.audio.sample_rate = 8000;
 						break;
-					case 10: s.codec = "aac";
-						break;
-					case 11: s.codec = "speex";
+					case 10: s.codec = "aac"; break;
+					case 11:
+						s.codec = "speex";
 						s.audio.sample_rate = 16000;
 						s.audio.channels = 1;
 						break;
-					default:
-						break;
+					default: break;
 					}
 
 					tag_row(t, "Audio", s.codec.empty() ? std::format("format {}", format) : s.codec);
@@ -548,7 +557,9 @@ namespace libfiles::detail
 					// Raw frames until the sequence header, AACPacketType 0, gives the AudioSpecificConfig.
 					if (data.size() < 2 || data[1] != 0) return;
 
-					const auto config = _r.read(t.data() + 2, static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size - 2, max_config)));
+					const auto config = _r.read(t.data() + 2,
+					                            static_cast<std::size_t>(
+													std::min<std::uint64_t>(t.data_size - 2, max_config)));
 					if (parse_aac_config(config, h)) apply_audio_header(h, s.audio);
 				}
 				else if ((format == 2 || format == 14) && data.size() >= 5)
@@ -563,12 +574,14 @@ namespace libfiles::detail
 			void enhanced_audio(const flv::tag& t)
 			{
 				enhanced_header e;
-				auto data = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, enhanced_head)));
+				auto data = _r.read(t.data(),
+				                    static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, enhanced_head)));
 				if (!read_enhanced(data, audio_multitrack, e)) return;
 
 				if (e.packet_type == sequence_start && t.data_size > data.size())
 				{
-					data = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, max_config)));
+					data = _r.read(t.data(),
+					               static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, max_config)));
 					if (!read_enhanced(data, audio_multitrack, e)) return;
 				}
 
@@ -625,7 +638,8 @@ namespace libfiles::detail
 				}
 				else if (e.packet_type == coded_frames && framed && !e.body.empty())
 				{
-					if (s.codec == "mp3") found = e.body.size() >= 4 && parse_mpeg_audio_header(load_be32(e.body.data()), h, codec);
+					if (s.codec == "mp3")
+						found = e.body.size() >= 4 && parse_mpeg_audio_header(load_be32(e.body.data()), h, codec);
 					else found = parse_ac3_frame(e.body, h, codec);
 
 					_audio.done = found;
@@ -674,10 +688,13 @@ namespace libfiles::detail
 				if (codec == 7 || codec == 9 || codec == 12)
 				{
 					// The packet type, 0 for the sequence header, and a composition time come before the configuration.
-					const auto head = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, 5)));
+					const auto head = _r.read(t.data(),
+					                          static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, 5)));
 					if (head.size() < 5 || head[1] != 0) return;
 
-					const auto config = _r.read(t.data() + 5, static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size - 5, max_config)));
+					const auto config = _r.read(t.data() + 5,
+					                            static_cast<std::size_t>(
+													std::min<std::uint64_t>(t.data_size - 5, max_config)));
 					if (codec == 7) found = parse_avc_config(config, h);
 					else if (codec == 12) found = parse_hevc_config(config, h);
 					else found = parse_mpeg4_video(config, h);
@@ -687,7 +704,8 @@ namespace libfiles::detail
 				}
 				else
 				{
-					const auto head = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, 32)));
+					const auto head = _r.read(t.data(),
+					                          static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, 32)));
 					const auto packet = std::span(head).subspan(1);
 
 					if (codec == 2) found = sorenson_size(packet, h);
@@ -706,12 +724,14 @@ namespace libfiles::detail
 			void enhanced_video(const flv::tag& t)
 			{
 				enhanced_header e;
-				auto data = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, enhanced_head)));
+				auto data = _r.read(t.data(),
+				                    static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, enhanced_head)));
 				if (!read_enhanced(data, video_multitrack, e)) return;
 
 				if (e.packet_type == sequence_start && t.data_size > data.size())
 				{
-					data = _r.read(t.data(), static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, max_config)));
+					data = _r.read(t.data(),
+					               static_cast<std::size_t>(std::min<std::uint64_t>(t.data_size, max_config)));
 					if (!read_enhanced(data, video_multitrack, e)) return;
 				}
 
@@ -766,7 +786,8 @@ namespace libfiles::detail
 			static void fixed_format(media_stream& s)
 			{
 				video_header fixed;
-				if (s.video.chroma == chroma_format::unknown && fixed_video_format(s.codec, fixed)) apply_video_header(fixed, s.video);
+				if (s.video.chroma == chroma_format::unknown && fixed_video_format(s.codec, fixed))
+					apply_video_header(fixed, s.video);
 			}
 
 			// The timestamp of the last tag, found from the size field that ends the file; a tag at time zero
@@ -788,9 +809,10 @@ namespace libfiles::detail
 
 					{
 						const auto h = _r.view(start, flv::tag_header);
-						data_size = static_cast<std::uint32_t>(h[1]) << 16 | static_cast<std::uint32_t>(h[2]) << 8 | h[3];
+						data_size = static_cast<std::uint32_t>(h[1]) << 16 | static_cast<std::uint32_t>(h[2]) << 8 |
+						            h[3];
 						timestamp = static_cast<std::uint32_t>(h[7]) << 24 | static_cast<std::uint32_t>(h[4]) << 16 |
-							static_cast<std::uint32_t>(h[5]) << 8 | h[6];
+						            static_cast<std::uint32_t>(h[5]) << 8 | h[6];
 					}
 
 					if (previous != data_size + flv::tag_header) return 0;
@@ -818,7 +840,7 @@ namespace libfiles::detail
 					auto& v = _out.streams[*_video.index];
 
 					if ((v.video.width == 0 || v.video.height == 0) && m.width >= 1 && m.height >= 1 &&
-						m.width <= max_image_dimension && m.height <= max_image_dimension)
+					    m.width <= max_image_dimension && m.height <= max_image_dimension)
 					{
 						v.video.width = static_cast<std::uint32_t>(m.width);
 						v.video.height = static_cast<std::uint32_t>(m.height);

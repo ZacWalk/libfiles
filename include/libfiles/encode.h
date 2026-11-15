@@ -1,11 +1,14 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Purpose: Encoding an image its caller holds in memory as a JPEG, a PNG, a WebP or a JPEG XL, with the
-// metadata it carries, and turning a JPEG losslessly - what works on its coefficients rather than its
-// pixels. The JPEG encoder and the lossless turn need libfiles built with libjpeg-turbo, the PNG encoder
-// with libpng, the WebP encoder with libwebp and the JPEG XL encoder with libjxl.
+// Purpose: Encoding an image its caller holds in memory as a JPEG, a PNG, a WebP, a JPEG XL or an AVIF, with
+// the metadata it carries - an HDR picture's description among it, and an AVIF's gain map - and turning a JPEG
+// losslessly - what works on its coefficients rather than its pixels - repacking one as a JPEG XL that gives it
+// back, finding, describing and attaching a JPEG's gain map, and reading how a WebP or a JPEG XL was compressed.
+// The JPEG encoder and the lossless turn need libfiles built with libjpeg-turbo, the PNG encoder with libpng, the
+// WebP encoder with libwebp, the JPEG XL encoder and the repacking with libjxl, and the AVIF encoder with libheif
+// and libaom.
 
 #pragma once
 
@@ -32,19 +35,6 @@ namespace libfiles
 		using std::runtime_error::runtime_error;
 	};
 
-	// The pixels an encoder reads: height rows of width pixels, stride bytes apart, as decode() writes
-	// them.
-	struct image_view
-	{
-		const std::uint8_t* pixels = nullptr;
-		std::size_t stride = 0;
-		std::uint32_t width = 0;
-		std::uint32_t height = 0;
-		pixel_format format = pixel_format::bgrx8;
-		// For nv12: limited-range BT.601 rather than full range.
-		bool limited_range = false;
-	};
-
 	// What an encoder embeds beside the pixels: views of the blocks, which must outlive the encode. Any can
 	// be empty.
 	struct embedded_metadata
@@ -59,6 +49,10 @@ namespace libfiles
 		std::span<const std::uint8_t> photoshop;
 		std::uint32_t pixels_per_meter_x = 0;
 		std::uint32_t pixels_per_meter_y = 0;
+		// The pixels are an HDR picture's signal, coded as this says - what decode() gives with keep_hdr. The AVIF,
+		// JPEG XL and PNG encoders write it in place of the ICC profile: the colour box's, colour encoding's or cICP
+		// chunk's code points, and the light levels the format keeps. The other encoders refuse it.
+		std::optional<hdr_description> hdr;
 
 		embedded_metadata() = default;
 
@@ -113,20 +107,19 @@ namespace libfiles
 	// the call. BMP, GIF, TIFF and PNG retain native indexed/packed rows where their file format permits
 	// them; JPEG accepts one bgr24/bgrx32/bgra32/gray8 frame and is inherently lossy.
 	document_encode_result encode_document(const decoded_document& document, image_format format,
-	                                        const document_encode_options& options = {});
+	                                       const document_encode_options& options = {});
 
 	// Row-oriented convenience form for one image_view. It is intentionally separate from the document
 	// form so callers cannot accidentally flatten a multi-page or indexed document into BGRA pixels.
-	document_encode_result encode_document(const image_view& image, image_format format,
-	                                        const document_info& info = {},
-	                                        const embedded_metadata& metadata = {},
-	                                        const document_encode_options& options = {});
+	document_encode_result encode_document(const image_view& image, image_format format, const document_info& info = {},
+	                                       const embedded_metadata& metadata = {},
+	                                       const document_encode_options& options = {});
 
 	// Writes only after a complete in-memory encode succeeds. Encoding or cancellation therefore never
 	// touches the destination; a destination write failure follows the writable_stream's own staging
 	// and rollback policy.
 	document_encode_result encode_document(writable_stream& destination, const decoded_document& document,
-	                                        image_format format, const document_encode_options& options = {});
+	                                       image_format format, const document_encode_options& options = {});
 
 	// An image encoded, with what the encoder noted on the way.
 	struct encoded
@@ -310,7 +303,7 @@ namespace libfiles
 		// reports error; an unsupported partial-MCU request, an over-budget workspace and cancellation
 		// have their own flags.
 		lossless_turn transform(std::span<const std::uint8_t> jpeg, jpeg_encoder& encoder,
-		                       const jpeg_transform_options& options = {}) const;
+		                        const jpeg_transform_options& options = {}) const;
 
 		struct state;
 
@@ -323,19 +316,45 @@ namespace libfiles
 	// re-encoding invalidated - the EXIF and XMP orientation becomes 1, for the new pixels are upright, the
 	// EXIF pixel dimensions become width by height, and the EXIF and JFIF thumbnails are dropped. Segments
 	// describing the old encoding - Adobe's colour transform, the tables - or pointing into the old file - a
-	// multi-picture index - are dropped, and so is an EXIF block too malformed to correct. source need hold
-	// only its header, as read_jpeg_header gives it. Empty when either is not a well-formed JPEG. Needs no
-	// codec.
+	// multi-picture index - are dropped, and so is an EXIF block too malformed to correct. The re-encoding
+	// holds no gain map, so what says one follows - hdrgm:Version and the container directory's GainMap item
+	// in the XMP, ISO 21496-1's version segment - is dropped too. source need hold only its header, as
+	// read_jpeg_header gives it. Empty when either is not a well-formed JPEG. Needs no codec.
 	std::vector<std::uint8_t> carry_jpeg_metadata(std::span<const std::uint8_t> source,
 	                                              std::span<const std::uint8_t> encoded, int width, int height);
+
+	// The gain map of an Ultra HDR, Adobe, Apple or ISO 21496-1 JPEG: the JPEG after its primary that says
+	// how much brighter than the primary each part of the scene is shown on an HDR display, as the primary's
+	// multi-picture index locates it and its own metadata marks it. Empty when there is none. Needs no codec.
+	std::span<const std::uint8_t> find_jpeg_gain_map(std::span<const std::uint8_t> jpeg);
+
+	// primary, to its EOI, with gain_map after it and signalled as the gain map's own metadata asks: a
+	// multi-picture index in place of any the primary held; its length in the GainMap item of the primary's
+	// XMP container directory, and hdrgm:Version, when its metadata is Adobe's hdrgm XMP; and ISO 21496-1's
+	// version segment when its metadata is ISO 21496-1's. An empty gain_map leaves the primary with none of
+	// that, saying no gain map follows. Empty when either is not a well-formed JPEG. Needs no codec.
+	std::vector<std::uint8_t> attach_jpeg_gain_map(std::span<const std::uint8_t> primary,
+	                                               std::span<const std::uint8_t> gain_map);
+
+	// What a JPEG gain map's own segments say of applying it, in ISO 21496-1's terms: its ISO 21496-1 APP2, else Adobe's
+	// hdrgm XMP, which Ultra HDR writes. Nothing for one whose base rendition is HDR, for Apple's - whose values say it
+	// otherwise, as convert_apple_gain_map in hdr.h has it - or for a JPEG that is no gain map. Needs no codec.
+	std::optional<gain_map_metadata> read_jpeg_gain_map_metadata(std::span<const std::uint8_t> gain_map);
+
+	// A JPEG made a gain map: given the metadata that applies it as Ultra HDR writes it - Adobe's hdrgm XMP and ISO
+	// 21496-1's APP2 - after its SOI and any JFIF APP0, in place of what said so before. attach_jpeg_gain_map then signals
+	// it after a primary. Empty when the JPEG is not well formed, or the metadata cannot be written. Needs no codec.
+	std::vector<std::uint8_t> mark_jpeg_gain_map(std::span<const std::uint8_t> gain_map,
+	                                             const gain_map_metadata& metadata);
 
 	// SOI and the marker segments before a JPEG's first scan, read no further. Empty when the stream is not
 	// a JPEG, or its header is malformed or larger than a photo's (32 MiB).
 	std::vector<std::uint8_t> read_jpeg_header(reader& input);
 
-	// Encodes bgrx8 as an RGB PNG and anything else as RGBA - straight alpha, bgra8 - with the ICC
-	// profile, the XMP and the EXIF, or an EXIF holding only the orientation when there is none and the
-	// orientation is not 1. Throws encode_error.
+	// Encodes bgrx8 as an RGB PNG and bgra8 as RGBA - straight alpha - and rgbx16 and rgba16 the same at
+	// sixteen bits a channel, with the ICC profile - or an HDR picture's cICP, cLLI and mDCV chunks in its place - the
+	// XMP and the EXIF, or an EXIF holding only the orientation when there is none and the orientation is not 1.
+	// Throws encode_error.
 	encoded encode_png(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata);
 
 	struct webp_options
@@ -360,6 +379,18 @@ namespace libfiles
 	encoded encode_webp(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata,
 	                    const webp_options& options);
 
+	// How a still WebP was compressed - losslessly, or lossily at about this quality, 0 to 100, as libwebp
+	// estimates it from the quantizers its VP8 header holds - so that one written again as itself can be
+	// written as it was. Nothing for an animation, or a file that is not a WebP whose image header can be
+	// read.
+	struct webp_compression
+	{
+		bool lossless = false;
+		int quality = 0;
+	};
+
+	std::optional<webp_compression> read_webp_compression(std::span<const std::uint8_t> webp);
+
 	struct jxl_options
 	{
 		// Bit for bit, alpha and all. Otherwise only the colour is lossy; alpha stays lossless.
@@ -371,13 +402,75 @@ namespace libfiles
 		int effort = 7;
 	};
 
-	// Encodes bgrx8 as RGB and bgra8 as RGBA - straight alpha - as a JPEG XL. The orientation goes in the
-	// codestream, which a JPEG XL reader takes it from, and an EXIF's orientation is brought into line
-	// with it. The ICC profile describes the pixels; the EXIF and the XMP go in boxes of their own,
-	// uncompressed, so a reader without Brotli finds them. IPTC and Photoshop resources have no place in
+	// Encodes bgrx8 and rgbx16 as RGB and bgra8 and rgba16 as RGBA - straight alpha - as a JPEG XL of 8 or 16
+	// bits a sample. The orientation goes in the codestream, which a JPEG XL reader takes it from, and an
+	// EXIF's orientation is brought into line with it. The ICC profile describes the pixels - or, for an HDR picture's
+	// signal, its description does, as the colour encoding and the intensity target; the EXIF and the XMP go in boxes
+	// of their own, uncompressed, so a reader without Brotli finds them. IPTC and Photoshop resources have no place in
 	// the format and are left out. data is empty when it cannot, and the notes say why.
 	encoded encode_jxl(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata,
 	                   const jxl_options& options);
+
+	// Repacks a JPEG as a JPEG XL without loss, as libjxl's cjxl does by default: its coefficients compressed
+	// again, commonly a fifth smaller, and what libjxl needs to give the JPEG back byte for byte kept in a
+	// 'jbrd' box. Its EXIF and XMP go in boxes of their own, uncompressed, which that JPEG is given back from;
+	// its other segments - IPTC and Photoshop resources among them - are kept only in that box. The codestream
+	// takes its orientation from the EXIF. effort is libjxl's, 1 to 9. data is empty when libjxl cannot keep
+	// the JPEG - CMYK, arithmetic-coded, of 12 bits or damaged - and the notes say why.
+	encoded transcode_jpeg_to_jxl(std::span<const std::uint8_t> jpeg, int effort = 7);
+
+	// The JPEG a JPEG XL repacked from one gives back: byte for byte the JPEG it was made from, but for the
+	// EXIF and XMP its boxes hold now. Empty for a JPEG XL made from pixels, or one whose boxes no longer fit
+	// the segments the JPEG had.
+	std::vector<std::uint8_t> reconstruct_jpeg(std::span<const std::uint8_t> jxl);
+
+	// How a JPEG XL was compressed, so that one written again as itself can be written as it was: losslessly - its
+	// colour coded as the file describes it rather than in the XYB space libjxl's lossy modes code it in, as libjxl's
+	// jxlinfo tells "possibly lossless" - or lossily, at a quality the file does not record. One repacked from a
+	// JPEG is coded so too, but holds that JPEG's loss: it is lossy, and reconstruct_jpeg gives back what it holds.
+	// Nothing for a file whose header cannot be read.
+	struct jxl_compression
+	{
+		bool lossless = false;
+	};
+
+	std::optional<jxl_compression> read_jxl_compression(std::span<const std::uint8_t> jxl);
+
+	// A gain map written with a picture: its pixels, bgrx8 - a grey map, its value in every channel, is written as one
+	// channel - and the metadata that applies it to the picture.
+	struct gain_map_image
+	{
+		image_view image;
+		gain_map_metadata metadata;
+	};
+
+	struct avif_options
+	{
+		// Bit for bit: RGB itself at 4:4:4, alpha and all. Otherwise YCbCr 4:2:0, alpha lossy too.
+		bool lossless = false;
+		// 0 to 100, as libheif reads it for libaom's tuning for images: 75 is high, 100 near lossless.
+		int quality = 75;
+		// libaom's speed, 0 the slowest and smallest to 9 the fastest; 6 is libheif's default.
+		int speed = 6;
+		// Bits a sample written from sixteen-bit pixels: 10, as AVIF's main profile holds, or 12, which takes AV1's
+		// professional profile and fewer decoders read. Bytes are written at 8.
+		int bit_depth = 10;
+		// Written as ISO 21496-1 has a gain map in a HEIF, as libavif writes one: an image of its own, hidden, coded at
+		// a quality of 90, and a tone map item holding the metadata that takes the picture and the gain map, grouped
+		// with the picture as its alternative and preferred to it by a reader that applies gain maps. Turned as the
+		// picture is. Not written with an HDR picture's signal, whose own light needs none.
+		std::optional<gain_map_image> gain_map;
+	};
+
+	// Encodes bgrx8 and rgbx16 as RGB and bgra8 and rgba16 as RGBA - straight alpha - as an AVIF with libheif and
+	// libaom, at eight bits a sample, or ten or twelve from sixteen. The orientation is written as the image's
+	// rotation and mirror, which a HEIF reader turns the picture by, and an EXIF's orientation is brought into line
+	// with it. The ICC profile describes the pixels, sRGB without one - or, for an HDR picture's signal, its
+	// description does: the colour box's code points, the content light level and the mastering display. The EXIF and
+	// the XMP are items of their own, and a gain map is written as the options say. Built with LIBFILES_HEIF. data is
+	// empty when it cannot, and the notes say why.
+	encoded encode_avif(const image_view& image, std::uint16_t orientation, const embedded_metadata& metadata,
+	                    const avif_options& options);
 
 	namespace test_hooks
 	{

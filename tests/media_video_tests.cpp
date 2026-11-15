@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the video codec header parsers the media scanners share. Each header is built
 // field by field with a bit writer and read back, then cut short at every byte and damaged; the
@@ -86,7 +86,10 @@ namespace
 
 	bytes hex(const std::string_view text)
 	{
-		const auto digit = [](const char c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
+		const auto digit = [](const char c)
+		{
+			return c <= '9' ? c - '0' : c - 'a' + 10;
+		};
 		bytes out;
 
 		for (std::size_t i = 0; i + 1 < text.size(); i += 2)
@@ -130,8 +133,8 @@ namespace
 
 	// ---- Reading them back ---------------------------------------------------------------------------
 
-	video_header picture(const std::uint32_t width, const std::uint32_t height, const chroma_format chroma, const std::uint8_t depth,
-	                     std::string profile = {})
+	video_header picture(const std::uint32_t width, const std::uint32_t height, const chroma_format chroma,
+	                     const std::uint8_t depth, std::string profile = {})
 	{
 		video_header h;
 		h.width = width;
@@ -149,7 +152,8 @@ namespace
 		return h;
 	}
 
-	video_header& colour(video_header& h, const std::uint8_t primaries, const std::uint8_t transfer, const std::uint8_t matrix)
+	video_header& colour(video_header& h, const std::uint8_t primaries, const std::uint8_t transfer,
+	                     const std::uint8_t matrix)
 	{
 		h.color_primaries = primaries;
 		h.transfer = transfer;
@@ -194,7 +198,8 @@ namespace
 
 		if (std::abs(actual.frame_rate - wanted.frame_rate) > 1e-9 * std::max(1.0, wanted.frame_rate))
 		{
-			out += "frame rate " + std::to_string(actual.frame_rate) + " not " + std::to_string(wanted.frame_rate) + "; ";
+			out += "frame rate " + std::to_string(actual.frame_rate) + " not " + std::to_string(wanted.frame_rate) +
+			       "; ";
 		}
 
 		if (actual.profile != wanted.profile) out += "profile '" + actual.profile + "' not '" + wanted.profile + "'; ";
@@ -227,18 +232,23 @@ namespace
 	// identity matrix is what makes 4:4:4 RGB, and it may be cut off.
 	bool agrees(const video_header& part, const video_header& whole)
 	{
-		const auto same_or = [](const auto p, const auto w, const auto unread) { return p == w || p == unread; };
+		const auto same_or = [](const auto& p, const auto& w, const auto& unread)
+		{
+			return p == w || p == unread;
+		};
 
 		return same_or(part.width, whole.width, 0u) && same_or(part.height, whole.height, 0u) &&
-			((part.pixel_aspect_width == whole.pixel_aspect_width && part.pixel_aspect_height == whole.pixel_aspect_height) ||
-				(part.pixel_aspect_width == 0 && part.pixel_aspect_height == 0)) &&
-			(same_or(part.chroma, whole.chroma, chroma_format::unknown) ||
-				(part.chroma == chroma_format::yuv444 && whole.chroma == chroma_format::rgb)) &&
-			same_or(part.bit_depth, whole.bit_depth, std::uint8_t{0}) && same_or(part.alpha, whole.alpha, false) &&
-			same_or(part.interlaced, whole.interlaced, false) && same_or(part.full_range, whole.full_range, false) &&
-			same_or(part.color_primaries, whole.color_primaries, std::uint8_t{2}) &&
-			same_or(part.transfer, whole.transfer, std::uint8_t{2}) && same_or(part.matrix, whole.matrix, std::uint8_t{2}) &&
-			same_or(part.frame_rate, whole.frame_rate, 0.0) && same_or(part.profile, whole.profile, std::string{});
+		       ((part.pixel_aspect_width == whole.pixel_aspect_width &&
+		         part.pixel_aspect_height == whole.pixel_aspect_height) ||
+		        (part.pixel_aspect_width == 0 && part.pixel_aspect_height == 0)) &&
+		       (same_or(part.chroma, whole.chroma, chroma_format::unknown) ||
+		        (part.chroma == chroma_format::yuv444 && whole.chroma == chroma_format::rgb)) &&
+		       same_or(part.bit_depth, whole.bit_depth, std::uint8_t{0}) && same_or(part.alpha, whole.alpha, false) &&
+		       same_or(part.interlaced, whole.interlaced, false) && same_or(part.full_range, whole.full_range, false) &&
+		       same_or(part.color_primaries, whole.color_primaries, std::uint8_t{2}) &&
+		       same_or(part.transfer, whole.transfer, std::uint8_t{2}) &&
+		       same_or(part.matrix, whole.matrix, std::uint8_t{2}) && same_or(part.frame_rate, whole.frame_rate, 0.0) &&
+		       same_or(part.profile, whole.profile, std::string{});
 	}
 
 	using agreement = std::function<bool(const video_header& part, const video_header& whole)>;
@@ -255,7 +265,8 @@ namespace
 			const auto part = first(whole, n);
 			auto h = untouched();
 			const auto ok = parse(part, h) ? agree(h, full) : differences(h, untouched()).empty();
-			const auto what = "cut short at " + std::to_string(n) + " of " + std::to_string(whole.size()) + " bytes: " + differences(h, full);
+			const auto what = "cut short at " + std::to_string(n) + " of " + std::to_string(whole.size()) +
+			                  " bytes: " + differences(h, full);
 			test::check(ok, what.c_str(), __FILE__, __LINE__);
 		}
 	}
@@ -272,7 +283,8 @@ namespace
 
 			if (parse(damaged, h))
 			{
-				sane = sane && h.width <= 65535 && h.height <= 65535 && h.frame_rate >= 0 && std::isfinite(h.frame_rate);
+				sane = sane && h.width <= 65535 && h.height <= 65535 && h.frame_rate >= 0 &&
+				       std::isfinite(h.frame_rate);
 			}
 			else
 			{
@@ -344,8 +356,7 @@ namespace
 	};
 
 	// The VUI's start, as H.264 and HEVC share it.
-	template <typename Fields>
-	void vui_start(header_bits& w, const Fields& f)
+	template <typename Fields> void vui_start(header_bits& w, const Fields& f)
 	{
 		w.flag(f.aspect_idc >= 0);
 
@@ -382,15 +393,13 @@ namespace
 
 				switch (i % 4)
 				{
-				case 0: w.flag(true);
+				case 0:
+					w.flag(true);
 					for (auto j = 0; j < size; ++j) w.se(j % 2 == 0 ? -2 : 3);
 					break;
-				case 1: w.flag(true).se(-8);
-					break;
-				case 2: w.flag(true).se(5).se(10).se(-23);
-					break;
-				default: w.flag(false);
-					break;
+				case 1: w.flag(true).se(-8); break;
+				case 2: w.flag(true).se(5).se(10).se(-23); break;
+				default: w.flag(false); break;
 				}
 			}
 		}
@@ -489,7 +498,12 @@ namespace
 		w.u(0, 4).u(s.sub_layers, 3).flag(true);
 
 		// profile_tier_level, with each sub-layer's level and every other one's profile.
-		w.u(0, 2).u(0, 1).u(s.profile_idc, 5).u(s.compatibility, 32).flag(s.progressive_source).flag(s.interlaced_source);
+		w.u(0, 2)
+			.u(0, 1)
+			.u(s.profile_idc, 5)
+			.u(s.compatibility, 32)
+			.flag(s.progressive_source)
+			.flag(s.interlaced_source);
 		w.flag(false).flag(true).u(0, 43).u(0, 1).u(93, 8);
 		for (unsigned i = 0; i < s.sub_layers; ++i) w.flag(i % 2 == 0).flag(true);
 		for (auto i = s.sub_layers; s.sub_layers > 0 && i < 8; ++i) w.u(0, 2);
@@ -583,7 +597,8 @@ namespace
 					// POC proportional to timing, and HRD parameters: NAL HRD, a CPB for each sub-layer.
 					w.u(s.units, 32).u(s.scale, 32).flag(true).ue(0).flag(true);
 					w.flag(true).flag(false).flag(false).u(4, 4).u(6, 4).u(23, 5).u(23, 5).u(23, 5);
-					for (unsigned i = 0; i <= s.sub_layers; ++i) w.flag(true).ue(0).ue(0).ue(20000).ue(40000).flag(false);
+					for (unsigned i = 0; i <= s.sub_layers; ++i)
+						w.flag(true).ue(0).ue(0).ue(20000).ue(40000).flag(false);
 				}
 
 				w.flag(true).flag(false).flag(true).flag(true).ue(0).ue(2).ue(1).ue(15).ue(15);
@@ -592,7 +607,8 @@ namespace
 			w.flag(false).trailing();
 		}
 
-		bytes out{static_cast<std::uint8_t>(s.nal_type << 1 | s.layer >> 5), static_cast<std::uint8_t>((s.layer & 31) << 3 | 1)};
+		bytes out{static_cast<std::uint8_t>(s.nal_type << 1 | s.layer >> 5),
+		          static_cast<std::uint8_t>((s.layer & 31) << 3 | 1)};
 		const auto payload = escape(w.b);
 		out.insert(out.end(), payload.begin(), payload.end());
 		return out;
@@ -613,7 +629,11 @@ namespace
 		builder o;
 		o.u8(1).u8(r.profile_idc).be32(r.compatibility);
 		o.u8((r.progressive_source ? 0x80u : 0) | (r.interlaced_source ? 0x40u : 0)).u8(0).be32(0).u8(93);
-		o.be16(0xF000).u8(0xFC).u8(0xFC | r.chroma_format_idc).u8(0xF8 | (r.luma_depth - 8)).u8(0xF8 | (r.luma_depth - 8));
+		o.be16(0xF000)
+			.u8(0xFC)
+			.u8(0xFC | r.chroma_format_idc)
+			.u8(0xF8 | (r.luma_depth - 8))
+			.u8(0xF8 | (r.luma_depth - 8));
 		o.be16(0).u8(0x0F).u8(static_cast<unsigned>(arrays.size()));
 
 		for (const auto& [type, units] : arrays)
@@ -964,7 +984,18 @@ namespace
 		if (s.control)
 		{
 			w.u(1, 2).flag(true).flag(s.vbv);
-			if (s.vbv) w.u(0x1234, 15).flag(true).u(0x22, 15).flag(true).u(0x111, 15).flag(true).u(3, 3).u(0x400, 11).flag(true).u(0x7FFF, 15).flag(true);
+			if (s.vbv)
+				w.u(0x1234, 15)
+					.flag(true)
+					.u(0x22, 15)
+					.flag(true)
+					.u(0x111, 15)
+					.flag(true)
+					.u(3, 3)
+					.u(0x400, 11)
+					.flag(true)
+					.u(0x7FFF, 15)
+					.flag(true);
 		}
 
 		w.u(s.shape, 2);
@@ -979,7 +1010,8 @@ namespace
 
 			if (s.sprite == 1 || s.sprite == 2)
 			{
-				if (s.sprite == 1) w.u(800, 13).flag(true).u(600, 13).flag(true).u(16, 13).flag(true).u(16, 13).flag(true);
+				if (s.sprite == 1)
+					w.u(800, 13).flag(true).u(600, 13).flag(true).u(16, 13).flag(true).u(16, 13).flag(true);
 				w.u(2, 6).u(1, 2).flag(false);
 				if (s.sprite == 1) w.flag(false);
 			}
@@ -1029,7 +1061,14 @@ namespace
 	bytes mpeg12_headers(const mpeg12_stream& s)
 	{
 		header_bits w;
-		w.u(s.width & 0xFFF, 12).u(s.height & 0xFFF, 12).u(s.aspect, 4).u(s.rate, 4).u(0x3FFFF, 18).flag(s.marker).u(112, 10).flag(false);
+		w.u(s.width & 0xFFF, 12)
+			.u(s.height & 0xFFF, 12)
+			.u(s.aspect, 4)
+			.u(s.rate, 4)
+			.u(0x3FFFF, 18)
+			.flag(s.marker)
+			.u(112, 10)
+			.flag(false);
 		w.flag(s.intra_matrix);
 		for (auto i = 0; s.intra_matrix && i < 64; ++i) w.u(8u + i, 8);
 		w.flag(s.non_intra_matrix);
@@ -1082,8 +1121,8 @@ namespace
 
 	const jpeg_components ycbcr420 = {{1, 0x22}, {2, 0x11}, {3, 0x11}};
 
-	bytes jpeg_frame(const unsigned sof, const unsigned precision, const unsigned width, const unsigned height, const jpeg_components& components,
-	                 const bytes& markers = {})
+	bytes jpeg_frame(const unsigned sof, const unsigned precision, const unsigned width, const unsigned height,
+	                 const jpeg_components& components, const bytes& markers = {})
 	{
 		builder o;
 		o.u8(0xFF).u8(0xD8).raw(markers);
@@ -1226,7 +1265,8 @@ namespace
 		w.flag(true).flag(false).flag(false).u(1, 3).u(2, 2).flag(false);
 
 		// A sprite's size, frame rate, RES_X8, the bit after it and the slice code; else RES_RTM_FLAG.
-		if (c.sprite) w.u(c.sprite_width, 11).u(c.sprite_height, 11).u(15, 5).flag(false).flag(c.sprite_feature).u(0, 3);
+		if (c.sprite)
+			w.u(c.sprite_width, 11).u(c.sprite_height, 11).u(15, 5).flag(false).flag(c.sprite_feature).u(0, 3);
 		else w.flag(true);
 
 		return w.zeros().b;
@@ -1309,7 +1349,17 @@ namespace
 		header_bits w;
 		// BROKEN_LINK, CLOSED_ENTRY, PANSCAN_FLAG, REFDIST_FLAG, LOOPFILTER, FASTUVMC, EXTENDED_MV, DQUANT,
 		// VSTRANSFORM, OVERLAP and QUANTIZER; then HRD_FULL for each leaky bucket, and CODED_SIZE_FLAG.
-		w.flag(false).flag(true).flag(false).flag(true).flag(true).flag(true).flag(e.extended_mv).u(0, 2).flag(false).flag(false).u(0, 2);
+		w.flag(false)
+			.flag(true)
+			.flag(false)
+			.flag(true)
+			.flag(true)
+			.flag(true)
+			.flag(e.extended_mv)
+			.u(0, 2)
+			.flag(false)
+			.flag(false)
+			.u(0, 2);
 		for (const auto f : e.fullness) w.u(f, 8);
 		w.flag(e.coded_width != 0);
 		if (e.coded_width != 0) w.u(e.coded_width / 2 - 1, 12).u(e.coded_height / 2 - 1, 12);
@@ -1343,7 +1393,8 @@ namespace
 	}
 
 	// A BITMAPINFOHEADER whose size counts the codec's data after it, as AVI, ASF and Matroska write one.
-	bytes bitmap_info(const std::uint32_t width, const std::uint32_t height, const std::string_view fourcc, const bytes& data)
+	bytes bitmap_info(const std::uint32_t width, const std::uint32_t height, const std::string_view fourcc,
+	                  const bytes& data)
 	{
 		builder b;
 		b.le32(static_cast<std::uint32_t>(40 + data.size())).le32(width).le32(height).le16(1).le16(24).raw(fourcc);
@@ -1403,7 +1454,9 @@ TEST("media video H.264 SPS reads a Constrained Baseline picture without a VUI")
 	s.poc_type = 2;
 
 	const auto nal = h264_nal(s);
-	CHECK_STR(read_as(libfiles::detail::parse_h264_sps, nal, picture(640, 480, chroma_format::yuv420, 8, "Constrained Baseline")), "");
+	CHECK_STR(read_as(libfiles::detail::parse_h264_sps, nal,
+	                  picture(640, 480, chroma_format::yuv420, 8, "Constrained Baseline")),
+	          "");
 	check_cut_short(libfiles::detail::parse_h264_sps, nal);
 	check_damaged(libfiles::detail::parse_h264_sps, nal);
 }
@@ -1509,7 +1562,9 @@ TEST("media video H.264 SPS counts crop units in chroma samples and field lines"
 	full.chroma_format_idc = 3;
 	full.scaling_lists = true;
 	full.crop = {0, 3, 1, 0};
-	CHECK_STR(read_as(parse_h264_sps, h264_nal(full), picture(637, 479, chroma_format::yuv444, 8, "High 4:4:4 Predictive")), "");
+	CHECK_STR(read_as(parse_h264_sps, h264_nal(full),
+	                  picture(637, 479, chroma_format::yuv444, 8, "High 4:4:4 Predictive")),
+	          "");
 	check_cut_short(parse_h264_sps, h264_nal(full));
 
 	// Separate colour planes crop as monochrome does, and are still 4:4:4.
@@ -1605,11 +1660,25 @@ TEST("media video H.264 profiles are named as FFmpeg names them")
 	};
 
 	constexpr case_ cases[] = {
-		{66, 0x00, "Baseline"}, {66, 0x40, "Constrained Baseline"}, {77, 0x00, "Main"}, {77, 0x40, "Main"},
-		{88, 0x00, "Extended"}, {100, 0x00, "High"}, {100, 0x0C, "High"}, {110, 0x00, "High 10"},
-		{110, 0x10, "High 10 Intra"}, {122, 0x00, "High 4:2:2"}, {122, 0x10, "High 4:2:2 Intra"},
-		{244, 0x00, "High 4:4:4 Predictive"}, {244, 0x10, "High 4:4:4 Intra"}, {44, 0x00, "CAVLC 4:4:4"},
-		{118, 0x00, "Multiview High"}, {128, 0x00, "Stereo High"}, {144, 0x00, "High 4:4:4"}, {83, 0x00, ""}, {139, 0x00, ""},
+		{66, 0x00, "Baseline"},
+		{66, 0x40, "Constrained Baseline"},
+		{77, 0x00, "Main"},
+		{77, 0x40, "Main"},
+		{88, 0x00, "Extended"},
+		{100, 0x00, "High"},
+		{100, 0x0C, "High"},
+		{110, 0x00, "High 10"},
+		{110, 0x10, "High 10 Intra"},
+		{122, 0x00, "High 4:2:2"},
+		{122, 0x10, "High 4:2:2 Intra"},
+		{244, 0x00, "High 4:4:4 Predictive"},
+		{244, 0x10, "High 4:4:4 Intra"},
+		{44, 0x00, "CAVLC 4:4:4"},
+		{118, 0x00, "Multiview High"},
+		{128, 0x00, "Stereo High"},
+		{144, 0x00, "High 4:4:4"},
+		{83, 0x00, ""},
+		{139, 0x00, ""},
 	};
 
 	for (const auto& c : cases)
@@ -1711,7 +1780,10 @@ TEST("media video avcC records from real files read as FFmpeg reads them")
 	auto gizmo = picture(560, 320, chroma_format::yuv420, 8, "Constrained Baseline");
 	colour(gizmo, 1, 1, 1);
 	gizmo.frame_rate = 30;
-	CHECK_STR(read_as(parse_avc_config, hex("0142c01effe1001b6742c01e9e218118534d40404050000003001000000303c8f162ee01000568ce06cb20"), gizmo), "");
+	CHECK_STR(read_as(parse_avc_config,
+	                  hex("0142c01effe1001b6742c01e9e218118534d40404050000003001000000303c8f162ee01000568ce06cb20"),
+	                  gizmo),
+	          "");
 
 	// StPauls.MOV: an iPhone's Baseline, SMPTE 170M, no timing.
 	auto phone = picture(640, 480, chroma_format::yuv420, 8, "Baseline");
@@ -1721,35 +1793,49 @@ TEST("media video avcC records from real files read as FFmpeg reads them")
 	// tvp.mp4: High at FFmpeg's 50058/1001.
 	auto tvp = picture(528, 560, chroma_format::yuv420, 8, "High");
 	tvp.frame_rate = 50058.0 / 1001;
-	CHECK_STR(read_as(parse_avc_config, hex("0164001fffe100176764001facd9808411e8400000fa400061c523c60c668001000568e97b3c8f"), tvp), "");
+	CHECK_STR(read_as(parse_avc_config,
+	                  hex("0164001fffe100176764001facd9808411e8400000fa400061c523c60c668001000568e97b3c8f"), tvp),
+	          "");
 
 	// anamorphic.mp4 states 4:3 pixels in its SPS; anamorphic-pasp.mp4 square ones, and 4:3 in its pasp box.
 	auto anamorphic = picture(640, 480, chroma_format::yuv420, 8, "High");
 	aspect(anamorphic, 4, 3);
 	anamorphic.frame_rate = 15;
-	const auto anamorphic_record = hex("01640016ffe1001967640016acd940a03db0e10000030001000003001e0f162d9601000668ebe3cb22c0fdf8f800");
+	const auto anamorphic_record = hex(
+		"01640016ffe1001967640016acd940a03db0e10000030001000003001e0f162d9601000668ebe3cb22c0fdf8f800");
 	CHECK_STR(read_as(parse_avc_config, anamorphic_record, anamorphic), "");
 	aspect(anamorphic, 1, 1);
-	CHECK_STR(read_as(parse_avc_config, hex("01640016ffe1001967640016acd940a03db0110000030001000003001e0f162d9601000668ebe3cb22c0fdf8f800"), anamorphic), "");
+	CHECK_STR(
+		read_as(parse_avc_config,
+	            hex("01640016ffe1001967640016acd940a03db0110000030001000003001e0f162d9601000668ebe3cb22c0fdf8f800"),
+	            anamorphic),
+		"");
 	check_cut_short(parse_avc_config, anamorphic_record);
 
 	auto ten = picture(128, 72, chroma_format::yuv420, 10, "High 10");
 	aspect(ten, 1, 1);
 	ten.frame_rate = 25;
-	const auto ten_record = hex("016e000affe10018676e000aa6cb4105fcb8088000000300800000190789135001000468ce0fc8fdfafa00");
+	const auto ten_record = hex(
+		"016e000affe10018676e000aa6cb4105fcb8088000000300800000190789135001000468ce0fc8fdfafa00");
 	CHECK_STR(read_as(parse_avc_config, ten_record, ten), "");
 	check_damaged(parse_avc_config, ten_record);
 
 	auto single = picture(128, 72, chroma_format::yuv420, 8, "High");
 	aspect(single, 1, 1);
 	single.frame_rate = 25;
-	CHECK_STR(read_as(parse_avc_config, hex("0164000affe100196764000aacd9420bf97011000003000100000300320f12259601000668ebe3cb22c0fdf8f800"), single), "");
+	CHECK_STR(
+		read_as(parse_avc_config,
+	            hex("0164000affe100196764000aacd9420bf97011000003000100000300320f12259601000668ebe3cb22c0fdf8f800"),
+	            single),
+		"");
 
 	// indy.mp4: High at level 4, which FFmpeg's probe leaves unnamed until it decodes a frame.
 	auto indy = picture(1920, 816, chroma_format::yuv420, 8, "High");
 	aspect(indy, 1, 1);
 	indy.frame_rate = 24000.0 / 1001;
-	CHECK_STR(read_as(parse_avc_config, hex("01640028ffe1001867640028acc8601e019ec04400000fa40002ee023c60c66801000568e97b2c8b"), indy), "");
+	CHECK_STR(read_as(parse_avc_config,
+	                  hex("01640028ffe1001867640028acc8601e019ec04400000fa40002ee023c60c66801000568e97b2c8b"), indy),
+	          "");
 }
 
 // ---- HEVC ----------------------------------------------------------------------------------------------
@@ -1811,7 +1897,8 @@ TEST("media video HEVC SPS reads Main 10 without a VUI")
 	s.chroma_depth = 10;
 
 	const auto nal = hevc_nal(s);
-	CHECK_STR(read_as(libfiles::detail::parse_hevc_sps, nal, picture(3840, 2160, chroma_format::yuv420, 10, "Main 10")), "");
+	CHECK_STR(read_as(libfiles::detail::parse_hevc_sps, nal, picture(3840, 2160, chroma_format::yuv420, 10, "Main 10")),
+	          "");
 	check_cut_short(libfiles::detail::parse_hevc_sps, nal);
 }
 
@@ -1867,9 +1954,19 @@ TEST("media video HEVC profiles are named as FFmpeg names them")
 	};
 
 	constexpr case_ cases[] = {
-		{1, 0, "Main"}, {2, 0, "Main 10"}, {3, 0, "Main Still Picture"}, {4, 0, "Rext"}, {6, 0, "Multiview Main"},
-		{9, 0, "Scc"}, {5, 0, ""}, {0, 0x20000000, "Main 10"}, {0, 0x40000000, "Main"}, {0, 0x60000000, "Main"},
-		{0, 0x08000000, "Rext"}, {0, 0x80000000, ""}, {0, 0, ""},
+		{1, 0, "Main"},
+		{2, 0, "Main 10"},
+		{3, 0, "Main Still Picture"},
+		{4, 0, "Rext"},
+		{6, 0, "Multiview Main"},
+		{9, 0, "Scc"},
+		{5, 0, ""},
+		{0, 0x20000000, "Main 10"},
+		{0, 0x40000000, "Main"},
+		{0, 0x60000000, "Main"},
+		{0, 0x08000000, "Rext"},
+		{0, 0x80000000, ""},
+		{0, 0, ""},
 	};
 
 	for (const auto& c : cases)
@@ -1903,7 +2000,9 @@ TEST("media video HEVC SPS keeps its picture when what follows it is damaged")
 {
 	hevc_sps s;
 	s.sets_instead = 65;
-	CHECK_STR(read_as(libfiles::detail::parse_hevc_sps, hevc_nal(s), picture(1920, 1080, chroma_format::yuv420, 8, "Main")), "");
+	CHECK_STR(read_as(libfiles::detail::parse_hevc_sps, hevc_nal(s),
+	                  picture(1920, 1080, chroma_format::yuv420, 8, "Main")),
+	          "");
 
 	// A VUI cut short keeps what it had read whole: the shape and colour, not the timing.
 	hevc_sps v;
@@ -2033,7 +2132,8 @@ TEST("media video hvcC reads its base layer's first SPS, else its own fields")
 	CHECK_STR(read_as(parse_hevc_config, hevc_config(r, {{33, {hevc_nal(other), hevc_nal(s)}}}), want), "");
 
 	// An Annex B stream in the record's place, a version past 1 and a record cut short.
-	CHECK(refuses(parse_hevc_config, bytes{0, 0, 0, 1, 0x40, 0x01, 0x0C, 0x01, 0xFF, 0xFF, 0x02, 0x20, 0, 0, 0, 0x90, 0, 0, 0, 0, 0, 0, 0, 0x5D}));
+	CHECK(refuses(parse_hevc_config, bytes{0, 0, 0, 1,    0x40, 0x01, 0x0C, 0x01, 0xFF, 0xFF, 0x02, 0x20,
+	                                       0, 0, 0, 0x90, 0,    0,    0,    0,    0,    0,    0,    0x5D}));
 	auto version = record;
 	version[0] = 2;
 	CHECK(refuses(parse_hevc_config, version));
@@ -2052,24 +2152,38 @@ TEST("media video hvcC records from real files read as FFmpeg reads them")
 	colour(hlg, 9, 18, 9);
 	hlg.frame_rate = 25;
 	const auto hlg_record = hex(
-		"0102200000009000000000001ef000fcfdfafa00000f03200001001840010c01ffff02200000030090000003000003001e9594092100010"
-		"02e42010102200000030090000003000003001ea0102051f2b6595952930bc05a84890482000003000200000300321022000100064401c073c189");
+		"0102200000009000000000001ef000fcfdfafa00000f03200001001840010c01ffff02200000030090000003000003001e959409210001"
+		"0"
+		"02e42010102200000030090000003000003001ea0102051f2b6595952930bc05a84890482000003000200000300321022000100064401c"
+		"073c189");
 	CHECK_STR(read_as(parse_hevc_config, hlg_record, hlg), "");
 	check_cut_short(parse_hevc_config, hlg_record);
 	check_damaged(parse_hevc_config, hlg_record);
 
 	auto pq = hlg;
 	pq.transfer = 16;
-	CHECK_STR(read_as(parse_hevc_config, hex(
-		"0102200000009000000000001ef000fcfdfafa00000f03200001001840010c01ffff02200000030090000003000003001e9594092100010"
-		"02e42010102200000030090000003000003001ea0102051f2b6595952930bc05a84880482000003000200000300321022000100064401c073c189"), pq), "");
+	CHECK_STR(
+		read_as(
+			parse_hevc_config,
+			hex("0102200000009000000000001ef000fcfdfafa00000f03200001001840010c01ffff02200000030090000003000003001e9594"
+	            "092100010"
+	            "02e42010102200000030090000003000003001ea0102051f2b6595952930bc05a8488048200000300020000030032102200010"
+	            "0064401c073c189"),
+			pq),
+		"");
 
 	auto rext = picture(128, 72, chroma_format::yuv422, 10, "Rext");
 	aspect(rext, 1, 1);
 	rext.frame_rate = 25;
-	CHECK_STR(read_as(parse_hevc_config, hex(
-		"0104080000009d08000000001ef000fcfefafa00000f03200001001740010c01ffff0408000003009d0800000300001e959409210001002"
-		"94201010408000003009d0800000300001eb0102051f12d965654a4c2f0168080000003008000000c8422000100064401c073c189"), rext), "");
+	CHECK_STR(
+		read_as(
+			parse_hevc_config,
+			hex("0104080000009d08000000001ef000fcfefafa00000f03200001001740010c01ffff0408000003009d0800000300001e959409"
+	            "210001002"
+	            "94201010408000003009d0800000300001eb0102051f12d965654a4c2f0168080000003008000000c8422000100064401c073c"
+	            "189"),
+			rext),
+		"");
 }
 
 // ---- AV1 -----------------------------------------------------------------------------------------------
@@ -2098,7 +2212,8 @@ TEST("media video AV1 sequence header reads through its timing and operating poi
 	want.frame_rate = 60000.0 / 2002;
 
 	// After a temporal delimiter, with an extension byte and a padded size.
-	const auto stream = builder().raw(obu(2, {})).raw(obu(1, av1_payload(s), true, true, 3)).raw(obu(6, bytes(40, 0x55))).b;
+	const auto stream =
+		builder().raw(obu(2, {})).raw(obu(1, av1_payload(s), true, true, 3)).raw(obu(6, bytes(40, 0x55))).b;
 	CHECK_STR(read_as(parse_av1_sequence, stream, want), "");
 	check_cut_short(parse_av1_sequence, stream);
 	check_damaged(parse_av1_sequence, stream);
@@ -2152,15 +2267,25 @@ TEST("media video AV1 colour configurations by profile and depth")
 	pro.profile = 2;
 	pro.depth = 12;
 	pro.subsampling_y = false;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)), picture(1920, 1080, chroma_format::yuv422, 12, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)),
+	                  picture(1920, 1080, chroma_format::yuv422, 12, "Professional")),
+	          "");
 	pro.subsampling_y = true;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)), picture(1920, 1080, chroma_format::yuv420, 12, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)),
+	                  picture(1920, 1080, chroma_format::yuv420, 12, "Professional")),
+	          "");
 	pro.subsampling_x = false;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)), picture(1920, 1080, chroma_format::yuv444, 12, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)),
+	                  picture(1920, 1080, chroma_format::yuv444, 12, "Professional")),
+	          "");
 	pro.depth = 10;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)), picture(1920, 1080, chroma_format::yuv422, 10, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)),
+	                  picture(1920, 1080, chroma_format::yuv422, 10, "Professional")),
+	          "");
 	pro.depth = 8;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)), picture(1920, 1080, chroma_format::yuv422, 8, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(pro)),
+	                  picture(1920, 1080, chroma_format::yuv422, 8, "Professional")),
+	          "");
 
 	av1_sequence mono;
 	mono.depth = 10;
@@ -2175,9 +2300,13 @@ TEST("media video AV1 colour configurations by profile and depth")
 	still.reduced = true;
 	still.width = 4000;
 	still.height = 3000;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(still)), picture(4000, 3000, chroma_format::yuv420, 8, "Main")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(still)),
+	                  picture(4000, 3000, chroma_format::yuv420, 8, "Main")),
+	          "");
 	still.width = 65535;
-	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(still)), picture(65535, 3000, chroma_format::yuv420, 8, "Main")), "");
+	CHECK_STR(read_as(parse_av1_sequence, obu(1, av1_payload(still)),
+	                  picture(65535, 3000, chroma_format::yuv420, 8, "Main")),
+	          "");
 	still.width = 65536;
 	CHECK(refuses(parse_av1_sequence, obu(1, av1_payload(still))));
 }
@@ -2204,7 +2333,8 @@ TEST("media video AV1 OBUs are walked by their sizes")
 	auto overlong = builder().raw(obu(5, bytes(10, 0))).raw(obu(1, payload)).b;
 	overlong[1] = 100;
 	CHECK(refuses(parse_av1_sequence, overlong));
-	CHECK(refuses(parse_av1_sequence, builder().u8(0x2A).u8(0xFF).u8(0xFF).u8(0xFF).u8(0xFF).u8(0x7F).raw(obu(1, payload)).b));
+	CHECK(refuses(parse_av1_sequence,
+	              builder().u8(0x2A).u8(0xFF).u8(0xFF).u8(0xFF).u8(0xFF).u8(0x7F).raw(obu(1, payload)).b));
 
 	auto reserved = payload;
 	reserved[0] = static_cast<std::uint8_t>(reserved[0] | 0x60);
@@ -2216,7 +2346,8 @@ TEST("media video av1C reads its own fields, then a sequence header among its OB
 	using libfiles::detail::parse_av1_config;
 
 	// high_bitdepth, twelve_bit, then chroma_subsampling_x without y: Professional 12-bit 4:2:2.
-	CHECK_STR(read_as(parse_av1_config, av1_config(2, 0x68), picture(0, 0, chroma_format::yuv422, 12, "Professional")), "");
+	CHECK_STR(read_as(parse_av1_config, av1_config(2, 0x68), picture(0, 0, chroma_format::yuv422, 12, "Professional")),
+	          "");
 	CHECK_STR(read_as(parse_av1_config, av1_config(0, 0x0C), picture(0, 0, chroma_format::yuv420, 8, "Main")), "");
 	CHECK_STR(read_as(parse_av1_config, av1_config(1, 0x40), picture(0, 0, chroma_format::yuv444, 10, "High")), "");
 	CHECK_STR(read_as(parse_av1_config, av1_config(0, 0x1C), picture(0, 0, chroma_format::gray, 8, "Main")), "");
@@ -2238,7 +2369,9 @@ TEST("media video av1C reads its own fields, then a sequence header among its OB
 	check_damaged(parse_av1_config, record);
 
 	// OBUs that hold no sequence header leave the record's fields.
-	CHECK_STR(read_as(parse_av1_config, av1_config(0, 0x4C, obu(5, bytes(8, 1))), picture(0, 0, chroma_format::yuv420, 10, "Main")), "");
+	CHECK_STR(read_as(parse_av1_config, av1_config(0, 0x4C, obu(5, bytes(8, 1))),
+	                  picture(0, 0, chroma_format::yuv420, 10, "Main")),
+	          "");
 
 	CHECK(refuses(parse_av1_config, first(record, 3)));
 	auto marker = record;
@@ -2253,7 +2386,8 @@ TEST("media video av1C from a real file reads as FFmpeg reads it")
 {
 	// av1.mp4: libaom's Main 4:2:0 at video levels, with no timing.
 	const auto record = hex("81000c000a0a0000000337f8e6d7c802");
-	CHECK_STR(read_as(libfiles::detail::parse_av1_config, record, picture(128, 72, chroma_format::yuv420, 8, "Main")), "");
+	CHECK_STR(read_as(libfiles::detail::parse_av1_config, record, picture(128, 72, chroma_format::yuv420, 8, "Main")),
+	          "");
 	check_cut_short(libfiles::detail::parse_av1_config, record);
 }
 
@@ -2347,10 +2481,12 @@ TEST("media video VP9 frames that are not key frames")
 	inter.key = false;
 	inter.width = 640;
 	inter.height = 360;
-	CHECK_STR(read_as(parse_vp9_frame, vp9_frame(inter), picture(640, 360, chroma_format::unknown, 0, "Profile 0")), "");
+	CHECK_STR(read_as(parse_vp9_frame, vp9_frame(inter), picture(640, 360, chroma_format::unknown, 0, "Profile 0")),
+	          "");
 	inter.show = false;
 	inter.error_resilient = true;
-	CHECK_STR(read_as(parse_vp9_frame, vp9_frame(inter), picture(640, 360, chroma_format::unknown, 0, "Profile 0")), "");
+	CHECK_STR(read_as(parse_vp9_frame, vp9_frame(inter), picture(640, 360, chroma_format::unknown, 0, "Profile 0")),
+	          "");
 
 	// One that takes a reference's size, and one that shows a frame decoded before, give none.
 	inter.found_ref = 1;
@@ -2425,7 +2561,9 @@ TEST("media video VP8 key frames give their size")
 	CHECK(refuses(parse_vp8_frame, vp8_frame(0, 480)));
 
 	// tagged.webm's frame.
-	CHECK_STR(read_as(parse_vp8_frame, hex("3000009d012a100010000000000000000000"), picture(16, 16, chroma_format::yuv420, 8, "Profile 0")), "");
+	CHECK_STR(read_as(parse_vp8_frame, hex("3000009d012a100010000000000000000000"),
+	                  picture(16, 16, chroma_format::yuv420, 8, "Profile 0")),
+	          "");
 }
 
 TEST("media video vpcC gives the profile, depth, sampling, range and colour")
@@ -2435,7 +2573,15 @@ TEST("media video vpcC gives the profile, depth, sampling, range and colour")
 	const auto record = [](const unsigned profile, const unsigned depth, const unsigned subsampling, const bool full,
 	                       const unsigned primaries, const unsigned transfer, const unsigned matrix)
 	{
-		return builder().u8(profile).u8(31).u8(depth << 4 | subsampling << 1 | (full ? 1u : 0)).u8(primaries).u8(transfer).u8(matrix).be16(0).b;
+		return builder()
+		    .u8(profile)
+		    .u8(31)
+		    .u8(depth << 4 | subsampling << 1 | (full ? 1u : 0))
+		    .u8(primaries)
+		    .u8(transfer)
+		    .u8(matrix)
+		    .be16(0)
+		    .b;
 	};
 
 	auto want = picture(0, 0, chroma_format::yuv420, 10, "Profile 2");
@@ -2460,7 +2606,9 @@ TEST("media video vpcC gives the profile, depth, sampling, range and colour")
 	colour(want, 1, 13, 0);
 	want.full_range = true;
 	CHECK_STR(read_as(parse_vp_config, record(3, 12, 3, true, 1, 13, 0), want), "");
-	CHECK_STR(read_as(parse_vp_config, record(0, 8, 1, false, 3, 0, 3), picture(0, 0, chroma_format::yuv420, 8, "Profile 0")), "");
+	CHECK_STR(read_as(parse_vp_config, record(0, 8, 1, false, 3, 0, 3),
+	                  picture(0, 0, chroma_format::yuv420, 8, "Profile 0")),
+	          "");
 
 	CHECK(refuses(parse_vp_config, record(0, 9, 1, false, 1, 1, 1)));
 	CHECK(refuses(parse_vp_config, record(0, 8, 4, false, 1, 1, 1)));
@@ -2526,7 +2674,9 @@ TEST("media video MPEG-4 Part 2 reads a layer alone")
 	CHECK_STR(read_as(parse_mpeg4_video, mpeg4_headers(s), want), "");
 
 	// The shapes of a pixel by aspect_ratio_info, which reserves 6 to 14.
-	for (const auto& [code, width, height] : {std::tuple{1u, 1u, 1u}, std::tuple{2u, 12u, 11u}, std::tuple{4u, 16u, 11u}, std::tuple{5u, 40u, 33u}, std::tuple{9u, 0u, 0u}})
+	for (const auto& [code, width, height] :
+	     {std::tuple{1u, 1u, 1u}, std::tuple{2u, 12u, 11u}, std::tuple{4u, 16u, 11u}, std::tuple{5u, 40u, 33u},
+	      std::tuple{9u, 0u, 0u}})
 	{
 		s.aspect = code;
 		aspect(want, width, height);
@@ -2583,11 +2733,22 @@ TEST("media video MPEG-4 Part 2 profiles are named by their high bits, as FFmpeg
 	};
 
 	constexpr case_ cases[] = {
-		{0x01, "Simple Profile"}, {0x08, "Simple Profile"}, {0x11, "Simple Scalable Profile"}, {0x21, "Core Profile"},
-		{0x32, "Main Profile"}, {0x42, "N-bit Profile"}, {0x51, "Scalable Texture Profile"},
-		{0x61, "Simple Face Animation Profile"}, {0x71, "Basic Animated Texture Profile"}, {0x81, "Hybrid Profile"},
-		{0x91, "Advanced Real Time Simple Profile"}, {0xA1, "Core Scalable Profile"}, {0xB1, "Advanced Coding Profile"},
-		{0xC1, "Advanced Core Profile"}, {0xD1, "Advanced Scalable Texture Profile"}, {0xE1, "Simple Studio Profile"},
+		{0x01, "Simple Profile"},
+		{0x08, "Simple Profile"},
+		{0x11, "Simple Scalable Profile"},
+		{0x21, "Core Profile"},
+		{0x32, "Main Profile"},
+		{0x42, "N-bit Profile"},
+		{0x51, "Scalable Texture Profile"},
+		{0x61, "Simple Face Animation Profile"},
+		{0x71, "Basic Animated Texture Profile"},
+		{0x81, "Hybrid Profile"},
+		{0x91, "Advanced Real Time Simple Profile"},
+		{0xA1, "Core Scalable Profile"},
+		{0xB1, "Advanced Coding Profile"},
+		{0xC1, "Advanced Core Profile"},
+		{0xD1, "Advanced Scalable Texture Profile"},
+		{0xE1, "Simple Studio Profile"},
 		{0xF3, "Advanced Simple Profile"},
 	};
 
@@ -2763,8 +2924,18 @@ TEST("media video MPEG-2 profiles are named as FFmpeg names them")
 	};
 
 	constexpr case_ cases[] = {
-		{0x14, "High"}, {0x24, "Spatially Scalable"}, {0x34, "SNR Scalable"}, {0x48, "Main"}, {0x58, "Simple"},
-		{0x82, "4:2:2"}, {0x85, "4:2:2"}, {0x8A, "Multi-view"}, {0x8E, "Multi-view"}, {0x64, ""}, {0x04, ""}, {0x80, ""},
+		{0x14, "High"},
+		{0x24, "Spatially Scalable"},
+		{0x34, "SNR Scalable"},
+		{0x48, "Main"},
+		{0x58, "Simple"},
+		{0x82, "4:2:2"},
+		{0x85, "4:2:2"},
+		{0x8A, "Multi-view"},
+		{0x8E, "Multi-view"},
+		{0x64, ""},
+		{0x04, ""},
+		{0x80, ""},
 	};
 
 	for (const auto& c : cases)
@@ -2812,7 +2983,8 @@ TEST("media video MPEG-1 and MPEG-2 refuse damaged sequence headers")
 TEST("media video MPEG-2 from a real file reads as FFmpeg reads it")
 {
 	// gen.mpg: FFmpeg's encoder writes 15 frames a second as 25 times 3/5, and 4:3 on 160 by 120 pixels.
-	const auto headers = hex("000001b30a007823ffffe000000001b5148a00010044000001b80008004000000100000ffff8000001b58ffff3418000");
+	const auto headers = hex(
+		"000001b30a007823ffffe000000001b5148a00010044000001b80008004000000100000ffff8000001b58ffff3418000");
 	auto want = picture(160, 120, chroma_format::yuv420, 8, "Main");
 	aspect(want, 1, 1);
 	want.frame_rate = 15;
@@ -2844,13 +3016,21 @@ TEST("media video JPEG frames give their size, depth and sampling")
 
 	// Chroma sampled finer than luma, or its two components sampled apart, names nothing.
 	want.chroma = chroma_format::unknown;
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}, {2, 0x22}, {3, 0x22}}), want), "");
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x22}, {2, 0x11}, {3, 0x21}}), want), "");
+	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}, {2, 0x22}, {3, 0x22}}),
+	                  want),
+	          "");
+	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x22}, {2, 0x11}, {3, 0x21}}),
+	                  want),
+	          "");
 
 	// Gray and CMYK state no colour.
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}}), picture(640, 480, chroma_format::gray, 8, "Baseline")), "");
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}, {2, 0x11}, {3, 0x11}, {4, 0x11}}),
-	                  picture(640, 480, chroma_format::unknown, 8, "Baseline")), "");
+	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}}),
+	                  picture(640, 480, chroma_format::gray, 8, "Baseline")),
+	          "");
+	CHECK_STR(read_as(parse_jpeg_frame,
+	                  jpeg_frame(0xC0, 8, 640, 480, jpeg_components{{1, 0x11}, {2, 0x11}, {3, 0x11}, {4, 0x11}}),
+	                  picture(640, 480, chroma_format::unknown, 8, "Baseline")),
+	          "");
 }
 
 TEST("media video JPEG frame headers name their process")
@@ -2865,8 +3045,15 @@ TEST("media video JPEG frame headers name their process")
 	};
 
 	constexpr case_ cases[] = {
-		{0xC1, 12, "Sequential"}, {0xC2, 8, "Progressive"}, {0xC3, 16, "Lossless"}, {0xC5, 8, ""}, {0xC7, 8, ""},
-		{0xC9, 8, ""}, {0xCB, 8, ""}, {0xCD, 12, ""}, {0xCF, 8, ""},
+		{0xC1, 12, "Sequential"},
+		{0xC2, 8, "Progressive"},
+		{0xC3, 16, "Lossless"},
+		{0xC5, 8, ""},
+		{0xC7, 8, ""},
+		{0xC9, 8, ""},
+		{0xCB, 8, ""},
+		{0xCD, 12, ""},
+		{0xCF, 8, ""},
 	};
 
 	for (const auto& c : cases)
@@ -2903,9 +3090,13 @@ TEST("media video JPEG markers before the frame header: AVI1 fields, Adobe RGB a
 
 	// RGB by Adobe's transform 0, or by component IDs R, G and B.
 	const jpeg_components full = {{1, 0x11}, {2, 0x11}, {3, 0x11}};
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 720, 240, full, adobe(0)), picture(720, 240, chroma_format::rgb, 8, "Baseline")), "");
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 720, 240, jpeg_components{{'R', 0x11}, {'G', 0x11}, {'B', 0x11}}),
-	                  picture(720, 240, chroma_format::rgb, 8, "Baseline")), "");
+	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 720, 240, full, adobe(0)),
+	                  picture(720, 240, chroma_format::rgb, 8, "Baseline")),
+	          "");
+	CHECK_STR(read_as(parse_jpeg_frame,
+	                  jpeg_frame(0xC0, 8, 720, 240, jpeg_components{{'R', 0x11}, {'G', 0x11}, {'B', 0x11}}),
+	                  picture(720, 240, chroma_format::rgb, 8, "Baseline")),
+	          "");
 
 	want = picture(720, 240, chroma_format::yuv444, 8, "Baseline");
 	want.matrix = 5;
@@ -2925,7 +3116,8 @@ TEST("media video JPEG frames refused for what comes before their frame header")
 	CHECK(refuses(parse_jpeg_frame, {0xFF}));
 
 	// A scan or the end before any frame header.
-	CHECK(refuses(parse_jpeg_frame, builder().u8(0xFF).u8(0xD8).u8(0xFF).u8(0xDA).be16(8).zeros(6).u8(0xFF).u8(0xD9).b));
+	CHECK(
+		refuses(parse_jpeg_frame, builder().u8(0xFF).u8(0xD8).u8(0xFF).u8(0xDA).be16(8).zeros(6).u8(0xFF).u8(0xD9).b));
 	CHECK(refuses(parse_jpeg_frame, builder().u8(0xFF).u8(0xD8).u8(0xFF).u8(0xD9).b));
 
 	// A segment whose length runs past the data, or is too short to be one.
@@ -2941,7 +3133,9 @@ TEST("media video JPEG frames refused for what comes before their frame header")
 	auto want = picture(640, 480, chroma_format::yuv420, 8, "Baseline");
 	want.matrix = 5;
 	want.full_range = true;
-	CHECK_STR(read_as(parse_jpeg_frame, jpeg_frame(0xC0, 8, 640, 480, ycbcr420, {0xFF, 0xFF, 0xFF, 0x01, 0x12, 0x34, 0xFF, 0xD0}), want), "");
+	CHECK_STR(read_as(parse_jpeg_frame,
+	                  jpeg_frame(0xC0, 8, 640, 480, ycbcr420, {0xFF, 0xFF, 0xFF, 0x01, 0x12, 0x34, 0xFF, 0xD0}), want),
+	          "");
 }
 
 TEST("media video JPEG frames from real files read as FFmpeg reads them")
@@ -2949,23 +3143,32 @@ TEST("media video JPEG frames from real files read as FFmpeg reads them")
 	using libfiles::detail::parse_jpeg_frame;
 
 	// deep16.jpg: lossless 16-bit RGB, by Adobe's marker and its components' IDs.
-	CHECK_STR(read_as(parse_jpeg_frame, hex("ffd8ffee000e41646f626500640000000000ffc30011100040004003521100471100421100"),
-	                  picture(64, 64, chroma_format::rgb, 16, "Lossless")), "");
+	CHECK_STR(read_as(parse_jpeg_frame,
+	                  hex("ffd8ffee000e41646f626500640000000000ffc30011100040004003521100471100421100"),
+	                  picture(64, 64, chroma_format::rgb, 16, "Lossless")),
+	          "");
 
 	// deep12gray.jpg: 12-bit extended sequential gray.
-	CHECK_STR(read_as(parse_jpeg_frame, hex(
-		"ffd8ffe000104a46494600010100000100010000ffdb00430001010101010101010101010101010101010101010101010101010101010101"
-		"010101010101010101010101010101010101010101010101010101010101010101ffc1000b0c0040004001011100"),
-	                  picture(64, 64, chroma_format::gray, 12, "Sequential")), "");
+	CHECK_STR(
+		read_as(
+			parse_jpeg_frame,
+			hex("ffd8ffe000104a46494600010100000100010000ffdb0043000101010101010101010101010101010101010101010101010101"
+	            "0101010101"
+	            "010101010101010101010101010101010101010101010101010101010101010101ffc1000b0c0040004001011100"),
+			picture(64, 64, chroma_format::gray, 12, "Sequential")),
+		"");
 
 	// Progressive.jpg: JFIF 4:2:0.
 	auto want = picture(256, 256, chroma_format::yuv420, 8, "Progressive");
 	want.matrix = 5;
 	want.full_range = true;
 	const auto progressive = hex(
-		"ffd8ffe000104a46494600010100000100010000ffdb00430006040506050406060506070706080a100a0a09090a140e0f0c101714181817"
-		"1416161a1d251f1a1b231c1616202c20232627292a29191f2d302d283025282928ffdb0043010707070a080a130a0a13281a161a28282828"
-		"28282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828ffc20011080100010003"
+		"ffd8ffe000104a46494600010100000100010000ffdb00430006040506050406060506070706080a100a0a09090a140e0f0c1017141818"
+		"17"
+		"1416161a1d251f1a1b231c1616202c20232627292a29191f2d302d283025282928ffdb0043010707070a080a130a0a13281a161a282828"
+		"28"
+		"28282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828ffc200110801000100"
+		"03"
 		"012200021101031101");
 	CHECK_STR(read_as(parse_jpeg_frame, progressive, want), "");
 	check_cut_short(parse_jpeg_frame, progressive);
@@ -3100,9 +3303,7 @@ TEST("media video DV source packs give the format, the display's shape and the s
 	auto header_only = picture(720, 480, chroma_format::yuv411, 8);
 	header_only.frame_rate = 30000.0 / 1001;
 	check_cut_short(parse_dv_frame, frame, [&](const video_header& part, const video_header& whole)
-	{
-		return differences(part, whole).empty() || differences(part, header_only).empty();
-	});
+	{ return differences(part, whole).empty() || differences(part, header_only).empty(); });
 
 	// 625/50, 16:9 by DISP 2, and by 7 in the consumer format alone; progressive by IL.
 	d.fifty = true;
@@ -3246,13 +3447,23 @@ TEST("media video VC-1 STRUCT_C refuses what FFmpeg will not decode")
 	// The old interlaced mode, RES_TRANSTAB, and the Simple profile without FASTUVMC or with EXTENDED_MV.
 	CHECK(refused([](vc1_struct_c& c) { c.y411 = true; }));
 	CHECK(refused([](vc1_struct_c& c) { c.transtab = true; }));
-	CHECK(refused([](vc1_struct_c& c) { c.profile = 0; c.fast_chroma = false; }));
-	CHECK(refused([](vc1_struct_c& c) { c.profile = 0; c.extended_mv = true; }));
+	CHECK(refused([](vc1_struct_c& c)
+	{
+		c.profile = 0;
+		c.fast_chroma = false;
+	}));
+	CHECK(refused([](vc1_struct_c& c)
+	{
+		c.profile = 0;
+		c.extended_mv = true;
+	}));
 
 	// A sprite with the feature FFmpeg lacks, or without a size.
+	// clang-format off
 	CHECK(refused([](vc1_struct_c& c) { c.sprite = true; c.sprite_feature = true; }));
 	CHECK(refused([](vc1_struct_c& c) { c.sprite = true; c.sprite_width = 0; }));
 	CHECK(refused([](vc1_struct_c& c) { c.sprite = true; c.sprite_height = 0; }));
+	// clang-format on
 
 	CHECK(refuses(parse_vc1_sequence, {}));
 	CHECK(refuses(parse_vc1_sequence, first(struct_c({}), 3)));
@@ -3357,7 +3568,8 @@ TEST("media video VC-1 Advanced display extensions give the pixel shape")
 
 	// The shapes ASPECT_RATIO names, H.264's first thirteen, and one it states at 15.
 	constexpr std::uint32_t shapes[14][2] = {
-		{0, 0}, {1, 1}, {12, 11}, {10, 11}, {16, 11}, {40, 33}, {24, 11}, {20, 11}, {32, 11}, {80, 33}, {18, 11}, {15, 11}, {64, 33}, {160, 99},
+		{0, 0},   {1, 1},   {12, 11}, {10, 11}, {16, 11}, {40, 33}, {24, 11},
+		{20, 11}, {32, 11}, {80, 33}, {18, 11}, {15, 11}, {64, 33}, {160, 99},
 	};
 
 	vc1_header a;
@@ -3435,9 +3647,9 @@ TEST("media video VC-1 Advanced display extensions give the frame rate and colou
 	aspect(want, 1, 1);
 
 	// FRAMERATENR's rates over FRAMERATEDR's 1000 or 1001, or FRAMERATEEXP's 32nds.
-	for (const auto& [nr, dr, rate] : {std::tuple{1, 1u, 24.0}, std::tuple{2, 1u, 25.0}, std::tuple{3, 2u, 30000.0 / 1001},
-	                                   std::tuple{4, 1u, 50.0}, std::tuple{5, 2u, 60000.0 / 1001}, std::tuple{6, 1u, 48.0},
-	                                   std::tuple{7, 2u, 72000.0 / 1001}})
+	for (const auto& [nr, dr, rate] :
+	     {std::tuple{1, 1u, 24.0}, std::tuple{2, 1u, 25.0}, std::tuple{3, 2u, 30000.0 / 1001}, std::tuple{4, 1u, 50.0},
+	      std::tuple{5, 2u, 60000.0 / 1001}, std::tuple{6, 1u, 48.0}, std::tuple{7, 2u, 72000.0 / 1001}})
 	{
 		a.rate_nr = nr;
 		a.rate_dr = dr;
@@ -3457,7 +3669,8 @@ TEST("media video VC-1 Advanced display extensions give the frame rate and colou
 	a.rate_exp = -1;
 	want.frame_rate = 0;
 
-	for (const auto& [nr, dr] : {std::pair{0, 1u}, std::pair{8, 1u}, std::pair{255, 2u}, std::pair{2, 0u}, std::pair{2, 3u}, std::pair{2, 15u}})
+	for (const auto& [nr, dr] : {std::pair{0, 1u}, std::pair{8, 1u}, std::pair{255, 2u}, std::pair{2, 0u},
+	                             std::pair{2, 3u}, std::pair{2, 15u}})
 	{
 		a.rate_nr = nr;
 		a.rate_dr = dr;
@@ -3468,15 +3681,20 @@ TEST("media video VC-1 Advanced display extensions give the frame rate and colou
 	a.rate_nr = -1;
 	a.colour = true;
 
-	for (const auto& [stated, kept] : {std::pair{std::array{1u, 1u, 1u}, std::array{1, 1, 1}}, std::pair{std::array{5u, 7u, 6u}, std::array{5, 7, 6}},
-	                                   std::pair{std::array{6u, 1u, 7u}, std::array{6, 1, 7}}, std::pair{std::array{4u, 4u, 4u}, std::array{2, 2, 2}},
-	                                   std::pair{std::array{9u, 16u, 9u}, std::array{2, 2, 2}}, std::pair{std::array{7u, 6u, 5u}, std::array{2, 2, 2}},
-	                                   std::pair{std::array{0u, 0u, 0u}, std::array{2, 2, 2}}, std::pair{std::array{1u, 255u, 6u}, std::array{1, 2, 6}}})
+	for (const auto& [stated, kept] : {std::pair{std::array{1u, 1u, 1u}, std::array{1, 1, 1}},
+	                                   std::pair{std::array{5u, 7u, 6u}, std::array{5, 7, 6}},
+	                                   std::pair{std::array{6u, 1u, 7u}, std::array{6, 1, 7}},
+	                                   std::pair{std::array{4u, 4u, 4u}, std::array{2, 2, 2}},
+	                                   std::pair{std::array{9u, 16u, 9u}, std::array{2, 2, 2}},
+	                                   std::pair{std::array{7u, 6u, 5u}, std::array{2, 2, 2}},
+	                                   std::pair{std::array{0u, 0u, 0u}, std::array{2, 2, 2}},
+	                                   std::pair{std::array{1u, 255u, 6u}, std::array{1, 2, 6}}})
 	{
 		a.primaries = stated[0];
 		a.transfer = stated[1];
 		a.matrix = stated[2];
-		colour(want, static_cast<std::uint8_t>(kept[0]), static_cast<std::uint8_t>(kept[1]), static_cast<std::uint8_t>(kept[2]));
+		colour(want, static_cast<std::uint8_t>(kept[0]), static_cast<std::uint8_t>(kept[1]),
+		       static_cast<std::uint8_t>(kept[2]));
 		CHECK_STR(read_as(parse_vc1_sequence, vc1_record(a), want), "");
 	}
 
@@ -3510,10 +3728,12 @@ TEST("media video VC-1 Advanced records with leaky buckets and emulation prevent
 	// As many buckets as HRD_NUM_LEAKY_BUCKETS counts, and none.
 	a.buckets = 31;
 	e.fullness.assign(31, 0x80);
-	CHECK_STR(read_as(parse_vc1_sequence, vc1_record(a, e), picture(1280, 720, chroma_format::yuv420, 8, "Advanced")), "");
+	CHECK_STR(read_as(parse_vc1_sequence, vc1_record(a, e), picture(1280, 720, chroma_format::yuv420, 8, "Advanced")),
+	          "");
 	a.buckets = 0;
 	e.fullness.clear();
-	CHECK_STR(read_as(parse_vc1_sequence, vc1_record(a, e), picture(1280, 720, chroma_format::yuv420, 8, "Advanced")), "");
+	CHECK_STR(read_as(parse_vc1_sequence, vc1_record(a, e), picture(1280, 720, chroma_format::yuv420, 8, "Advanced")),
+	          "");
 
 	// A display of one pixel puts runs of zeros before the colour: 1x1 shown from 1440x1080 is 3:4.
 	vc1_header tiny;
@@ -3602,8 +3822,11 @@ TEST("media video VC-1 from a real file reads as FFmpeg reads it")
 
 	// Byzantium.avi's strf: a BITMAPINFOHEADER of 45 bytes for WMV3 at 854x480, padded to 46. FFmpeg
 	// takes the 5 after the first 40 as the codec's, and reports Main, 854x480, yuv420p.
-	const auto strf = hex("2d00000056030000e001000001001800574d563300000000000000000000000000000000000000004ff100010000");
-	CHECK_STR(read_as(parse_vc1_sequence, bytes(strf.begin() + 40, strf.end() - 1), picture(0, 0, chroma_format::yuv420, 8, "Main")), "");
+	const auto strf = hex(
+		"2d00000056030000e001000001001800574d563300000000000000000000000000000000000000004ff100010000");
+	CHECK_STR(read_as(parse_vc1_sequence, bytes(strf.begin() + 40, strf.end() - 1),
+	                  picture(0, 0, chroma_format::yuv420, 8, "Main")),
+	          "");
 
 	const auto s = bitmap_stream(strf);
 	CHECK_STR(s.codec, "wmv3");
@@ -3662,6 +3885,7 @@ TEST("media video Annex B byte streams are split into NAL units")
 {
 	// Bytes before the first start code, three- and four-byte start codes, zeros at the ends of units,
 	// an empty unit, and 00 00 02 inside one.
+	// clang-format off
 	const auto stream = builder()
 	                    .u8(0xAB).u8(0xCD)
 	                    .u8(0).u8(0).u8(0).u8(1).u8(0x67).u8(0x42).u8(0x00).u8(0x1E)
@@ -3670,6 +3894,7 @@ TEST("media video Annex B byte streams are split into NAL units")
 	                    .u8(0).u8(0).u8(1).u8(0x65).u8(0x88).u8(0x80).u8(0x00).u8(0x03).u8(0).u8(0).u8(0).u8(0)
 	                    .u8(0).u8(0).u8(1).u8(0x41).u8(0x00).u8(0x00).u8(0x02).u8(0x55)
 	                    .u8(0).u8(0).u8(1).b;
+	// clang-format on
 
 	const auto units = visited(stream);
 	CHECK_EQ(units.size(), std::size_t{4});
@@ -3734,9 +3959,9 @@ TEST("media video parsers stop within whatever they are handed")
 	using namespace libfiles::detail;
 
 	constexpr parser parsers[] = {
-		parse_h264_sps, parse_avc_config, parse_hevc_sps, parse_hevc_config, parse_av1_sequence, parse_av1_config,
-		parse_vp_config, parse_vp9_frame, parse_vp8_frame, parse_mpeg4_video, parse_mpeg12_video, parse_jpeg_frame,
-		parse_theora_header, parse_dv_frame, parse_vc1_sequence,
+		parse_h264_sps,     parse_avc_config, parse_hevc_sps,      parse_hevc_config, parse_av1_sequence,
+		parse_av1_config,   parse_vp_config,  parse_vp9_frame,     parse_vp8_frame,   parse_mpeg4_video,
+		parse_mpeg12_video, parse_jpeg_frame, parse_theora_header, parse_dv_frame,    parse_vc1_sequence,
 	};
 
 	bytes pattern(1 << 20);

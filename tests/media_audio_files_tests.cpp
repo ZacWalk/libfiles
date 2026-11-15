@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the MPEG audio, FLAC and Ogg media scans, over files built frame by frame, block by block
 // and page by page: what each scan reads of its streams and tags, the durations each container's rules give,
@@ -83,7 +83,8 @@ namespace
 		CHECK(s.error.empty());
 		CHECK(std::isfinite(s.duration) && s.duration >= 0);
 
-		for (const auto& st : s.streams) CHECK(std::isfinite(st.duration) && st.duration >= 0 && st.duration <= s.duration + 1e-9);
+		for (const auto& st : s.streams)
+			CHECK(std::isfinite(st.duration) && st.duration >= 0 && st.duration <= s.duration + 1e-9);
 		for (const auto& p : s.pictures) CHECK(p.location.size == 0 || p.data.empty());
 	}
 
@@ -99,7 +100,8 @@ namespace
 			for (auto n = b > 16 ? b - 16 : 0; n <= b + 16 && n <= file.size(); ++n) lengths.push_back(n);
 		}
 
-		for (const auto n : lengths) check_consistent(scan(bytes(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(n))));
+		for (const auto n : lengths)
+			check_consistent(scan(bytes(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(n))));
 	}
 
 	// Each byte in [from, to) set in turn to values that break sizes, flags and signatures.
@@ -134,10 +136,11 @@ namespace
 	// ---- MPEG audio --------------------------------------------------------------------------------
 
 	// A frame header without a CRC. version: 3 for MPEG-1, 2 for MPEG-2, 0 for MPEG-2.5; mode 3 is mono.
-	std::uint32_t mpa_header(const unsigned version, const unsigned layer, const unsigned bit_rate_index, const unsigned rate_index,
-	                         const unsigned mode = 1)
+	std::uint32_t mpa_header(const unsigned version, const unsigned layer, const unsigned bit_rate_index,
+	                         const unsigned rate_index, const unsigned mode = 1)
 	{
-		return 0xFFE00000u | version << 19 | (4 - layer) << 17 | 1u << 16 | bit_rate_index << 12 | rate_index << 10 | mode << 6;
+		return 0xFFE00000u | version << 19 | (4 - layer) << 17 | 1u << 16 | bit_rate_index << 12 | rate_index << 10 |
+		       mode << 6;
 	}
 
 	// MPEG-1 Layer III at 128 kbit/s and 48 kHz, joint stereo: 384 bytes and 1152 samples a frame.
@@ -159,9 +162,10 @@ namespace
 
 	// The first frame of a stream its encoder counted: an Xing or Info header with every field after the
 	// side information, and a LAME tag with the encoder delay and padding.
-	bytes xing_frame(const std::uint32_t header, const std::size_t size, const std::size_t side_info, const std::string_view kind,
-	                 const std::uint32_t count, const std::uint32_t length, const std::string_view encoder = "LAME3.100",
-	                 const unsigned delay = 576, const unsigned padding = 1000)
+	bytes xing_frame(const std::uint32_t header, const std::size_t size, const std::size_t side_info,
+	                 const std::string_view kind, const std::uint32_t count, const std::uint32_t length,
+	                 const std::string_view encoder = "LAME3.100", const unsigned delay = 576,
+	                 const unsigned padding = 1000)
 	{
 		builder b;
 		b.be32(header).zeros(side_info).raw(kind).be32(0x0F).be32(count).be32(length);
@@ -173,7 +177,8 @@ namespace
 		return b.b;
 	}
 
-	bytes vbri_frame(const std::uint32_t header, const std::size_t size, const std::uint32_t count, const std::uint32_t length)
+	bytes vbri_frame(const std::uint32_t header, const std::size_t size, const std::uint32_t count,
+	                 const std::uint32_t length)
 	{
 		builder b;
 		b.be32(header).zeros(32).raw("VBRI").be16(1).be16(0x0240).be16(75).be32(length).be32(count);
@@ -184,14 +189,23 @@ namespace
 	bytes id3v1_tag(const std::string_view title, const std::string_view artist)
 	{
 		builder b;
-		b.raw("TAG").raw(title).zeros(30 - title.size()).raw(artist).zeros(30 - artist.size()).zeros(30).raw("1999").zeros(30).u8(17);
+		b.raw("TAG")
+			.raw(title)
+			.zeros(30 - title.size())
+			.raw(artist)
+			.zeros(30 - artist.size())
+			.zeros(30)
+			.raw("1999")
+			.zeros(30)
+			.u8(17);
 		return b.b;
 	}
 
 	bytes ape_tag(const std::vector<std::pair<std::string_view, std::string_view>>& items)
 	{
 		builder body;
-		for (const auto& [key, value] : items) body.le32(static_cast<std::uint32_t>(value.size())).le32(0).raw(key).u8(0).raw(value);
+		for (const auto& [key, value] : items)
+			body.le32(static_cast<std::uint32_t>(value.size())).le32(0).raw(key).u8(0).raw(value);
 
 		const auto size = static_cast<std::uint32_t>(body.size() + 32);
 		const auto count = static_cast<std::uint32_t>(items.size());
@@ -255,7 +269,11 @@ namespace
 	                    const std::string_view text, const unsigned encoding = 0)
 	{
 		builder b;
-		b.u8(encoding).raw(language).raw(id3_text(encoding, description)).raw(id3_terminator(encoding)).raw(id3_text(encoding, text));
+		b.u8(encoding)
+			.raw(language)
+			.raw(id3_text(encoding, description))
+			.raw(id3_terminator(encoding))
+			.raw(id3_text(encoding, text));
 		return id3v2_frame(version, version == 2 ? "COM" : "COMM", b.b);
 	}
 
@@ -270,7 +288,8 @@ namespace
 		return id3v2_frame(version, "PRIV", builder().raw("XMP").u8(0).raw(packet).b);
 	}
 
-	bytes id3v2_tag(const unsigned version, const std::vector<bytes>& frame_list, const std::size_t padding = 0, const bool footer = false)
+	bytes id3v2_tag(const unsigned version, const std::vector<bytes>& frame_list, const std::size_t padding = 0,
+	                const bool footer = false)
 	{
 		builder body;
 		for (const auto& f : frame_list) body.raw(f);
@@ -306,7 +325,8 @@ namespace
 		b.be16(min_block).be16(max_block);
 		be24(b, 0);
 		be24(b, 0);
-		const auto packed = std::uint64_t{rate} << 44 | std::uint64_t{channels - 1} << 41 | std::uint64_t{bits - 1} << 36 | total;
+		const auto packed = std::uint64_t{rate} << 44 | std::uint64_t{channels - 1} << 41 |
+		                    std::uint64_t{bits - 1} << 36 | total;
 		b.be32(static_cast<std::uint32_t>(packed >> 32)).be32(static_cast<std::uint32_t>(packed)).zeros(16);
 		return b.b;
 	}
@@ -329,11 +349,16 @@ namespace
 	}
 
 	// A PICTURE block's body: a front cover, its fields, then the image - whose size it may misstate.
-	bytes picture(const std::string_view mime, const std::string_view description, const bytes& image, const std::size_t claimed = ~std::size_t{0})
+	bytes picture(const std::string_view mime, const std::string_view description, const bytes& image,
+	              const std::size_t claimed = ~std::size_t{0})
 	{
 		const auto size = claimed == ~std::size_t{0} ? image.size() : claimed;
 		builder b;
-		b.be32(3).be32(static_cast<std::uint32_t>(mime.size())).raw(mime).be32(static_cast<std::uint32_t>(description.size())).raw(description);
+		b.be32(3)
+			.be32(static_cast<std::uint32_t>(mime.size()))
+			.raw(mime)
+			.be32(static_cast<std::uint32_t>(description.size()))
+			.raw(description);
 		b.be32(64).be32(64).be32(24).be32(0).be32(static_cast<std::uint32_t>(size)).raw(image);
 		return b.b;
 	}
@@ -347,15 +372,20 @@ namespace
 			return;
 		}
 
-		const unsigned extra = v < 0x800 ? 1 : v < 0x10000 ? 2 : v < 0x200000 ? 3 : v < 0x4000000 ? 4 : v < 0x80000000 ? 5 : 6;
+		const unsigned extra = v < 0x800        ? 1
+		                       : v < 0x10000    ? 2
+		                       : v < 0x200000   ? 3
+		                       : v < 0x4000000  ? 4
+		                       : v < 0x80000000 ? 5
+		                                        : 6;
 		b.u8((0xFF00u >> (extra + 1) & 0xFF) | static_cast<unsigned>(v >> 6 * extra));
 		for (auto i = static_cast<int>(extra) - 1; i >= 0; --i) b.u8(0x80 | static_cast<unsigned>(v >> 6 * i & 0x3F));
 	}
 
 	// A FLAC frame: its header, with a block size coded in 16 bits, the rate and depth from STREAMINFO and
 	// two independent channels, then audio that never looks like a header.
-	bytes flac_frame(const bool variable, const std::uint64_t number, const unsigned block_size, const std::size_t audio = 200,
-	                 const unsigned rate_code = 0)
+	bytes flac_frame(const bool variable, const std::uint64_t number, const unsigned block_size,
+	                 const std::size_t audio = 200, const unsigned rate_code = 0)
 	{
 		builder b;
 		b.u8(0xFF).u8(variable ? 0xF9 : 0xF8).u8(0x70 | rate_code).u8(0x10);
@@ -383,8 +413,8 @@ namespace
 
 	constexpr std::uint64_t no_granule = ~std::uint64_t{0};
 
-	bytes ogg_page(const unsigned flags, const std::uint64_t granule, const std::uint32_t serial, const std::uint32_t sequence,
-	               const bytes& lacing, const bytes& body)
+	bytes ogg_page(const unsigned flags, const std::uint64_t granule, const std::uint32_t serial,
+	               const std::uint32_t sequence, const bytes& lacing, const bytes& body)
 	{
 		builder b;
 		b.raw("OggS").u8(0).u8(flags);
@@ -405,7 +435,8 @@ namespace
 		std::uint32_t sequence = 0;
 		bool begun = false;
 
-		bytes pages(const std::vector<std::pair<bytes, std::uint64_t>>& packets, const bool last = false, const std::size_t max_segments = 255)
+		bytes pages(const std::vector<std::pair<bytes, std::uint64_t>>& packets, const bool last = false,
+		            const std::size_t max_segments = 255)
 		{
 			bytes out;
 			bytes lacing;
@@ -438,7 +469,8 @@ namespace
 
 					const auto n = std::min<std::size_t>(255, data.size() - at);
 					lacing.push_back(static_cast<std::uint8_t>(n));
-					body.insert(body.end(), data.begin() + static_cast<std::ptrdiff_t>(at), data.begin() + static_cast<std::ptrdiff_t>(at + n));
+					body.insert(body.end(), data.begin() + static_cast<std::ptrdiff_t>(at),
+					            data.begin() + static_cast<std::ptrdiff_t>(at + n));
 					at += n;
 
 					if (n < 255)
@@ -456,7 +488,17 @@ namespace
 
 	bytes vorbis_id(const unsigned channels, const std::uint32_t rate, const std::uint32_t nominal = 128000)
 	{
-		return builder().raw("\x01vorbis").le32(0).u8(channels).le32(rate).le32(0).le32(nominal).le32(0).u8(0xB8).u8(1).b;
+		return builder()
+		    .raw("\x01vorbis")
+		    .le32(0)
+		    .u8(channels)
+		    .le32(rate)
+		    .le32(0)
+		    .le32(nominal)
+		    .le32(0)
+		    .u8(0xB8)
+		    .u8(1)
+		    .b;
 	}
 
 	bytes vorbis_comment_packet(const std::vector<std::string_view>& fields)
@@ -485,7 +527,8 @@ namespace
 		return builder().u8(31 << 3).raw(filler(60)).b;
 	}
 
-	bytes theora_id(const unsigned width, const unsigned height, const std::uint32_t frn, const std::uint32_t frd, const unsigned shift)
+	bytes theora_id(const unsigned width, const unsigned height, const std::uint32_t frn, const std::uint32_t frd,
+	                const unsigned shift)
 	{
 		builder b;
 		b.raw("\x80theora").u8(3).u8(2).u8(1).be16((width + 15) / 16).be16((height + 15) / 16);
@@ -505,13 +548,27 @@ namespace
 	bytes speex_header(const std::uint32_t rate, const unsigned channels)
 	{
 		builder b;
-		b.raw("Speex   ").raw("1.2.1").zeros(15).le32(1).le32(80).le32(rate).le32(1).le32(4).le32(channels).le32(24600).le32(320).le32(0).le32(1).le32(0).zeros(8);
+		b.raw("Speex   ")
+			.raw("1.2.1")
+			.zeros(15)
+			.le32(1)
+			.le32(80)
+			.le32(rate)
+			.le32(1)
+			.le32(4)
+			.le32(channels)
+			.le32(24600)
+			.le32(320)
+			.le32(0)
+			.le32(1)
+			.le32(0)
+			.zeros(8);
 		return b.b;
 	}
 
 	// A Vorbis stream: its three headers, then pages of data whose granule positions run to `samples`.
-	bytes vorbis_stream(ogg_writer& w, const std::uint32_t rate, const std::uint64_t samples, const std::vector<std::string_view>& fields,
-	                    const std::size_t pages = 3)
+	bytes vorbis_stream(ogg_writer& w, const std::uint32_t rate, const std::uint64_t samples,
+	                    const std::vector<std::string_view>& fields, const std::size_t pages = 3)
 	{
 		auto out = w.pages({{vorbis_id(2, rate), 0}});
 		const auto headers = w.pages({{vorbis_comment_packet(fields), 0}, {vorbis_setup(), 0}});
@@ -520,6 +577,7 @@ namespace
 		for (std::size_t p = 1; p <= pages; ++p)
 		{
 			std::vector<std::pair<bytes, std::uint64_t>> packets;
+			packets.reserve(10);
 			for (auto i = 0; i < 10; ++i) packets.emplace_back(filler(120, 0x02), samples * p / pages);
 			const auto data = w.pages(packets, p == pages);
 			out.insert(out.end(), data.begin(), data.end());
@@ -537,9 +595,19 @@ namespace
 	bytes ogg_flac_file()
 	{
 		ogg_writer w{5};
-		auto file = w.pages({{builder().u8(0x7F).raw("FLAC").u8(1).u8(0).be16(1).raw("fLaC").raw(flac_block(0, streaminfo(44100, 2, 24, 0))).b, 0}});
+		auto file = w.pages({{builder()
+		                          .u8(0x7F)
+		                          .raw("FLAC")
+		                          .u8(1)
+		                          .u8(0)
+		                          .be16(1)
+		                          .raw("fLaC")
+		                          .raw(flac_block(0, streaminfo(44100, 2, 24, 0)))
+		                          .b,
+		                      0}});
 		append(file, w.pages({{flac_block(4, vorbis_comment({"TITLE=Ogg FLAC"}), true), 0}}));
-		for (std::uint64_t p = 1; p <= 2; ++p) append(file, w.pages({{flac_frame(false, p - 1, 4096, 500), p * 44100}}, p == 2));
+		for (std::uint64_t p = 1; p <= 2; ++p)
+			append(file, w.pages({{flac_frame(false, p - 1, 4096, 500), p * 44100}}, p == 2));
 		return file;
 	}
 
@@ -552,7 +620,8 @@ namespace
 
 		auto file = video.pages({{theora_id(320, 240, 25, 1, 6), 0}});
 		append(file, audio.pages({{vorbis_id(2, 48000), 0}}));
-		append(file, video.pages({{builder().raw("\x81theora").raw(vorbis_comment({"TITLE=Film"})).b, 0}, {builder().raw("\x82theora").raw(filler(100)).b, 0}}));
+		append(file, video.pages({{builder().raw("\x81theora").raw(vorbis_comment({"TITLE=Film"})).b, 0},
+		                          {builder().raw("\x82theora").raw(filler(100)).b, 0}}));
 		append(file, audio.pages({{vorbis_comment_packet({}), 0}, {vorbis_setup(), 0}}));
 
 		for (unsigned second = 0; second < 3; ++second)
@@ -563,7 +632,8 @@ namespace
 			{
 				const auto keyframe = second * 25 + 1;
 				const auto number = second * 25 + frame;
-				packets.emplace_back(builder().u8(frame == 1 ? 0x40 : 0x00).raw(filler(40)).b, std::uint64_t{keyframe} << 6 | (number - keyframe));
+				packets.emplace_back(builder().u8(frame == 1 ? 0x40 : 0x00).raw(filler(40)).b,
+				                     std::uint64_t{keyframe} << 6 | (number - keyframe));
 			}
 
 			append(file, video.pages(packets, second == 2));
@@ -613,7 +683,8 @@ TEST("media mp3 counts an Xing header's frames, less the LAME tag's delay and pa
 	const auto build = [](const std::string_view encoder)
 	{
 		builder f;
-		f.raw(xing_frame(mp3_header, mp3_frame, 32, "Xing", 101, 38000, encoder)).raw(frames(mp3_header, mp3_frame, 100));
+		f.raw(xing_frame(mp3_header, mp3_frame, 32, "Xing", 101, 38000, encoder))
+			.raw(frames(mp3_header, mp3_frame, 100));
 		return f.b;
 	};
 
@@ -643,7 +714,9 @@ TEST("media mp3 takes iTunes' gapless figures where no LAME tag gives a delay an
 	const auto duration = [](const bytes& tag, const std::string_view encoder = "iTunes v7")
 	{
 		builder f;
-		f.raw(tag).raw(xing_frame(mp3_header, mp3_frame, 32, "Xing", 101, 101 * 384, encoder)).raw(frames(mp3_header, mp3_frame, 100));
+		f.raw(tag)
+			.raw(xing_frame(mp3_header, mp3_frame, 32, "Xing", 101, 101 * 384, encoder))
+			.raw(frames(mp3_header, mp3_frame, 100));
 		return only_stream(scan(f.b)).duration;
 	};
 
@@ -659,19 +732,27 @@ TEST("media mp3 takes iTunes' gapless figures where no LAME tag gives a delay an
 	CHECK(close_to(duration(id3v2_tag(2, {comment_frame(2, "eng", "ITUNSMPB", figures)})), played));
 
 	// A comment is looked for first, wherever each lies.
-	CHECK(close_to(duration(id3v2_tag(3, {user_text_frame(3, "iTunSMPB", wrong), comment_frame(3, "eng", "iTunSMPB", figures)})), played));
-	CHECK(close_to(duration(id3v2_tag(3, {user_text_frame(3, "iTunSMPB", figures), comment_frame(3, "eng", "iTunSMPB", wrong)})), counted));
+	CHECK(close_to(duration(id3v2_tag(3, {user_text_frame(3, "iTunSMPB", wrong),
+	                                      comment_frame(3, "eng", "iTunSMPB", figures)})),
+	               played));
+	CHECK(close_to(duration(id3v2_tag(3, {user_text_frame(3, "iTunSMPB", figures),
+	                                      comment_frame(3, "eng", "iTunSMPB", wrong)})),
+	               counted));
 
 	// Other names are not iTunes' figures.
-	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunNORM", figures), user_text_frame(3, "iTunSMPB2", figures),
-	                                       text_frame(3, "TIT2", figures)})), counted));
+	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunNORM", figures),
+	                                      user_text_frame(3, "iTunSMPB2", figures), text_frame(3, "TIT2", figures)})),
+	               counted));
 
 	// A LAME tag's delay and padding come first.
-	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunSMPB", figures)}), "LAME3.100"), (116352.0 - 1576) / 48000));
+	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunSMPB", figures)}), "LAME3.100"),
+	               (116352.0 - 1576) / 48000));
 
 	// Figures that do not add up to the frame count, or that run past sixteen digits, are not taken.
 	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunSMPB", wrong)})), counted));
-	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunSMPB", " 00000000 00000840 000001D0 00000000000001BC700")})), counted));
+	CHECK(close_to(duration(id3v2_tag(3, {comment_frame(3, "eng", "iTunSMPB",
+	                                                    " 00000000 00000840 000001D0 00000000000001BC700")})),
+	               counted));
 }
 
 TEST("media mp3 counts an Info header's frames at the frames' own bit rate")
@@ -699,7 +780,8 @@ TEST("media mp3 counts a VBRI header's frames")
 TEST("media mp3 finds the Xing header of an MPEG-2 mono stream after its shorter side information")
 {
 	builder f;
-	f.raw(xing_frame(lsf_header, lsf_frame, 9, "Xing", 51, 51 * 192, "LAME3.100", 576, 0)).raw(frames(lsf_header, lsf_frame, 50));
+	f.raw(xing_frame(lsf_header, lsf_frame, 9, "Xing", 51, 51 * 192, "LAME3.100", 576, 0))
+		.raw(frames(lsf_header, lsf_frame, 50));
 
 	const auto s = scan(f.b);
 	CHECK_STR(s.brand, "MPEG-2 Layer 3");
@@ -744,7 +826,8 @@ TEST("media mp3 skips junk before the first frame, as far as FFmpeg looks")
 	const auto s = scan(f.b, libfiles::scan_intent::inspect);
 	CHECK(s.success);
 	CHECK(close_to(only_stream(s).duration, 3.0));
-	CHECK(std::ranges::any_of(s.structure, [](const libfiles::structure_row& row) { return row.key == "Junk" && row.value.starts_with("1004 bytes"); }));
+	CHECK(std::ranges::any_of(s.structure, [](const libfiles::structure_row& row)
+	{ return row.key == "Junk" && row.value.starts_with("1004 bytes"); }));
 
 	builder far;
 	far.raw(id3v2_tag(3, {})).zeros(64 * 1024 + 1).raw(frames(mp3_header, mp3_frame, 10));
@@ -849,7 +932,8 @@ TEST("media mp3 lists its structure")
 		return found == s.structure.end() ? std::string("(none)") : found->value;
 	};
 
-	CHECK_STR(row("ID3v2.3 tag"), std::format("offset 0, {} bytes", id3v2_tag(3, {text_frame(3, "TIT2", "Title")}).size()));
+	CHECK_STR(row("ID3v2.3 tag"),
+	          std::format("offset 0, {} bytes", id3v2_tag(3, {text_frame(3, "TIT2", "Title")}).size()));
 	CHECK_STR(row("Xing header"), "101 frames, 38784 bytes");
 	CHECK_STR(row("LAME tag"), "LAME3.100, encoder delay 576, padding 1000");
 	CHECK_STR(row("ID3v1 tag"), std::format("offset {}, 128 bytes", f.size() - 128));
@@ -992,7 +1076,8 @@ TEST("media flac locates a large picture from the head of its block")
 	const std::string description(70000, 'd');
 	const auto long_fields = read(build(picture("image/png", description, filler(1000, 0x89))));
 	CHECK_EQ(long_fields.result.pictures.size(), 1u);
-	if (!long_fields.result.pictures.empty()) CHECK_EQ(long_fields.result.pictures[0].location.offset, block + 4 + 4 + 9 + 4 + 70000 + 16 + 4);
+	if (!long_fields.result.pictures.empty())
+		CHECK_EQ(long_fields.result.pictures[0].location.offset, block + 4 + 4 + 9 + 4 + 70000 + 16 + 4);
 
 	// Fields the head holds are not read again when they are not a picture: a URL, in a large block.
 	const auto link = read(build(picture("-->", "", filler(1024 * 1024, 'u'))));
@@ -1014,7 +1099,8 @@ TEST("media flac without a sample count finds where the last frame ends")
 		builder f;
 		f.raw("fLaC").raw(flac_block(0, streaminfo(44100, 2, 16, 0, variable ? 1000 : 4096, 4096), true));
 
-		for (std::uint64_t i = 0; i < 9; ++i) f.raw(flac_frame(variable, variable ? i * 4096 : i, 4096, 300, rate_code));
+		for (std::uint64_t i = 0; i < 9; ++i)
+			f.raw(flac_frame(variable, variable ? i * 4096 : i, 4096, 300, rate_code));
 		f.raw(flac_frame(variable, variable ? 9 * 4096 : 9, 1000, 300, rate_code));
 		return f.b;
 	};
@@ -1056,7 +1142,9 @@ TEST("media flac after an ID3v2 tag")
 TEST("media flac refuses a stream that does not begin with STREAMINFO")
 {
 	builder comment_first;
-	comment_first.raw("fLaC").raw(flac_block(4, vorbis_comment({"TITLE=x"}))).raw(flac_block(0, streaminfo(44100, 2, 16, 44100), true));
+	comment_first.raw("fLaC")
+		.raw(flac_block(4, vorbis_comment({"TITLE=x"})))
+		.raw(flac_block(0, streaminfo(44100, 2, 16, 44100), true));
 	CHECK(!scan(comment_first.b).success);
 
 	builder short_info;
@@ -1076,7 +1164,10 @@ TEST("media flac refuses a stream that does not begin with STREAMINFO")
 TEST("media flac lists its metadata blocks")
 {
 	builder f;
-	f.raw("fLaC").raw(flac_block(0, streaminfo(44100, 2, 16, 441000))).raw(flac_block(3, filler(18, 0))).raw(flac_block(1, filler(10, 0), true));
+	f.raw("fLaC")
+		.raw(flac_block(0, streaminfo(44100, 2, 16, 441000)))
+		.raw(flac_block(3, filler(18, 0)))
+		.raw(flac_block(1, filler(10, 0), true));
 	f.raw(flac_frame(false, 0, 4096));
 
 	const auto s = scan(f.b, libfiles::scan_intent::inspect);
@@ -1166,6 +1257,7 @@ TEST("media ogg times Opus at 48 kHz without its pre-skip, from where its first 
 		for (std::uint64_t p = 1; p <= 3; ++p)
 		{
 			std::vector<std::pair<bytes, std::uint64_t>> packets;
+			packets.reserve(50);
 			for (auto i = 0; i < 50; ++i) packets.emplace_back(opus_packet(), start + p * 48000);
 			const auto data = w.pages(packets);
 			file.insert(file.end(), data.begin(), data.end());
@@ -1204,8 +1296,18 @@ TEST("media ogg locates a FLAC picture that lies whole on its page")
 	const auto build = [](const bytes& image, const std::size_t claimed)
 	{
 		ogg_writer w{8};
-		auto file = w.pages({{builder().u8(0x7F).raw("FLAC").u8(1).u8(0).be16(2).raw("fLaC").raw(flac_block(0, streaminfo(44100, 2, 16, 0))).b, 0}});
-		append(file, w.pages({{flac_block(4, vorbis_comment({"TITLE=Pictured"})), 0}, {flac_block(6, picture("image/png", "Cover", image, claimed), true), 0}}));
+		auto file = w.pages({{builder()
+		                          .u8(0x7F)
+		                          .raw("FLAC")
+		                          .u8(1)
+		                          .u8(0)
+		                          .be16(2)
+		                          .raw("fLaC")
+		                          .raw(flac_block(0, streaminfo(44100, 2, 16, 0)))
+		                          .b,
+		                      0}});
+		append(file, w.pages({{flac_block(4, vorbis_comment({"TITLE=Pictured"})), 0},
+		                      {flac_block(6, picture("image/png", "Cover", image, claimed), true), 0}}));
 		append(file, w.pages({{flac_frame(false, 0, 4096, 500), 44100}}, true));
 		return file;
 	};
@@ -1446,6 +1548,7 @@ TEST("media ogg cut short or damaged is read or refused, and what is read holds 
 	for (std::uint64_t p = 1; p <= 2; ++p)
 	{
 		std::vector<std::pair<bytes, std::uint64_t>> packets;
+		packets.reserve(5);
 		for (auto i = 0; i < 5; ++i) packets.emplace_back(opus_packet(), p * 4800 + 312);
 		const auto pages = opus.pages(packets, p == 2);
 		file.insert(file.end(), pages.begin(), pages.end());

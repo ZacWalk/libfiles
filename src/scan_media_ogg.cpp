@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning Ogg files: Vorbis, Opus, Speex, FLAC and Theora. The first page of each logical stream
 // names its codec; its header packets, put together across pages, give its format and its comments; and the
@@ -192,7 +192,9 @@ namespace libfiles::detail
 			if (s.head_size == 0) return 0;
 
 			const unsigned config = s.head[0] >> 3u;
-			const unsigned frame = config < 12 ? std::max(480u, 960u * (config & 3)) : config < 16 ? 480u << (config & 1) : 120u << (config & 3);
+			const unsigned frame = config < 12   ? std::max(480u, 960u * (config & 3))
+			                       : config < 16 ? 480u << (config & 1)
+			                                     : 120u << (config & 3);
 			const unsigned code = s.head[0] & 3u;
 			const unsigned frames = code == 0 ? 1 : code < 3 ? 2 : s.head_size > 1 ? s.head[1] & 0x3Fu : 0;
 			return std::uint64_t{frame} * frames;
@@ -202,7 +204,8 @@ namespace libfiles::detail
 		// the frames since in the low ones.
 		std::uint64_t theora_frames(const logical_stream& s, const std::uint64_t granule)
 		{
-			return (granule >> s.granule_shift) + (granule & ((std::uint64_t{1} << s.granule_shift) - 1)) + (s.zero_based ? 1 : 0);
+			return (granule >> s.granule_shift) + (granule & ((std::uint64_t{1} << s.granule_shift) - 1)) +
+			       (s.zero_based ? 1 : 0);
 		}
 
 		// A stream begins: its first packet names its codec.
@@ -215,7 +218,9 @@ namespace libfiles::detail
 			const auto b = p.body;
 			if (starts_with(b, "\x01vorbis")) s.kind = codec::vorbis;
 			else if (starts_with(b, "OpusHead")) s.kind = codec::opus;
-			else if (starts_with(b, "\x7F" "FLAC")) s.kind = codec::flac;
+			else if (starts_with(b, "\x7F"
+			                        "FLAC"))
+				s.kind = codec::flac;
 			else if (starts_with(b, "\x80theora")) s.kind = codec::theora;
 			else if (starts_with(b, "Speex   ")) s.kind = codec::speex;
 			else if (starts_with(b, std::string_view("fishead\0", 8))) s.kind = codec::skeleton;
@@ -228,7 +233,9 @@ namespace libfiles::detail
 			media_stream m;
 			m.id = id;
 			m.codec = names[static_cast<std::size_t>(s.kind)];
-			m.kind = s.kind == codec::theora ? media_stream_kind::video : s.timed() ? media_stream_kind::audio : media_stream_kind::data;
+			m.kind = s.kind == codec::theora ? media_stream_kind::video
+			         : s.timed()             ? media_stream_kind::audio
+			                                 : media_stream_kind::data;
 			s.index = out.streams.size();
 			out.streams.push_back(std::move(m));
 			return s;
@@ -243,7 +250,8 @@ namespace libfiles::detail
 
 		// A header packet - or what was taken for one - of a stream whose headers are being read, at offset
 		// in the file when it lies there whole. True when it turns out to be the first packet of data.
-		bool take_header(logical_stream& s, const std::span<const std::uint8_t> packet, const std::uint64_t offset, media_scan_result& out)
+		bool take_header(logical_stream& s, const std::span<const std::uint8_t> packet, const std::uint64_t offset,
+		                 media_scan_result& out)
 		{
 			const auto number = s.headers++;
 			auto& m = out.streams[s.index];
@@ -319,8 +327,9 @@ namespace libfiles::detail
 					if (read_flac_picture(block, located, picture))
 					{
 						const auto& place = picture.location;
-						const auto inside = located == 0 || (place.offset >= located && place.offset - located <= block.size() &&
-							place.size <= block.size() - (place.offset - located));
+						const auto inside = located == 0 ||
+						                    (place.offset >= located && place.offset - located <= block.size() &&
+						                     place.size <= block.size() - (place.offset - located));
 						if (inside) out.pictures.push_back(std::move(picture));
 					}
 				}
@@ -372,9 +381,7 @@ namespace libfiles::detail
 				s.headers_done = true;
 				return false;
 
-			default:
-				s.headers_done = true;
-				return false;
+			default: s.headers_done = true; return false;
 			}
 		}
 
@@ -421,7 +428,8 @@ namespace libfiles::detail
 					s.head_size = 0;
 				}
 
-				for (std::size_t i = 0; i < bytes.size() && s.head_size < s.head.size(); ++i) s.head[s.head_size++] = bytes[i];
+				for (std::size_t i = 0; i < bytes.size() && s.head_size < s.head.size(); ++i)
+					s.head[s.head_size++] = bytes[i];
 
 				if (!s.headers_done && !s.oversized)
 				{
@@ -439,7 +447,9 @@ namespace libfiles::detail
 				if (length == 255) continue;
 
 				auto data = s.headers_done;
-				if (!data) data = take_header(s, s.oversized ? std::span<const std::uint8_t>() : s.packet, s.split ? 0 : s.packet_offset, out);
+				if (!data)
+					data = take_header(s, s.oversized ? std::span<const std::uint8_t>() : s.packet,
+					                   s.split ? 0 : s.packet_offset, out);
 
 				if (data)
 				{
@@ -470,7 +480,8 @@ namespace libfiles::detail
 		// a stream that did not begin the file belongs to a later link, and so does a stream's first page
 		// after the first link's: links joined end to end may reuse a serial number.
 		void read_last_pages(reader& r, const std::uint64_t from, const std::uint64_t to, const std::uint64_t stop,
-		                     const std::uint64_t first_link_begun, std::vector<logical_stream>& streams, bool& chained, std::uint64_t& checked)
+		                     const std::uint64_t first_link_begun, std::vector<logical_stream>& streams, bool& chained,
+		                     std::uint64_t& checked)
 		{
 			const auto bytes = r.view(from, static_cast<std::size_t>(to - from));
 			std::vector<std::uint64_t> found(streams.size(), no_granule);
@@ -518,18 +529,17 @@ namespace libfiles::detail
 			{
 			case codec::vorbis:
 			case codec::flac:
-			case codec::speex:
-				return s.sample_rate != 0 ? static_cast<double>(g) / s.sample_rate : 0;
+			case codec::speex: return s.sample_rate != 0 ? static_cast<double>(g) / s.sample_rate : 0;
 			case codec::opus:
 				// RFC 7845, 4: the samples the pre-skip discards are not played.
-				return g > s.start && g - s.start > s.pre_skip ? static_cast<double>(g - s.start - s.pre_skip) / 48000 : 0;
+				return g > s.start && g - s.start > s.pre_skip ? static_cast<double>(g - s.start - s.pre_skip) / 48000
+				                                               : 0;
 			case codec::theora:
 			{
 				const auto frames = theora_frames(s, g);
 				return frames > s.start && s.frame_rate > 0 ? static_cast<double>(frames - s.start) / s.frame_rate : 0;
 			}
-			default:
-				return 0;
+			default: return 0;
 			}
 		}
 	}
@@ -558,7 +568,10 @@ namespace libfiles::detail
 				if (checked >= max_checked) break;
 
 				// Not a whole page that checks: on to the next capture pattern, as FFmpeg resynchronises.
-				const auto next = find_capture(r.view(offset, static_cast<std::size_t>(std::min<std::uint64_t>(size - offset, max_page_size))), 1);
+				const auto next = find_capture(r.view(offset,
+				                                      static_cast<std::size_t>(
+														  std::min<std::uint64_t>(size - offset, max_page_size))),
+				                               1);
 				if (next == no_position) break;
 				offset += next;
 				continue;
@@ -609,14 +622,19 @@ namespace libfiles::detail
 
 		// The last pages, from the end: the last page's worth of bytes, then twice as much each time a stream
 		// that plays for a time has yet to be found.
-		const auto missing = [&] { return std::ranges::any_of(streams, [](const logical_stream& s) { return s.timed() && s.last_granule == no_granule; }); };
+		const auto missing = [&]
+		{
+			return std::ranges::any_of(streams, [](const logical_stream& s)
+			{ return s.timed() && s.last_granule == no_granule; });
+		};
 		auto scanned = size;
 		auto tail = std::min<std::uint64_t>(size, max_page_size);
 
 		while (!chained && missing())
 		{
 			const auto from = size - tail;
-			read_last_pages(r, from, std::min(size, scanned + max_page_size), scanned, first_link_begun, streams, chained, checked);
+			read_last_pages(r, from, std::min(size, scanned + max_page_size), scanned, first_link_begun, streams,
+			                chained, checked);
 			scanned = from;
 
 			const auto wider = std::min({size, tail * 2, max_tail});
@@ -636,7 +654,8 @@ namespace libfiles::detail
 
 		if (intent == scan_intent::inspect)
 		{
-			static constexpr std::string_view names[] = {"unknown", "Skeleton", "Vorbis", "Opus", "FLAC", "Theora", "Speex"};
+			static constexpr std::string_view names[] = {"unknown", "Skeleton", "Vorbis", "Opus",
+			                                             "FLAC",    "Theora",   "Speex"};
 			add_structure_section(out.structure, "Streams", "ogg.streams", true);
 
 			for (const auto& s : streams)
@@ -648,8 +667,10 @@ namespace libfiles::detail
 
 			add_structure_section(out.structure, "Pages", "ogg.pages");
 			add_structure_row(out.structure, "Headers", std::format("{} pages, offset 0 to {}", header_pages, offset));
-			if (scanned < size) add_structure_row(out.structure, "Last pages", std::format("offset {} to {}", scanned, size));
-			if (chained) add_structure_row(out.structure, "Chained", "a later link follows; only the first is described");
+			if (scanned < size)
+				add_structure_row(out.structure, "Last pages", std::format("offset {} to {}", scanned, size));
+			if (chained)
+				add_structure_row(out.structure, "Chained", "a later link follows; only the first is described");
 			finish_structure_sections(out.structure);
 		}
 	}

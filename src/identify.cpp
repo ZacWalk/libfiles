@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The format table and the one identification every operation dispatches through: each format's
 // family, names, MIME type, extensions and capabilities in this build, and the order its signatures are
@@ -80,9 +80,10 @@ namespace libfiles
 			return c;
 		}
 
-		file_type_info row(const file_type type, const file_family family, const std::string_view name, const std::string_view mime,
-		                   const std::span<const std::string_view> extensions, const image_format image, const media_format media,
-		                   const file_format update, const capability fixed)
+		file_type_info row(const file_type type, const file_family family, const std::string_view name,
+		                   const std::string_view mime, const std::span<const std::string_view> extensions,
+		                   const image_format image, const media_format media, const file_format update,
+		                   const capability fixed)
 		{
 			file_type_info i;
 			i.type = type;
@@ -112,33 +113,48 @@ namespace libfiles
 
 				return std::vector<file_type_info>{
 					file_type_info{},
-					row(jpeg, img, "JPEG", "image/jpeg", jpeg_ext, image_format::jpeg, no_media, file_format::jpeg, c_scan | c_updated),
-					row(png, img, "PNG", "image/png", png_ext, image_format::png, no_media, file_format::png, c_scan | c_updated),
-					row(webp, img, "WebP", "image/webp", webp_ext, image_format::webp, no_media, file_format::webp, c_scan | c_updated),
-					row(gif, img, "GIF", "image/gif", gif_ext, image_format::gif, no_media, file_format::gif, c_scan | c_updated),
-					row(psd, img, "Photoshop", "image/vnd.adobe.photoshop", psd_ext, image_format::psd, no_media, file_format::psd, c_scan | c_updated),
+					row(jpeg, img, "JPEG", "image/jpeg", jpeg_ext, image_format::jpeg, no_media, file_format::jpeg,
+				        c_scan | c_updated),
+					row(png, img, "PNG", "image/png", png_ext, image_format::png, no_media, file_format::png,
+				        c_scan | c_updated),
+					row(webp, img, "WebP", "image/webp", webp_ext, image_format::webp, no_media, file_format::webp,
+				        c_scan | c_updated),
+					row(gif, img, "GIF", "image/gif", gif_ext, image_format::gif, no_media, file_format::gif,
+				        c_scan | c_updated),
+					row(psd, img, "Photoshop", "image/vnd.adobe.photoshop", psd_ext, image_format::psd, no_media,
+				        file_format::psd, c_scan | c_updated),
 					row(bmp, img, "BMP", "image/bmp", bmp_ext, image_format::bmp, no_media, no_update, none),
-					row(tiff, img, "TIFF", "image/tiff", tiff_ext, image_format::tiff, no_media, file_format::tiff, c_scan | c_updated),
-					row(heif, img, "HEIF and AVIF", "image/heif", heif_ext, image_format::heif, no_media, no_update, capability::read_packet),
-					row(jxl, img, "JPEG XL", "image/jxl", jxl_ext, image_format::jxl, no_media, file_format::jxl, c_updated),
+					row(tiff, img, "TIFF", "image/tiff", tiff_ext, image_format::tiff, no_media, file_format::tiff,
+				        c_scan | c_updated),
+					row(heif, img, "HEIF and AVIF", "image/heif", heif_ext, image_format::heif, no_media,
+				        file_format::heif, c_updated),
+					row(jxl, img, "JPEG XL", "image/jxl", jxl_ext, image_format::jxl, no_media, file_format::jxl,
+				        c_updated),
 					row(pcx, img, "PCX", "image/vnd.zbrush.pcx", pcx_ext, image_format::pcx, no_media, no_update, none),
-					row(wpg, img, "WordPerfect Graphics", "image/x-wpg", wpg_ext, image_format::wpg, no_media, no_update, none),
-					row(mp4, av, "MP4 and QuickTime", "video/mp4", mp4_ext, no_image, media_format::mp4, file_format::mp4, c_media | c_updated),
-					row(matroska, av, "Matroska and WebM", "video/x-matroska", mkv_ext, no_image, media_format::matroska, no_update,
-					    capability::scan_media),
-					row(avi, av, "AVI", "video/x-msvideo", avi_ext, no_image, media_format::avi, file_format::riff, c_media | c_updated),
-					row(wav, av, "WAV", "audio/wav", wav_ext, no_image, media_format::wav, file_format::riff, c_media | c_updated),
+					row(wpg, img, "WordPerfect Graphics", "image/x-wpg", wpg_ext, image_format::wpg, no_media,
+				        no_update, none),
+					row(mp4, av, "MP4 and QuickTime", "video/mp4", mp4_ext, no_image, media_format::mp4,
+				        file_format::mp4, c_media | c_updated),
+					row(matroska, av, "Matroska and WebM", "video/x-matroska", mkv_ext, no_image,
+				        media_format::matroska, no_update, capability::scan_media),
+					row(avi, av, "AVI", "video/x-msvideo", avi_ext, no_image, media_format::avi, file_format::riff,
+				        c_media | c_updated),
+					row(wav, av, "WAV", "audio/wav", wav_ext, no_image, media_format::wav, file_format::riff,
+				        c_media | c_updated),
 					row(aiff, av, "AIFF", "audio/aiff", aiff_ext, no_image, media_format::aiff, no_update, c_media),
-					row(asf, av, "ASF", "video/x-ms-asf", asf_ext, no_image, media_format::asf, file_format::asf, c_media | c_updated),
-					row(mpeg_audio, av, "MPEG audio", "audio/mpeg", mpa_ext, no_image, media_format::mpeg_audio, file_format::mp3,
-					    c_media | c_updated),
+					row(asf, av, "ASF", "video/x-ms-asf", asf_ext, no_image, media_format::asf, file_format::asf,
+				        c_media | c_updated),
+					row(mpeg_audio, av, "MPEG audio", "audio/mpeg", mpa_ext, no_image, media_format::mpeg_audio,
+				        file_format::mp3, c_media | c_updated),
 					row(flac, av, "FLAC", "audio/flac", flac_ext, no_image, media_format::flac, no_update, c_media),
-					row(ogg, av, "Ogg", "audio/ogg", ogg_ext, no_image, media_format::ogg, no_update, capability::scan_media),
-					row(flv, av, "FLV", "video/x-flv", flv_ext, no_image, media_format::flv, file_format::flv, c_media | c_updated),
-					row(mpeg_ts, av, "MPEG transport stream", "video/mp2t", ts_ext, no_image, media_format::mpeg_ts, no_update,
-					    capability::scan_media),
-					row(mpeg_ps, av, "MPEG program stream", "video/mpeg", ps_ext, no_image, media_format::mpeg_ps, no_update,
-					    capability::scan_media),
+					row(ogg, av, "Ogg", "audio/ogg", ogg_ext, no_image, media_format::ogg, no_update,
+				        capability::scan_media),
+					row(flv, av, "FLV", "video/x-flv", flv_ext, no_image, media_format::flv, file_format::flv,
+				        c_media | c_updated),
+					row(mpeg_ts, av, "MPEG transport stream", "video/mp2t", ts_ext, no_image, media_format::mpeg_ts,
+				        no_update, capability::scan_media),
+					row(mpeg_ps, av, "MPEG program stream", "video/mpeg", ps_ext, no_image, media_format::mpeg_ps,
+				        no_update, capability::scan_media),
 				};
 			}();
 
@@ -149,7 +165,8 @@ namespace libfiles
 		// reader requires.
 		bool is_wpg(const std::span<const std::uint8_t> h) noexcept
 		{
-			return h.size() >= 16 && h[0] == 0xFF && h[1] == 'W' && h[2] == 'P' && h[3] == 'C' && h[9] == 0x16 && h[14] == 0 && h[15] == 0;
+			return h.size() >= 16 && h[0] == 0xFF && h[1] == 'W' && h[2] == 'P' && h[3] == 'C' && h[9] == 0x16 &&
+			       h[14] == 0 && h[15] == 0;
 		}
 
 		// A ZSoft header the native reader takes: run-length encoded, and a layout it decodes - 1 to 8 bits
@@ -211,8 +228,8 @@ namespace libfiles
 #ifdef LIBFILES_TIFF
 		if (format == image_format::tiff) return true;
 #endif
-		return format == image_format::pcx || format == image_format::bmp ||
-			format == image_format::wpg || format == image_format::psd;
+		return format == image_format::pcx || format == image_format::bmp || format == image_format::wpg ||
+		       format == image_format::psd;
 	}
 
 	const file_type_info& info(const file_type type) noexcept
@@ -232,7 +249,8 @@ namespace libfiles
 			for (const auto e : i.extensions)
 			{
 				const auto name = e.substr(1);
-				if (name.size() == extension.size() && std::ranges::equal(name, extension, {}, {}, lower)) return i.type;
+				if (name.size() == extension.size() && std::ranges::equal(name, extension, {}, {}, lower))
+					return i.type;
 			}
 		}
 

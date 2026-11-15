@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests that libfiles' operations agree about a file. identify() names what scan_media, read_packet
 // and plan_update dispatch on, and the format table says what each operation does with a format; the packet
@@ -144,15 +144,33 @@ TEST("identify names every format by its signature")
 	check_head(builder().raw("RIFF").le32(100).raw("AVI LIST").b, file_type::avi);
 	check_head(builder().raw("RIFF").le32(100).raw("WAVEfmt ").b, file_type::wav);
 	check_head(builder().raw("FORM").be32(100).raw("AIFFCOMM").b, file_type::aiff);
-	check_head(builder().u8(0x30).u8(0x26).u8(0xB2).u8(0x75).u8(0x8E).u8(0x66).u8(0xCF).u8(0x11).u8(0xA6).u8(0xD9).u8(0x00).u8(0xAA)
-	                    .u8(0x00).u8(0x62).u8(0xCE).u8(0x6C).b, file_type::asf);
+	check_head(builder()
+	               .u8(0x30)
+	               .u8(0x26)
+	               .u8(0xB2)
+	               .u8(0x75)
+	               .u8(0x8E)
+	               .u8(0x66)
+	               .u8(0xCF)
+	               .u8(0x11)
+	               .u8(0xA6)
+	               .u8(0xD9)
+	               .u8(0x00)
+	               .u8(0xAA)
+	               .u8(0x00)
+	               .u8(0x62)
+	               .u8(0xCE)
+	               .u8(0x6C)
+	               .b,
+	           file_type::asf);
 	check_head(builder().be32(mp3_frame_header).zeros(12).b, file_type::mpeg_audio);
 	check_head(builder().raw("fLaC").zeros(12).b, file_type::flac);
 	check_head(builder().raw("OggS").zeros(12).b, file_type::ogg);
 	check_head(builder().raw("FLV").u8(1).u8(5).be32(9).zeros(7).b, file_type::flv);
 	check_head(builder().u8(0).u8(0).u8(1).u8(0xBA).zeros(12).b, file_type::mpeg_ps);
 	check_head(builder().raw("BM").zeros(14).b, file_type::bmp);
-	check_head(builder().u8(0xFF).raw("WPC").le32(16).u8(1).u8(0x16).u8(1).u8(0).u8(0).u8(0).u8(0).u8(0).b, file_type::wpg);
+	check_head(builder().u8(0xFF).raw("WPC").le32(16).u8(1).u8(0x16).u8(1).u8(0).u8(0).u8(0).u8(0).u8(0).b,
+	           file_type::wpg);
 
 	// A transport stream is known only by sync bytes 188 bytes apart.
 	auto ts = padded({});
@@ -189,7 +207,8 @@ TEST("identify puts unmistakable signatures before weak ones")
 	const auto flac = flac_after_id3({id3_text_frame(3, "TIT2", "Title")});
 	CHECK(libfiles::identify(std::span(flac).first(16)) == file_type::mpeg_audio);
 	CHECK(identified(flac) == file_type::flac);
-	CHECK(identified(builder().raw(id3_tag(3, {id3_text_frame(3, "TIT2", "Title")})).raw(mp3_frames(4)).b) == file_type::mpeg_audio);
+	CHECK(identified(builder().raw(id3_tag(3, {id3_text_frame(3, "TIT2", "Title")})).raw(mp3_frames(4)).b) ==
+	      file_type::mpeg_audio);
 }
 
 TEST("identify agrees with each area's detect function")
@@ -284,7 +303,8 @@ TEST("the format table describes every type once")
 TEST("An ID3-tagged FLAC is FLAC to every operation")
 {
 	const auto packet = packet_titled("Packet title");
-	const auto file = flac_after_id3({id3_text_frame(3, "TIT2", "ID3 title"), id3_private_frame(3, "XMP", to_bytes(packet))});
+	const auto file = flac_after_id3(
+		{id3_text_frame(3, "TIT2", "ID3 title"), id3_private_frame(3, "XMP", to_bytes(packet))});
 
 	CHECK(identified(file) == file_type::flac);
 
@@ -320,8 +340,9 @@ TEST("read_packet reads an AIFF's packet where its scan finds it")
 	const auto first = packet_titled("First");
 	const auto last = packet_titled("Last");
 	const auto in_tag = packet_titled("In the ID3 chunk");
-	const auto file = aiff_form("AIFF", {aiff_comm(2, 44100, 16, 44100), aiff_xmp_chunk(first), aiff_xmp_chunk(last),
-	                                     aiff_chunk("ID3 ", id3_tag(3, {id3_private_frame(3, "XMP", to_bytes(in_tag))}))});
+	const auto file = aiff_form("AIFF",
+	                            {aiff_comm(2, 44100, 16, 44100), aiff_xmp_chunk(first), aiff_xmp_chunk(last),
+	                             aiff_chunk("ID3 ", id3_tag(3, {id3_private_frame(3, "XMP", to_bytes(in_tag))}))});
 
 	CHECK(identified(file) == file_type::aiff);
 
@@ -420,7 +441,8 @@ TEST("An unsynchronised ID3 tag's packet reads the same in the scan and read_pac
 {
 	// 0xFF in the packet's text is stored with a zero after it.
 	const auto packet = std::string("<x:xmpmeta>\xFF\xFE</x:xmpmeta>");
-	const auto frames = builder().raw(id3_text_frame(3, "TIT2", "Title")).raw(id3_private_frame(3, "XMP", to_bytes(packet))).b;
+	const auto frames =
+		builder().raw(id3_text_frame(3, "TIT2", "Title")).raw(id3_private_frame(3, "XMP", to_bytes(packet))).b;
 	const auto body = unsynchronised(frames);
 
 	builder tag;
@@ -453,7 +475,8 @@ TEST("A damaged ID3 tag has no packet in the scan or read_packet")
 
 	// After the packet, a frame that claims more than the tag holds.
 	const auto overrun = builder().raw("TALB").be32(4000).be16(0).u8(0).raw("Album").b;
-	const auto damaged = builder().raw(id3_tag(3, {id3_private_frame(3, "XMP", to_bytes(packet)), overrun})).raw(mp3_frames(8)).b;
+	const auto damaged =
+		builder().raw(id3_tag(3, {id3_private_frame(3, "XMP", to_bytes(packet)), overrun})).raw(mp3_frames(8)).b;
 
 	const auto scanned = scan_av(damaged);
 	CHECK(scanned.success);
@@ -477,7 +500,11 @@ TEST("An ID3v2.4 packet frame with a data length indicator is read and replaced"
 	builder body;
 	put_syncsafe(body, data.size());
 	body.raw(data);
-	const auto file = builder().raw(id3_tag(4, {id3_text_frame(4, "TIT2", "Title"), id3_frame(4, "PRIV", body.b, 0x0001)}, 256)).raw(mp3_frames(8)).b;
+	const auto file = builder()
+	                      .raw(id3_tag(4, {id3_text_frame(4, "TIT2", "Title"), id3_frame(4, "PRIV", body.b, 0x0001)},
+	                                   256))
+	                      .raw(mp3_frames(8))
+	                      .b;
 
 	const auto scanned = scan_av(file);
 	CHECK_STR(text(scanned.xmp), packet);
@@ -514,7 +541,9 @@ TEST("A rating reads the same whichever container holds it")
 
 		const auto value = "RATING=" + std::to_string(percent);
 		builder flac;
-		flac.raw("fLaC").raw(flac_block(0, flac_streaminfo(44100, 2, 16, 441000))).raw(flac_block(4, vorbis_comment_block({value}), true));
+		flac.raw("fLaC")
+			.raw(flac_block(0, flac_streaminfo(44100, 2, 16, 441000)))
+			.raw(flac_block(4, vorbis_comment_block({value}), true));
 		const auto scanned = scan_av(flac.b);
 		CHECK(scanned.properties.rating && *scanned.properties.rating == stars);
 	}
@@ -527,13 +556,31 @@ TEST("An MP4's packet is found however many boxes come before its user data")
 {
 	const auto packet = packet_titled("Packet title");
 	builder movie;
-	movie.raw(iso_full_box("mvhd", 0, 0, builder().be32(0).be32(0).be32(1000).be32(5000).be32(0x00010000).be16(0x0100).zeros(10)
-	                                               .be32(0x00010000).zeros(12).be32(0x00010000).zeros(12).be32(0x40000000).zeros(24).be32(1).b));
+	movie.raw(iso_full_box("mvhd", 0, 0,
+	                       builder()
+	                           .be32(0)
+	                           .be32(0)
+	                           .be32(1000)
+	                           .be32(5000)
+	                           .be32(0x00010000)
+	                           .be16(0x0100)
+	                           .zeros(10)
+	                           .be32(0x00010000)
+	                           .zeros(12)
+	                           .be32(0x00010000)
+	                           .zeros(12)
+	                           .be32(0x40000000)
+	                           .zeros(24)
+	                           .be32(1)
+	                           .b));
 	for (auto i = 0; i < 4100; ++i) movie.raw(iso_box("free", {}));
 	movie.raw(iso_box("udta", iso_box("XMP_", to_bytes(packet))));
 
-	const auto file = builder().raw(iso_box("ftyp", builder().raw("qt  ").be32(0).raw("qt  ").b)).raw(iso_box("moov", movie.b))
-	                           .raw(iso_box("mdat", bytes(16, 0))).b;
+	const auto file = builder()
+	                      .raw(iso_box("ftyp", builder().raw("qt  ").be32(0).raw("qt  ").b))
+	                      .raw(iso_box("moov", movie.b))
+	                      .raw(iso_box("mdat", bytes(16, 0)))
+	                      .b;
 
 	const auto read = packet_of(file);
 	CHECK(read.readable);
@@ -545,7 +592,11 @@ TEST("A media scan inflates compressed tags within its budget")
 {
 	// Ten compressed text frames of 100 bytes each, read with room for three.
 	std::vector<bytes> frames;
-	for (auto i = 0; i < 10; ++i) frames.push_back(id3_compressed_frame("TXXX", builder().u8(0).raw("Note " + std::to_string(i)).u8(0).raw(std::string(91, 'a')).b));
+	frames.reserve(10);
+	for (auto i = 0; i < 10; ++i)
+		frames.push_back(
+			id3_compressed_frame("TXXX",
+		                         builder().u8(0).raw("Note " + std::to_string(i)).u8(0).raw(std::string(91, 'a')).b));
 	const auto file = builder().raw(id3_tag(3, frames)).raw(mp3_frames(8)).b;
 
 	libfiles::scan_limits limits;
@@ -568,7 +619,10 @@ TEST("A media scan inflates compressed tags within its budget")
 
 	// The default budget reads them all.
 	libfiles::reader whole(file);
-	CHECK_EQ(static_cast<std::size_t>(std::ranges::count_if(libfiles::scan_media(whole).tags, [](const libfiles::media_tag& t) { return t.key.starts_with("TXXX:Note"); })), 10u);
+	CHECK_EQ(static_cast<std::size_t>(std::ranges::count_if(libfiles::scan_media(whole).tags,
+	                                                        [](const libfiles::media_tag& t)
+	{ return t.key.starts_with("TXXX:Note"); })),
+	         10u);
 }
 
 TEST("An Ogg scan bounds what it checks of capture patterns that are no pages")
@@ -602,7 +656,18 @@ namespace
 
 		builder j;
 		j.u8(0xFF).u8(0xD8);
-		if (count == 3) j.u8(0xFF).u8(0xE0).be16(16).raw(std::string_view("JFIF\0", 5)).u8(1).u8(1).u8(0).be16(1).be16(1).u8(0).u8(0);
+		if (count == 3)
+			j.u8(0xFF)
+				.u8(0xE0)
+				.be16(16)
+				.raw(std::string_view("JFIF\0", 5))
+				.u8(1)
+				.u8(1)
+				.u8(0)
+				.be16(1)
+				.be16(1)
+				.u8(0)
+				.u8(0);
 
 		j.u8(0xFF).u8(sof).be16(8 + 3 * count).u8(precision).be16(48).be16(64).u8(count);
 		for (unsigned c = 0; c < count; ++c) j.u8(c + 1).u8(sampling[c]).u8(0);
@@ -792,14 +857,19 @@ TEST("A still's picture states the depth, alpha and palette its header does")
 
 	// TIFF, which names no legacy format: a depth stored past its entry, an alpha among the extra
 	// samples, YCbCr's sampling and a palette.
-	const auto rgba = scan_still(tiff_still({{0x0102, 3, {16, 16, 16, 16}}, {0x0106, 3, {2}}, {0x0115, 3, {4}}, {0x0152, 3, {2}}}));
+	const auto rgba = scan_still(
+		tiff_still({{0x0102, 3, {16, 16, 16, 16}}, {0x0106, 3, {2}}, {0x0115, 3, {4}}, {0x0152, 3, {2}}}));
 	CHECK_STR(rgba.picture.name(), "rgba 16bit");
-	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {2, 1}}})).picture.name(), "yuv422");
+	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {2, 1}}})).picture.name(),
+	          "yuv422");
 	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}})).picture.name(), "yuv420");
 	// 4:1:0 is a quarter of the chroma both ways, as FFmpeg reads it; a quarter by a half has no name.
-	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {4, 4}}})).picture.name(), "yuv410");
-	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {4, 2}}})).picture.name(), "");
-	CHECK(scan_still(tiff_still({{0x0102, 3, {4}}, {0x0106, 3, {3}}})).picture == (picture_format{chroma_format::rgb, 4, false, true}));
+	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {4, 4}}})).picture.name(),
+	          "yuv410");
+	CHECK_STR(scan_still(tiff_still({{0x0102, 3, {8, 8, 8}}, {0x0106, 3, {6}}, {0x0212, 3, {4, 2}}})).picture.name(),
+	          "");
+	CHECK(scan_still(tiff_still({{0x0102, 3, {4}}, {0x0106, 3, {3}}})).picture ==
+	      (picture_format{chroma_format::rgb, 4, false, true}));
 
 	// A bilevel TIFF need not state its depth, which is then one bit.
 	CHECK(scan_still(tiff_still({{0x0106, 3, {0}}})).picture == (picture_format{chroma_format::gray, 1}));
@@ -810,9 +880,12 @@ TEST("A frame a still and a video both hold reads as the same picture in each")
 	// The image and video readers follow different references, which part ways only over records that
 	// are malformed; a well-formed frame must read the same in each. A JPEG still and a Motion JPEG frame:
 	for (const auto& [sof, precision, sampling] : std::vector<std::tuple<unsigned, unsigned, std::vector<unsigned>>>{
-		     {0xC0, 8, {0x11}}, {0xC1, 12, {0x11}}, {0xC0, 8, {0x22, 0x11, 0x11}}, {0xC0, 8, {0x21, 0x11, 0x11}},
-		     {0xC2, 8, {0x11, 0x11, 0x11}},
-	     })
+			 {0xC0, 8, {0x11}},
+			 {0xC1, 12, {0x11}},
+			 {0xC0, 8, {0x22, 0x11, 0x11}},
+			 {0xC0, 8, {0x21, 0x11, 0x11}},
+			 {0xC2, 8, {0x11, 0x11, 0x11}},
+		 })
 	{
 		const auto file = jpeg_still(sof, precision, sampling);
 		libfiles::detail::video_header frame;
@@ -901,7 +974,11 @@ TEST("A still's thumbnails are embedded images, as a recording's cover art is")
 	jpeg.u8(0xFF).u8(0xD8);
 	jpeg.u8(0xFF).u8(0xE0).be16(16).raw(std::string_view("JFIF\0", 5)).zeros(9);
 	jpeg.u8(0xFF).u8(0xE0).be16(24).raw(std::string_view("JFXX\0", 5)).u8(0x10).u8(0xFF).u8(0xD8).zeros(14);
-	jpeg.u8(0xFF).u8(0xE1).be16(static_cast<unsigned>(8 + exif.size())).raw(std::string_view("Exif\0\0", 6)).raw(exif.b);
+	jpeg.u8(0xFF)
+		.u8(0xE1)
+		.be16(static_cast<unsigned>(8 + exif.size()))
+		.raw(std::string_view("Exif\0\0", 6))
+		.raw(exif.b);
 	const auto frame = jpeg_still(0xC0, 8, {0x11});
 	jpeg.raw(bytes(frame.begin() + 2, frame.end()));
 

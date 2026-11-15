@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The rules the values in a photo's EXIF, IPTC and XMP are read by, as photo_internal.h states them.
 
@@ -26,10 +26,7 @@ namespace libfiles::detail
 			std::string_view _s;
 			std::size_t _at = 0;
 
-			int peek() const
-			{
-				return _at < _s.size() ? static_cast<unsigned char>(_s[_at]) : -1;
-			}
+			int peek() const { return _at < _s.size() ? static_cast<unsigned char>(_s[_at]) : -1; }
 
 			static bool space(const int c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
 			static bool digit(const int c) { return c >= '0' && c <= '9'; }
@@ -95,7 +92,8 @@ namespace libfiles::detail
 				const auto negative = !item.empty() && item[0] == '-';
 				if (!item.empty() && (item[0] == '-' || item[0] == '+')) item.remove_prefix(1);
 
-				const auto hex = item.size() >= 2 && item[0] == '0' && lower(static_cast<unsigned char>(item[1])) == 'x';
+				const auto hex = item.size() >= 2 && item[0] == '0' &&
+				                 lower(static_cast<unsigned char>(item[1])) == 'x';
 				const auto number = item.substr(hex ? 2 : 0);
 				double value = 0;
 				const auto [end, error] = std::from_chars(number.data(), number.data() + number.size(), value,
@@ -110,8 +108,8 @@ namespace libfiles::detail
 				else if (error == std::errc::result_out_of_range)
 				{
 					value = leading_exponent(number.substr(0, static_cast<std::size_t>(end - number.data())), hex) > 0
-						        ? std::numeric_limits<double>::infinity()
-						        : 0.0;
+					            ? std::numeric_limits<double>::infinity()
+					            : 0.0;
 				}
 
 				out = negative ? -value : value;
@@ -130,14 +128,9 @@ namespace libfiles::detail
 			}
 
 		public:
-			explicit scanned_text(const std::string_view s) : _s(s.substr(0, s.find('\0')))
-			{
-			}
+			explicit scanned_text(const std::string_view s) : _s(s.substr(0, s.find('\0'))) {}
 
-			bool at_end() const
-			{
-				return peek() < 0;
-			}
+			bool at_end() const { return peek() < 0; }
 
 			// White space in a format: a run of it, or none.
 			scanned_text& spaces()
@@ -155,8 +148,7 @@ namespace libfiles::detail
 			}
 
 			// %Ns, N one less than the buffer: after white space, 1 to N characters that are not.
-			template <std::size_t N>
-			bool word(char (&out)[N])
+			template <std::size_t N> bool word(char (&out)[N])
 			{
 				spaces();
 				std::size_t n = 0;
@@ -195,13 +187,11 @@ namespace libfiles::detail
 				if (!digits) return false;
 
 				constexpr auto long_max = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
-				const auto value = negative
-					                   ? past || magnitude > long_max + 1
-						                     ? std::numeric_limits<std::int64_t>::min()
-						                     : static_cast<std::int64_t>(0 - magnitude)
-					                   : past || magnitude > long_max
-					                   ? std::numeric_limits<std::int64_t>::max()
-					                   : static_cast<std::int64_t>(magnitude);
+				const auto value = negative                       ? past || magnitude > long_max + 1
+				                                                        ? std::numeric_limits<std::int64_t>::min()
+				                                                        : static_cast<std::int64_t>(0 - magnitude)
+				                   : past || magnitude > long_max ? std::numeric_limits<std::int64_t>::max()
+				                                                  : static_cast<std::int64_t>(magnitude);
 				out = static_cast<int>(static_cast<std::uint32_t>(static_cast<std::uint64_t>(value)));
 				return true;
 			}
@@ -234,7 +224,9 @@ namespace libfiles::detail
 
 				if (!digits) return false;
 
-				const auto value = past ? std::numeric_limits<std::uint64_t>::max() : negative ? 0 - magnitude : magnitude;
+				const auto value = past       ? std::numeric_limits<std::uint64_t>::max()
+				                   : negative ? 0 - magnitude
+				                              : magnitude;
 				out = static_cast<std::uint32_t>(value);
 				return true;
 			}
@@ -342,9 +334,7 @@ namespace libfiles::detail
 			for (std::size_t i = 0; i < std::size(names); ++i)
 			{
 				const auto same = std::ranges::equal(name, names[i], [](const char a, const char b)
-				{
-					return (a >= 'A' && a <= 'Z' ? static_cast<char>(a | 0x20) : a) == b;
-				});
+				{ return (a >= 'A' && a <= 'Z' ? static_cast<char>(a | 0x20) : a) == b; });
 
 				if (same) return static_cast<int>(i) + 1;
 			}
@@ -377,8 +367,9 @@ namespace libfiles::detail
 		const auto camera = [&](const bool colon)
 		{
 			scanned_text t(r);
-			return t.word(day_name) && t.spaces().word(month_name) && t.spaces().integer(dd) && t.spaces().integer(hh) &&
-				t.is(':') && t.integer(min) && t.is(':') && t.integer(ss) && (!colon || t.is(':')) && t.spaces().integer(yyyy);
+			return t.word(day_name) && t.spaces().word(month_name) && t.spaces().integer(dd) &&
+			       t.spaces().integer(hh) && t.is(':') && t.integer(min) && t.is(':') && t.integer(ss) &&
+			       (!colon || t.is(':')) && t.spaces().integer(yyyy);
 		};
 
 		// "%4d<a>%2d<a>%2d<b>%2d<c>%2d<c>%lg", each separator a character, a space or none.
@@ -391,8 +382,8 @@ namespace libfiles::detail
 
 			scanned_text t(r);
 			return t.integer(yyyy, 4) && separator(t, a) && t.integer(mm, 2) && separator(t, a) && t.integer(dd, 2) &&
-				separator(t, b) && t.integer(hh, 2) && separator(t, c) && t.integer(min, 2) && separator(t, c) &&
-				t.real(sec);
+			       separator(t, b) && t.integer(hh, 2) && separator(t, c) && t.integer(min, 2) && separator(t, c) &&
+			       t.real(sec);
 		};
 
 		// "%4d-%2d-%2d", or with the month's name: "%4d-%3s-%2d".
@@ -400,7 +391,7 @@ namespace libfiles::detail
 		{
 			scanned_text t(r);
 			return t.integer(yyyy, 4) && t.is('-') && (named ? t.word(month_name) : t.integer(mm, 2)) && t.is('-') &&
-				t.integer(dd, 2);
+			       t.integer(dd, 2);
 		};
 
 		if (camera(false) || camera(true))
@@ -410,10 +401,10 @@ namespace libfiles::detail
 			success = mm != 0;
 		}
 		else if (numeric('-', ' ', ':') || // "2006-01-14 15:51:31"
-			numeric(':', ' ', ':') || // "2006:01:14 15:51:31"
-			numeric('-', 'T', ':') || // "2006-01-14T15:51:31"
-			numeric(0, 'T', 0) || // "20060114T155131"
-			numeric(0, 0, 0)) // "20060114155131"
+		         numeric(':', ' ', ':') || // "2006:01:14 15:51:31"
+		         numeric('-', 'T', ':') || // "2006-01-14T15:51:31"
+		         numeric(0, 'T', 0) ||     // "20060114T155131"
+		         numeric(0, 0, 0))         // "20060114155131"
 		{
 			success = true;
 		}
@@ -478,8 +469,14 @@ namespace libfiles::detail
 		if (text.size() < 6) return;
 
 		const auto tail = text.substr(text.size() - 6);
-		const auto two_digits = [](const std::string_view s) { return s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9'; };
-		const auto value = [](const std::string_view s) { return (s[0] - '0') * 10 + (s[1] - '0'); };
+		const auto two_digits = [](const std::string_view s)
+		{
+			return s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9';
+		};
+		const auto value = [](const std::string_view s)
+		{
+			return (s[0] - '0') * 10 + (s[1] - '0');
+		};
 
 		if ((tail[0] != '+' && tail[0] != '-') || tail[3] != ':') return;
 		if (!two_digits(tail.substr(1, 2)) || !two_digits(tail.substr(4, 2))) return;
@@ -595,7 +592,8 @@ namespace libfiles::detail
 		if (first_comma == std::string_view::npos) return {};
 
 		const auto second_comma = body.find(',', first_comma + 1);
-		if (second_comma != std::string_view::npos && body.find(',', second_comma + 1) != std::string_view::npos) return {};
+		if (second_comma != std::string_view::npos && body.find(',', second_comma + 1) != std::string_view::npos)
+			return {};
 
 		const auto part = [](const std::string_view s, double& out)
 		{

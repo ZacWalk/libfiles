@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the format writers share and do not export: each format's planner and the packet
 // serialization they all use.
@@ -52,6 +52,7 @@ namespace libfiles::detail
 	void plan_gif(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_webp(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_jxl(reader& r, const metadata_update& update, write_plan& plan);
+	void plan_heif(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_jpeg(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_tiff(reader& r, const metadata_update& update, write_plan& plan);
 	void plan_psd(reader& r, const metadata_update& update, write_plan& plan);

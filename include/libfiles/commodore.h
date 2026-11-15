@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Listing what a Commodore 64 disk, tape, cartridge or program image holds, as the C64 lists a
 // disk's directory, and drawing that listing in the C64's own character set.
@@ -24,6 +24,12 @@ namespace libfiles
 		std::string text;
 		// The row as the C64 draws it: a screen code for each character, as draw_c64_listing draws them.
 		std::vector<std::uint8_t> screen_codes;
+		// The file the row names, as the image stores it - what a caller passes on to load that file: its
+		// PETSCII name up to the first $A0 or NUL, as CBM DOS compares names, with a T64's padding
+		// spaces dropped too; empty for a PRG, which has no name. And its type byte: the directory's own
+		// for a disk, tape or P00 ($82 a program, $80 a DEL entry), $99 for a cartridge.
+		std::vector<std::uint8_t> name;
+		std::uint8_t file_type = 0;
 	};
 
 	struct c64_listing
@@ -33,6 +39,12 @@ namespace libfiles
 		std::vector<c64_listing_row> rows;
 		// The longest row's length in characters.
 		std::uint32_t columns = 0;
+		// The name the image gives itself, as plain text the way a row's text is, without the padding around
+		// it: a disk's from its header - the sector a 1541 or 1571 keeps at track 18 sector 0 and a 1581 at
+		// track 40 sector 0, which the C64 lists above the directory - a T64 tape's from its header, a
+		// cartridge's - which its header holds as ASCII, so in its own case - and a P00 program's. Empty for a
+		// PRG, which has no name, and for an image that names itself nothing.
+		std::string title;
 
 		// The size draw_c64_listing draws the listing at: eight pixels square for each character.
 		std::uint32_t width() const noexcept { return columns * 8; }

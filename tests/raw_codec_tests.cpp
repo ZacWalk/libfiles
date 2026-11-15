@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the camera raw codecs libfiles builds for its consumers: LibRaw opening and developing
 // the DNG SDK's own sample DNGs through the SDK - a JPEG XL compressed one among them, which LibRaw cannot

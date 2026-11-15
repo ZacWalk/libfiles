@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Reading an EXIF block - the TIFF stream a JPEG's APP1 segment, a PNG's eXIf chunk, a WebP's
 // EXIF chunk or a HEIF's Exif item carries - for what an application shows of a photograph: the camera

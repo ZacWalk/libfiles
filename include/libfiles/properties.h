@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What a file says about the picture or recording it holds, as one set of properties whatever the
 // format and wherever the file keeps them: a photo's EXIF, IPTC and XMP, a recording's tags and XMP. Each

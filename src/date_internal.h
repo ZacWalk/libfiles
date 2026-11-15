@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The rules a date is read and written by, in every form a file keeps one, so a reader and a writer
 // of the same field agree: the forms tags write dates in, the strict form an edit gives one in, the counts of

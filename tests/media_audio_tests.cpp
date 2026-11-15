@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the audio codec header parsers, the Windows stream structures and the codec name tables.
 // Every header is built field by field, then read whole, cut short at every byte and damaged bit by bit.
@@ -51,15 +51,18 @@ namespace
 
 	std::uint32_t le_fourcc(const std::string_view s)
 	{
-		return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) | static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 | static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
+		return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
 	}
 
 	std::string describe(const audio_header& h)
 	{
-		return std::to_string(h.sample_rate) + " Hz, " + std::to_string(h.channels) + " ch, " + std::to_string(h.bits_per_sample) +
-			(h.float_samples ? " float" : " int") + ", '" + h.profile + "', " + std::to_string(h.bit_rate) + " b/s, " +
-			std::to_string(h.samples_per_frame) + " samples, " + std::to_string(h.frame_bytes) + " bytes";
+		return std::to_string(h.sample_rate) + " Hz, " + std::to_string(h.channels) + " ch, " +
+		       std::to_string(h.bits_per_sample) + (h.float_samples ? " float" : " int") + ", '" + h.profile + "', " +
+		       std::to_string(h.bit_rate) + " b/s, " + std::to_string(h.samples_per_frame) + " samples, " +
+		       std::to_string(h.frame_bytes) + " bytes";
 	}
 
 	std::string describe(const media_stream& s)
@@ -68,13 +71,14 @@ namespace
 
 		if (s.kind == media_stream_kind::audio)
 		{
-			text += "audio: " + std::to_string(s.audio.sample_rate) + " Hz, " + std::to_string(s.audio.channels) + " ch, " +
-				std::to_string(s.audio.bits_per_sample) + (s.audio.float_samples ? " float, '" : " int, '") + s.audio.profile + "'";
+			text += "audio: " + std::to_string(s.audio.sample_rate) + " Hz, " + std::to_string(s.audio.channels) +
+			        " ch, " + std::to_string(s.audio.bits_per_sample) +
+			        (s.audio.float_samples ? " float, '" : " int, '") + s.audio.profile + "'";
 		}
 		else if (s.kind == media_stream_kind::video)
 		{
-			text += "video: " + std::to_string(s.video.width) + "x" + std::to_string(s.video.height) + " " + s.video.pixel_format() +
-				(s.video.full_range ? " full" : "");
+			text += "video: " + std::to_string(s.video.width) + "x" + std::to_string(s.video.height) + " " +
+			        s.video.pixel_format() + (s.video.full_range ? " full" : "");
 		}
 		else
 		{
@@ -248,7 +252,8 @@ namespace
 
 	// An AudioSpecificConfig of a General Audio type that is not error resilient: its common fields, then
 	// a GASpecificConfig with no core coder and no extension.
-	bytes ga_config(const unsigned type, const unsigned rate_index, const unsigned channels, const bool short_frames = false)
+	bytes ga_config(const unsigned type, const unsigned rate_index, const unsigned channels,
+	                const bool short_frames = false)
 	{
 		msb_bits w;
 		put_object_type(w, type);
@@ -326,7 +331,8 @@ TEST("media audio AAC configs give the object type, rate, channels and frame len
 		CHECK_EQ(h.samples_per_frame, 960u);
 	}
 
-	constexpr std::uint32_t rates[13] = {96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350};
+	constexpr std::uint32_t rates[13] = {96000, 88200, 64000, 48000, 44100, 32000, 24000,
+	                                     22050, 16000, 12000, 11025, 8000,  7350};
 
 	for (unsigned index = 0; index < 13; ++index)
 	{
@@ -337,7 +343,8 @@ TEST("media audio AAC configs give the object type, rate, channels and frame len
 
 	// The 24-bit frequency index 15 escapes to.
 	bool ok = false;
-	CHECK_EQ(read_aac(msb_bits().put(2, 5).put(15, 4).put(50000, 24).put(2, 4).put(0, 3).align().b, ok).sample_rate, 50000u);
+	CHECK_EQ(read_aac(msb_bits().put(2, 5).put(15, 4).put(50000, 24).put(2, 4).put(0, 3).align().b, ok).sample_rate,
+	         50000u);
 	CHECK(ok);
 
 	constexpr std::uint32_t channels[16] = {0, 1, 2, 3, 4, 5, 6, 8, 0, 0, 0, 7, 8, 24, 8, 0};
@@ -380,7 +387,18 @@ TEST("media audio AAC configs read the low-delay and USAC types")
 	// ER AAC LD: a GASpecificConfig whose extension carries the resilience flags, then epConfig.
 	const auto ld_bits = [](const unsigned ep_config)
 	{
-		return msb_bits().put(23, 5).put(3, 4).put(2, 4).put(1, 1).put(0, 1).put(1, 1).put(0, 3).put(0, 1).put(ep_config, 2).align().b;
+		return msb_bits()
+		    .put(23, 5)
+		    .put(3, 4)
+		    .put(2, 4)
+		    .put(1, 1)
+		    .put(0, 1)
+		    .put(1, 1)
+		    .put(0, 3)
+		    .put(0, 1)
+		    .put(ep_config, 2)
+		    .align()
+		    .b;
 	};
 
 	bool ok = false;
@@ -397,18 +415,21 @@ TEST("media audio AAC configs read the low-delay and USAC types")
 	audio_header untouched;
 
 	// ER AAC ELD, escaped as 32 + 7; low-delay SBR leaves the frame length unknown.
-	const auto eld = read_aac(msb_bits().put(31, 5).put(7, 6).put(3, 4).put(1, 4).put(0, 1).put(0, 3).put(0, 1).align().b, ok);
+	const auto eld =
+		read_aac(msb_bits().put(31, 5).put(7, 6).put(3, 4).put(1, 4).put(0, 1).put(0, 3).put(0, 1).align().b, ok);
 	CHECK(ok);
 	CHECK_STR(eld.profile, "ELD");
 	CHECK_EQ(eld.sample_rate, 48000u);
 	CHECK_EQ(eld.channels, 1u);
 	CHECK_EQ(eld.samples_per_frame, 512u);
-	CHECK_EQ(read_aac(msb_bits().put(31, 5).put(7, 6).put(3, 4).put(1, 4).put(1, 1).put(0, 3).put(1, 1).align().b, ok).samples_per_frame, 0u);
+	CHECK_EQ(read_aac(msb_bits().put(31, 5).put(7, 6).put(3, 4).put(1, 4).put(1, 1).put(0, 3).put(1, 1).align().b, ok)
+	             .samples_per_frame,
+	         0u);
 	CHECK(ok);
 
 	// USAC, escaped as 32 + 10: the UsacConfig's own rate, frame length and channels.
-	const auto usac = [](const unsigned rate_index, const std::uint32_t explicit_rate, const unsigned core_sbr, const unsigned configuration,
-	                     const unsigned outputs)
+	const auto usac = [](const unsigned rate_index, const std::uint32_t explicit_rate, const unsigned core_sbr,
+	                     const unsigned configuration, const unsigned outputs)
 	{
 		msb_bits w;
 		w.put(31, 5).put(10, 6).put(3, 4).put(2, 4);
@@ -442,7 +463,21 @@ TEST("media audio AAC configs read the low-delay and USAC types")
 	CHECK(ok);
 
 	// numOutChannels escapes to a further byte when its five bits are full.
-	CHECK_EQ(read_aac(msb_bits().put(31, 5).put(10, 6).put(3, 4).put(0, 4).put(3, 5).put(1, 3).put(0, 5).put(31, 5).put(2, 8).align().b, ok).channels, 33u);
+	CHECK_EQ(read_aac(msb_bits()
+	                      .put(31, 5)
+	                      .put(10, 6)
+	                      .put(3, 4)
+	                      .put(0, 4)
+	                      .put(3, 5)
+	                      .put(1, 3)
+	                      .put(0, 5)
+	                      .put(31, 5)
+	                      .put(2, 8)
+	                      .align()
+	                      .b,
+	                  ok)
+	             .channels,
+	         33u);
 	CHECK(ok);
 
 	// Reserved frame lengths and rates.
@@ -472,13 +507,15 @@ TEST("media audio AAC configs signal SBR and PS explicitly and backward-compatib
 	CHECK_EQ(v2.channels, 2u);
 
 	// PS signalled over a stereo core does not apply.
-	const auto stereo_ps = read_aac(msb_bits().put(29, 5).put(6, 4).put(2, 4).put(3, 4).put(2, 5).put(0, 3).align().b, ok);
+	const auto stereo_ps = read_aac(msb_bits().put(29, 5).put(6, 4).put(2, 4).put(3, 4).put(2, 5).put(0, 3).align().b,
+	                                ok);
 	CHECK(ok);
 	CHECK_STR(stereo_ps.profile, "HE-AAC");
 	CHECK_EQ(stereo_ps.channels, 2u);
 
 	// Downsampled SBR: the output rate is the core's, and so is the frame.
-	const auto downsampled = read_aac(msb_bits().put(5, 5).put(3, 4).put(2, 4).put(3, 4).put(2, 5).put(0, 3).align().b, ok);
+	const auto downsampled = read_aac(msb_bits().put(5, 5).put(3, 4).put(2, 4).put(3, 4).put(2, 5).put(0, 3).align().b,
+	                                  ok);
 	CHECK(ok);
 	CHECK_STR(downsampled.profile, "HE-AAC");
 	CHECK_EQ(downsampled.sample_rate, 48000u);
@@ -518,8 +555,10 @@ TEST("media audio AAC configs signal SBR and PS explicitly and backward-compatib
 
 	// Explicit signalling must name a core, at a known rate.
 	audio_header untouched;
-	CHECK(!parse_aac_config(msb_bits().put(5, 5).put(6, 4).put(2, 4).put(13, 4).put(2, 5).put(0, 3).align().b, untouched));
-	CHECK(!parse_aac_config(msb_bits().put(5, 5).put(6, 4).put(2, 4).put(3, 4).put(5, 5).put(0, 3).align().b, untouched));
+	CHECK(!parse_aac_config(msb_bits().put(5, 5).put(6, 4).put(2, 4).put(13, 4).put(2, 5).put(0, 3).align().b,
+	                        untouched));
+	CHECK(
+		!parse_aac_config(msb_bits().put(5, 5).put(6, 4).put(2, 4).put(3, 4).put(5, 5).put(0, 3).align().b, untouched));
 
 	// Cut short, the extension is read whole or not at all: the core's figures until it is all there.
 	const auto config = compatible_he_aac(1, true, true);
@@ -582,11 +621,18 @@ TEST("media audio AAC configs count a program config element's channels")
 namespace
 {
 	// An ADTS header; with a CRC, the positions of the raw data blocks after the first and the CRC follow it.
-	bytes adts(const unsigned profile, const unsigned rate_index, const unsigned channels, const unsigned frame_bytes, const bool crc = false,
-	           const unsigned blocks = 1, const unsigned id = 0, const unsigned layer = 0)
+	bytes adts(const unsigned profile, const unsigned rate_index, const unsigned channels, const unsigned frame_bytes,
+	           const bool crc = false, const unsigned blocks = 1, const unsigned id = 0, const unsigned layer = 0)
 	{
 		msb_bits w;
-		w.put(0xFFF, 12).put(id, 1).put(layer, 2).put(crc ? 0 : 1, 1).put(profile, 2).put(rate_index, 4).put(0, 1).put(channels, 3);
+		w.put(0xFFF, 12)
+			.put(id, 1)
+			.put(layer, 2)
+			.put(crc ? 0 : 1, 1)
+			.put(profile, 2)
+			.put(rate_index, 4)
+			.put(0, 1)
+			.put(channels, 3);
 		w.put(0, 4).put(frame_bytes, 13).put(0x7FF, 11).put(blocks - 1, 2);
 		for (unsigned i = 0; crc && i < blocks; ++i) w.put(0xABCD, 16);
 		return w.b;
@@ -618,7 +664,8 @@ TEST("media audio ADTS headers give the profile, rate, channels and frame")
 		CHECK_EQ(h.channels, channels[configuration]);
 	}
 
-	constexpr std::uint32_t rates[13] = {96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350};
+	constexpr std::uint32_t rates[13] = {96000, 88200, 64000, 48000, 44100, 32000, 24000,
+	                                     22050, 16000, 12000, 11025, 8000,  7350};
 
 	for (unsigned index = 0; index < 13; ++index)
 	{
@@ -753,8 +800,8 @@ TEST("media audio MPEG audio headers name the version and layer")
 namespace
 {
 	// An AC-3 sync frame's header, padded to size.
-	bytes ac3_frame(const unsigned fscod, const unsigned frmsizecod, const unsigned bsid, const unsigned acmod, const bool lfe,
-	                const std::size_t size = 16)
+	bytes ac3_frame(const unsigned fscod, const unsigned frmsizecod, const unsigned bsid, const unsigned acmod,
+	                const bool lfe, const std::size_t size = 16)
 	{
 		msb_bits w;
 		w.put(0x0B77, 16).put(0, 16).put(fscod, 2).put(frmsizecod, 6).put(bsid, 5).put(0, 3).put(acmod, 3);
@@ -768,11 +815,17 @@ namespace
 
 	// An E-AC-3 sync frame's header, padded to the frame's size. With fscod 3 the field that otherwise
 	// counts the blocks gives the reduced rate; a dependent substream may carry a channel map.
-	bytes eac3_frame(const unsigned stream_type, const unsigned substream, const unsigned frame_bytes, const unsigned fscod,
-	                 const unsigned blocks_or_rate, const unsigned acmod, const bool lfe, const int chanmap = -1)
+	bytes eac3_frame(const unsigned stream_type, const unsigned substream, const unsigned frame_bytes,
+	                 const unsigned fscod, const unsigned blocks_or_rate, const unsigned acmod, const bool lfe,
+	                 const int chanmap = -1)
 	{
 		msb_bits w;
-		w.put(0x0B77, 16).put(stream_type, 2).put(substream, 3).put(frame_bytes / 2 - 1, 11).put(fscod, 2).put(blocks_or_rate, 2);
+		w.put(0x0B77, 16)
+			.put(stream_type, 2)
+			.put(substream, 3)
+			.put(frame_bytes / 2 - 1, 11)
+			.put(fscod, 2)
+			.put(blocks_or_rate, 2);
 		w.put(acmod, 3).put(lfe ? 1 : 0, 1).put(16, 5).put(0, 5).put(0, 1);
 		if (acmod == 0) w.put(0, 5).put(0, 1);
 
@@ -814,8 +867,9 @@ TEST("media audio AC-3 sync frames give the rate, channels, bit rate and frame s
 		unsigned words[3];
 	};
 
-	for (const auto& [code, words] : {row{0, {64, 69, 96}}, row{1, {64, 70, 96}}, row{8, {128, 139, 192}}, row{9, {128, 140, 192}},
-	                                  row{26, {640, 696, 960}}, row{27, {640, 697, 960}}, row{36, {1280, 1393, 1920}}, row{37, {1280, 1394, 1920}}})
+	for (const auto& [code, words] :
+	     {row{0, {64, 69, 96}}, row{1, {64, 70, 96}}, row{8, {128, 139, 192}}, row{9, {128, 140, 192}},
+	      row{26, {640, 696, 960}}, row{27, {640, 697, 960}}, row{36, {1280, 1393, 1920}}, row{37, {1280, 1394, 1920}}})
 	{
 		constexpr std::uint32_t rates[3] = {48000, 44100, 32000};
 
@@ -827,7 +881,8 @@ TEST("media audio AC-3 sync frames give the rate, channels, bit rate and frame s
 		}
 	}
 
-	constexpr std::uint32_t kbps[19] = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640};
+	constexpr std::uint32_t kbps[19] = {32,  40,  48,  56,  64,  80,  96,  112, 128, 160,
+	                                    192, 224, 256, 320, 384, 448, 512, 576, 640};
 
 	for (unsigned code = 0; code < 38; ++code)
 	{
@@ -890,7 +945,8 @@ TEST("media audio E-AC-3 sync frames add the channels of their dependent substre
 
 	// A map that repeats the surrounds the independent substream has adds only what is new.
 	auto repeated = independent;
-	const auto surrounds = eac3_frame(1, 0, 512, 0, 3, 6, false, chanmap_location(3) | chanmap_location(4) | chanmap_location(6));
+	const auto surrounds = eac3_frame(1, 0, 512, 0, 3, 6, false,
+	                                  chanmap_location(3) | chanmap_location(4) | chanmap_location(6));
 	repeated.insert(repeated.end(), surrounds.begin(), surrounds.end());
 	CHECK(parse_ac3_frame(repeated, h, codec));
 	CHECK_EQ(h.channels, 8u);
@@ -964,9 +1020,18 @@ TEST("media audio dac3 and dec3 boxes give the channels of their substreams")
 	using libfiles::detail::parse_ac3_config;
 	using libfiles::detail::parse_eac3_config;
 
-	const auto dac3 = [](const unsigned fscod, const unsigned bsid, const unsigned acmod, const bool lfe, const unsigned bit_rate_code)
+	const auto dac3 = [](const unsigned fscod, const unsigned bsid, const unsigned acmod, const bool lfe,
+	                     const unsigned bit_rate_code)
 	{
-		return msb_bits().put(fscod, 2).put(bsid, 5).put(0, 3).put(acmod, 3).put(lfe ? 1 : 0, 1).put(bit_rate_code, 5).put(0, 5).b;
+		return msb_bits()
+		    .put(fscod, 2)
+		    .put(bsid, 5)
+		    .put(0, 3)
+		    .put(acmod, 3)
+		    .put(lfe ? 1 : 0, 1)
+		    .put(bit_rate_code, 5)
+		    .put(0, 5)
+		    .b;
 	};
 
 	audio_header h;
@@ -981,11 +1046,19 @@ TEST("media audio dac3 and dec3 boxes give the channels of their substreams")
 	CHECK(parse_ac3_config(dac3(3, 8, 7, true, 31), h));
 	CHECK_STR(describe(h), "0 Hz, 6 ch, 0 int, '', 0 b/s, 1536 samples, 0 bytes");
 
-	const auto dec3 = [](const unsigned data_rate, const unsigned fscod, const unsigned acmod, const bool lfe, const unsigned dependents,
-	                     const unsigned chan_loc)
+	const auto dec3 = [](const unsigned data_rate, const unsigned fscod, const unsigned acmod, const bool lfe,
+	                     const unsigned dependents, const unsigned chan_loc)
 	{
 		msb_bits w;
-		w.put(data_rate, 13).put(0, 3).put(fscod, 2).put(16, 5).put(0, 1).put(0, 1).put(0, 3).put(acmod, 3).put(lfe ? 1 : 0, 1);
+		w.put(data_rate, 13)
+			.put(0, 3)
+			.put(fscod, 2)
+			.put(16, 5)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 3)
+			.put(acmod, 3)
+			.put(lfe ? 1 : 0, 1);
 		w.put(0, 3).put(dependents, 4);
 
 		if (dependents != 0)
@@ -1051,8 +1124,19 @@ namespace
 	bytes dts_core(const dts_fields& f)
 	{
 		msb_bits w;
-		w.put(0x7FFE8001, 32).put(1, 1).put(f.deficit, 5).put(f.crc ? 1 : 0, 1).put(f.blocks - 1, 7).put(f.frame_bytes - 1, 14);
-		w.put(f.mode, 6).put(f.rate, 4).put(f.bit_rate, 5).put(f.reserved, 1).put(0, 4).put(f.extension_type, 3).put(f.extension ? 1 : 0, 1);
+		w.put(0x7FFE8001, 32)
+			.put(1, 1)
+			.put(f.deficit, 5)
+			.put(f.crc ? 1 : 0, 1)
+			.put(f.blocks - 1, 7)
+			.put(f.frame_bytes - 1, 14);
+		w.put(f.mode, 6)
+			.put(f.rate, 4)
+			.put(f.bit_rate, 5)
+			.put(f.reserved, 1)
+			.put(0, 4)
+			.put(f.extension_type, 3)
+			.put(f.extension ? 1 : 0, 1);
 		w.put(1, 1).put(f.lfe, 2).put(0, 1);
 		if (f.crc) w.put(0xABCD, 16);
 		w.put(0, 1).put(7, 4).put(0, 2).put(f.resolution, 3).put(0, 2).put(0, 4).align();
@@ -1126,8 +1210,9 @@ TEST("media audio DTS core headers give the layout, rate and bit rate in each of
 		std::uint32_t value;
 	};
 
-	for (const auto& [code, hz] : {coded{1, 8000}, coded{2, 16000}, coded{3, 32000}, coded{6, 11025}, coded{7, 22050}, coded{8, 44100},
-	                               coded{11, 12000}, coded{12, 24000}, coded{13, 48000}, coded{14, 96000}, coded{15, 192000}})
+	for (const auto& [code, hz] :
+	     {coded{1, 8000}, coded{2, 16000}, coded{3, 32000}, coded{6, 11025}, coded{7, 22050}, coded{8, 44100},
+	      coded{11, 12000}, coded{12, 24000}, coded{13, 48000}, coded{14, 96000}, coded{15, 192000}})
 	{
 		dts_fields f;
 		f.rate = code;
@@ -1136,8 +1221,8 @@ TEST("media audio DTS core headers give the layout, rate and bit rate in each of
 	}
 
 	// Open, variable and lossless rates say none.
-	for (const auto& [code, bits] : {coded{0, 32000}, coded{22, 1411200}, coded{24, 1536000}, coded{28, 3840000}, coded{29, 0}, coded{30, 0},
-	                                 coded{31, 0}})
+	for (const auto& [code, bits] : {coded{0, 32000}, coded{22, 1411200}, coded{24, 1536000}, coded{28, 3840000},
+	                                 coded{29, 0}, coded{30, 0}, coded{31, 0}})
 	{
 		dts_fields f;
 		f.bit_rate = code;
@@ -1211,7 +1296,8 @@ TEST("media audio DTS core headers give the layout, rate and bit rate in each of
 
 namespace
 {
-	bytes opus_head(const unsigned version, const unsigned channels, const unsigned pre_skip, const unsigned family, const bytes& table = {})
+	bytes opus_head(const unsigned version, const unsigned channels, const unsigned pre_skip, const unsigned family,
+	                const bytes& table = {})
 	{
 		builder b;
 		b.raw("OpusHead").u8(version).u8(channels).le16(pre_skip).le32(44100).le16(0).u8(family).raw(table);
@@ -1273,11 +1359,19 @@ TEST("media audio Opus heads play at 48 kHz, with their channels and pre-skip")
 
 namespace
 {
-	bytes vorbis_identification(const unsigned channels, const std::uint32_t rate, const std::int32_t nominal, const unsigned block_sizes = 0xB8,
-	                            const unsigned framing = 1, const std::uint32_t version = 0)
+	bytes vorbis_identification(const unsigned channels, const std::uint32_t rate, const std::int32_t nominal,
+	                            const unsigned block_sizes = 0xB8, const unsigned framing = 1,
+	                            const std::uint32_t version = 0)
 	{
 		builder b;
-		b.u8(1).raw("vorbis").le32(version).u8(channels).le32(rate).le32(0).le32(static_cast<std::uint32_t>(nominal)).le32(0);
+		b.u8(1)
+			.raw("vorbis")
+			.le32(version)
+			.u8(channels)
+			.le32(rate)
+			.le32(0)
+			.le32(static_cast<std::uint32_t>(nominal))
+			.le32(0);
 		return b.u8(block_sizes).u8(framing).b;
 	}
 }
@@ -1324,11 +1418,18 @@ TEST("media audio Vorbis identification headers give the rate, channels and nomi
 
 namespace
 {
-	bytes streaminfo(const unsigned min_block, const unsigned max_block, const std::uint32_t rate, const unsigned channels, const unsigned bits,
-	                 const std::uint64_t samples)
+	bytes streaminfo(const unsigned min_block, const unsigned max_block, const std::uint32_t rate,
+	                 const unsigned channels, const unsigned bits, const std::uint64_t samples)
 	{
 		msb_bits w;
-		w.put(min_block, 16).put(max_block, 16).put(14, 24).put(12000, 24).put(rate, 20).put(channels - 1, 3).put(bits - 1, 5).put(samples, 36);
+		w.put(min_block, 16)
+			.put(max_block, 16)
+			.put(14, 24)
+			.put(12000, 24)
+			.put(rate, 20)
+			.put(channels - 1, 3)
+			.put(bits - 1, 5)
+			.put(samples, 36);
 		for (auto i = 0; i < 16; ++i) w.put(0xA5, 8);
 		return w.b;
 	}
@@ -1370,7 +1471,8 @@ TEST("media audio FLAC STREAMINFO gives the sample format and length")
 
 namespace
 {
-	bytes alac_config(const std::uint32_t frame_length, const unsigned bits, const unsigned channels, const std::uint32_t rate, const bool box)
+	bytes alac_config(const std::uint32_t frame_length, const unsigned bits, const unsigned channels,
+	                  const std::uint32_t rate, const bool box)
 	{
 		builder b;
 		if (box) b.be32(36).raw("alac").be32(0);
@@ -1418,12 +1520,23 @@ TEST("media audio ALAC configs give the sample format, with or without their box
 
 namespace
 {
-	bytes speex_header(const std::int32_t rate, const std::int32_t mode, const std::int32_t channels, const std::int32_t bit_rate,
-	                   const std::int32_t frame_size)
+	bytes speex_header(const std::int32_t rate, const std::int32_t mode, const std::int32_t channels,
+	                   const std::int32_t bit_rate, const std::int32_t frame_size)
 	{
-		const auto field = [](const std::int32_t v) { return static_cast<std::uint32_t>(v); };
+		const auto field = [](const std::int32_t v)
+		{
+			return static_cast<std::uint32_t>(v);
+		};
 		builder b;
-		b.raw("Speex   ").raw("speex-1.2").zeros(11).le32(1).le32(80).le32(field(rate)).le32(field(mode)).le32(4).le32(field(channels));
+		b.raw("Speex   ")
+			.raw("speex-1.2")
+			.zeros(11)
+			.le32(1)
+			.le32(80)
+			.le32(field(rate))
+			.le32(field(mode))
+			.le32(4)
+			.le32(field(channels));
 		b.le32(field(bit_rate)).le32(field(frame_size)).le32(0).le32(1).le32(0).le32(0).le32(0);
 		return b.b;
 	}
@@ -1469,11 +1582,19 @@ TEST("media audio Speex headers give the rate, channels and frame")
 namespace
 {
 	// WAVEFORMATEX: PCMWAVEFORMAT's sixteen bytes, then cbSize and the bytes it counts.
-	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate, const unsigned bits, const bytes& extra = {})
+	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate, const unsigned bits,
+	                  const bytes& extra = {})
 	{
 		const auto align = channels * ((bits + 7) / 8);
 		builder b;
-		b.le16(tag).le16(channels).le32(rate).le32(rate * align).le16(align).le16(bits).le16(static_cast<unsigned>(extra.size())).raw(extra);
+		b.le16(tag)
+			.le16(channels)
+			.le32(rate)
+			.le32(rate * align)
+			.le16(align)
+			.le16(bits)
+			.le16(static_cast<unsigned>(extra.size()))
+			.raw(extra);
 		return b.b;
 	}
 
@@ -1521,13 +1642,16 @@ TEST("media audio WAVEFORMATEX gives the codec, rate, channels and coded sample 
 	CHECK_STR(wave(wave_format(3, 2, 48000, 64)), "'pcm' '0x0003' audio: 48000 Hz, 2 ch, 64 float, ''");
 
 	// Lossy codecs have no sample format; the lossless ones keep theirs.
-	CHECK_STR(wave(wave_format(0x0161, 2, 48000, 16, bytes(10, 0))), "'wmav2' '0x0161' audio: 48000 Hz, 2 ch, 0 int, ''");
-	CHECK_STR(wave(wave_format(0x0163, 2, 96000, 24, bytes(18, 0))), "'wmalossless' '0x0163' audio: 96000 Hz, 2 ch, 24 int, ''");
+	CHECK_STR(wave(wave_format(0x0161, 2, 48000, 16, bytes(10, 0))),
+	          "'wmav2' '0x0161' audio: 48000 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0x0163, 2, 96000, 24, bytes(18, 0))),
+	          "'wmalossless' '0x0163' audio: 96000 Hz, 2 ch, 24 int, ''");
 	CHECK_STR(wave(wave_format(0xF1AC, 2, 44100, 16)), "'flac' '0xF1AC' audio: 44100 Hz, 2 ch, 16 int, ''");
 	CHECK_STR(wave(wave_format(0x0055, 2, 44100, 0, bytes(12, 0))), "'mp3' '0x0055' audio: 44100 Hz, 2 ch, 0 int, ''");
 	CHECK_STR(wave(wave_format(0x0006, 1, 8000, 8)), "'alaw' '0x0006' audio: 8000 Hz, 1 ch, 0 int, ''");
 	CHECK_STR(wave(wave_format(0x0007, 1, 8000, 8)), "'mulaw' '0x0007' audio: 8000 Hz, 1 ch, 0 int, ''");
-	CHECK_STR(wave(wave_format(0x0011, 2, 22050, 4, bytes(2, 0))), "'adpcm_ima_wav' '0x0011' audio: 22050 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0x0011, 2, 22050, 4, bytes(2, 0))),
+	          "'adpcm_ima_wav' '0x0011' audio: 22050 Hz, 2 ch, 0 int, ''");
 	CHECK_STR(wave(wave_format(0x674F, 2, 44100, 16)), "'vorbis' '0x674F' audio: 44100 Hz, 2 ch, 0 int, ''");
 	CHECK_STR(wave(wave_format(0x1234, 2, 44100, 16)), "'' '0x1234' audio: 44100 Hz, 2 ch, 0 int, ''");
 
@@ -1550,21 +1674,29 @@ TEST("media audio WAVEFORMATEXTENSIBLE stands for the format tag of its SubForma
 	// 24 valid bits of 32, in 5.1.
 	const auto pcm = wave_format(0xFFFE, 6, 48000, 32, extensible(24, 0x3F, subtype(1)));
 	CHECK_STR(wave(pcm), "'pcm' '0x0001' audio: 48000 Hz, 6 ch, 24 int, ''");
-	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 32, extensible(32, 3, subtype(3)))), "'pcm' '0x0003' audio: 48000 Hz, 2 ch, 32 float, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 32, extensible(32, 3, subtype(3)))),
+	          "'pcm' '0x0003' audio: 48000 Hz, 2 ch, 32 float, ''");
 
 	// With no valid bits stated, the container's bits stand.
-	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 24, extensible(0, 3, subtype(1)))), "'pcm' '0x0001' audio: 48000 Hz, 2 ch, 24 int, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 24, extensible(0, 3, subtype(1)))),
+	          "'pcm' '0x0001' audio: 48000 Hz, 2 ch, 24 int, ''");
 
 	// A lossy subtype, and the ambisonic subtype of PCM.
-	CHECK_STR(wave(wave_format(0xFFFE, 2, 44100, 0, extensible(0, 3, subtype(0x55)))), "'mp3' '0x0055' audio: 44100 Hz, 2 ch, 0 int, ''");
-	const bytes ambisonic = {0x01, 0x00, 0x00, 0x00, 0x21, 0x07, 0xD3, 0x11, 0x86, 0x44, 0xC8, 0xC1, 0xCA, 0x00, 0x00, 0x00};
-	CHECK_STR(wave(wave_format(0xFFFE, 4, 48000, 16, extensible(16, 0, ambisonic))), "'pcm' '0x0001' audio: 48000 Hz, 4 ch, 16 int, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 2, 44100, 0, extensible(0, 3, subtype(0x55)))),
+	          "'mp3' '0x0055' audio: 44100 Hz, 2 ch, 0 int, ''");
+	const bytes ambisonic = {0x01, 0x00, 0x00, 0x00, 0x21, 0x07, 0xD3, 0x11,
+	                         0x86, 0x44, 0xC8, 0xC1, 0xCA, 0x00, 0x00, 0x00};
+	CHECK_STR(wave(wave_format(0xFFFE, 4, 48000, 16, extensible(16, 0, ambisonic))),
+	          "'pcm' '0x0001' audio: 48000 Hz, 4 ch, 16 int, ''");
 
 	// SubFormats that stand for no tag: AC-3's, and one nobody knows; and a tag too wide for WAVE.
 	const bytes ac3 = {0x2C, 0x80, 0x6D, 0xE0, 0x46, 0xDB, 0xCF, 0x11, 0xB4, 0xD1, 0x00, 0x80, 0x5F, 0x6C, 0xBB, 0xEA};
-	CHECK_STR(wave(wave_format(0xFFFE, 6, 48000, 16, extensible(0, 0x3F, ac3))), "'ac3' '0xFFFE' audio: 48000 Hz, 6 ch, 0 int, ''");
-	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 16, extensible(16, 3, bytes(16, 0x42)))), "'' '0xFFFE' audio: 48000 Hz, 2 ch, 0 int, ''");
-	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 16, extensible(16, 3, subtype(0x10001)))), "'' '0xFFFE' audio: 48000 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 6, 48000, 16, extensible(0, 0x3F, ac3))),
+	          "'ac3' '0xFFFE' audio: 48000 Hz, 6 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 16, extensible(16, 3, bytes(16, 0x42)))),
+	          "'' '0xFFFE' audio: 48000 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 16, extensible(16, 3, subtype(0x10001)))),
+	          "'' '0xFFFE' audio: 48000 Hz, 2 ch, 0 int, ''");
 
 	// cbSize short of the extension, or more than the structure holds.
 	CHECK_STR(wave(wave_format(0xFFFE, 2, 48000, 16)), "'' '0xFFFE' audio: 48000 Hz, 2 ch, 0 int, ''");
@@ -1583,12 +1715,15 @@ TEST("media audio WAVEFORMATEX applies the AudioSpecificConfig the AAC tags carr
 	// Explicit HE-AAC after raw AAC's tags: the output rate, not the core's the structure states.
 	const bytes he_aac = {0x2B, 0x11, 0x88, 0x00};
 	CHECK_STR(wave(wave_format(0x00FF, 2, 24000, 16, he_aac)), "'aac' '0x00FF' audio: 48000 Hz, 2 ch, 0 int, 'HE-AAC'");
-	CHECK_STR(wave(wave_format(0x1601, 2, 44100, 16, bytes{0x12, 0x10})), "'aac' '0x1601' audio: 44100 Hz, 2 ch, 0 int, 'LC'");
+	CHECK_STR(wave(wave_format(0x1601, 2, 44100, 16, bytes{0x12, 0x10})),
+	          "'aac' '0x1601' audio: 44100 Hz, 2 ch, 0 int, 'LC'");
 	CHECK_STR(wave(wave_format(0x706D, 2, 24000, 16, he_aac)), "'aac' '0x706D' audio: 48000 Hz, 2 ch, 0 int, 'HE-AAC'");
 
 	// A config that does not read leaves the structure's figures; ADTS carries none.
-	CHECK_STR(wave(wave_format(0x00FF, 2, 24000, 16, bytes{0x00, 0x00})), "'aac' '0x00FF' audio: 24000 Hz, 2 ch, 0 int, ''");
-	CHECK_STR(wave(wave_format(0x1600, 2, 44100, 16, bytes{0x12, 0x10})), "'aac' '0x1600' audio: 44100 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0x00FF, 2, 24000, 16, bytes{0x00, 0x00})),
+	          "'aac' '0x00FF' audio: 24000 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0x1600, 2, 44100, 16, bytes{0x12, 0x10})),
+	          "'aac' '0x1600' audio: 44100 Hz, 2 ch, 0 int, ''");
 
 	// HEAACWAVEFORMAT: an HEAACWAVEINFO - payload type, profile, structure type and reserved - then the config.
 	const auto info = [](const unsigned payload, const unsigned structure)
@@ -1602,7 +1737,8 @@ TEST("media audio WAVEFORMATEX applies the AudioSpecificConfig the AAC tags carr
 
 	auto other_structure = info(0, 1);
 	other_structure.insert(other_structure.end(), he_aac.begin(), he_aac.end());
-	CHECK_STR(wave(wave_format(0x1610, 2, 24000, 16, other_structure)), "'aac' '0x1610' audio: 24000 Hz, 2 ch, 0 int, ''");
+	CHECK_STR(wave(wave_format(0x1610, 2, 24000, 16, other_structure)),
+	          "'aac' '0x1610' audio: 24000 Hz, 2 ch, 0 int, ''");
 
 	// LATM, whose rate and channels are its core's: FFmpeg leaves them to the decoder.
 	auto latm = info(3, 0);
@@ -1640,11 +1776,15 @@ TEST("media audio XMAWAVEFORMAT counts the channels of its streams")
 
 namespace
 {
-	bytes bitmap_info(const std::int32_t width, const std::int32_t height, const unsigned bit_count, const std::uint32_t compression,
-	                  const std::uint32_t size = 40)
+	bytes bitmap_info(const std::int32_t width, const std::int32_t height, const unsigned bit_count,
+	                  const std::uint32_t compression, const std::uint32_t size = 40)
 	{
 		builder b;
-		b.le32(size).le32(static_cast<std::uint32_t>(width)).le32(static_cast<std::uint32_t>(height)).le16(1).le16(bit_count);
+		b.le32(size)
+			.le32(static_cast<std::uint32_t>(width))
+			.le32(static_cast<std::uint32_t>(height))
+			.le16(1)
+			.le16(bit_count);
 		b.le32(compression).le32(0).le32(2835).le32(2835).le32(0).le32(0);
 		return b.b;
 	}
@@ -1690,13 +1830,15 @@ TEST("media audio BITMAPINFOHEADER gives the codec, size and the sampling its fo
 		const char* format;
 	};
 
-	for (const auto& [fourcc, format] : {raw{"YUY2", "yuv422"}, raw{"UYVY", "yuv422"}, raw{"YV12", "yuv420"}, raw{"I420", "yuv420"},
-	                                     raw{"IYUV", "yuv420"}, raw{"NV12", "yuv420"}, raw{"Y800", "gray"}, raw{"GREY", "gray"},
-	                                     raw{"YV16", "yuv422"}, raw{"YV24", "yuv444"}, raw{"Y41B", "yuv411"}, raw{"YVU9", "yuv410"},
-	                                     raw{"AYUV", "yuva444"}, raw{"I40A", "yuva420"}, raw{"Y210", "yuv422 10bit"}, raw{"Y416", "yuv444 16bit"},
-	                                     raw{"J420", "yuv420 full"}, raw{"I440", "yuv440"}, raw{"RGBA", "rgba"}, raw{"yuv2", "yuv422"}})
+	for (const auto& [fourcc, format] :
+	     {raw{"YUY2", "yuv422"},      raw{"UYVY", "yuv422"},  raw{"YV12", "yuv420"},       raw{"I420", "yuv420"},
+	      raw{"IYUV", "yuv420"},      raw{"NV12", "yuv420"},  raw{"Y800", "gray"},         raw{"GREY", "gray"},
+	      raw{"YV16", "yuv422"},      raw{"YV24", "yuv444"},  raw{"Y41B", "yuv411"},       raw{"YVU9", "yuv410"},
+	      raw{"AYUV", "yuva444"},     raw{"I40A", "yuva420"}, raw{"Y210", "yuv422 10bit"}, raw{"Y416", "yuv444 16bit"},
+	      raw{"J420", "yuv420 full"}, raw{"I440", "yuv440"},  raw{"RGBA", "rgba"},         raw{"yuv2", "yuv422"}})
 	{
-		CHECK_STR(bitmap(bitmap_info(64, 64, 16, le_fourcc(fourcc))), "'rawvideo' '" + std::string(fourcc) + "' video: 64x64 " + format);
+		CHECK_STR(bitmap(bitmap_info(64, 64, 16, le_fourcc(fourcc))),
+		          "'rawvideo' '" + std::string(fourcc) + "' video: 64x64 " + format);
 	}
 
 	// A FourCC no table holds keeps its name.
@@ -1707,7 +1849,8 @@ TEST("media audio BITMAPINFOHEADER gives the codec, size and the sampling its fo
 	CHECK_STR(bitmap(bitmap_info(0, 480, 12, le_fourcc("XVID"))), "'mpeg4' 'XVID' video: 0x480 yuv420");
 	CHECK_STR(bitmap(bitmap_info(-640, 480, 12, le_fourcc("XVID"))), "'mpeg4' 'XVID' video: 0x480 yuv420");
 	CHECK_STR(bitmap(bitmap_info(65536, 480, 12, le_fourcc("XVID"))), "'mpeg4' 'XVID' video: 0x480 yuv420");
-	CHECK_STR(bitmap(bitmap_info(640, std::numeric_limits<std::int32_t>::min(), 12, le_fourcc("XVID"))), "'mpeg4' 'XVID' video: 640x0 yuv420");
+	CHECK_STR(bitmap(bitmap_info(640, std::numeric_limits<std::int32_t>::min(), 12, le_fourcc("XVID"))),
+	          "'mpeg4' 'XVID' video: 640x0 yuv420");
 	CHECK_STR(bitmap(bitmap_info(640, 480, 12, le_fourcc("XVID"), 108)), "'mpeg4' 'XVID' video: 640x480 yuv420");
 
 	// A header smaller than BITMAPINFOHEADER, or cut short.
@@ -1733,24 +1876,33 @@ TEST("media audio codec tables name FourCCs, WAVE tags and object types")
 		const char* codec;
 	};
 
-	for (const auto& [fourcc, codec] : {
-		     named{"H264", "h264"}, named{"h264", "h264"}, named{"avc1", "h264"}, named{"AVC1", "h264"}, named{"X264", "h264"},
-		     named{"DAVC", "h264"}, named{"HEVC", "hevc"}, named{"H265", "hevc"}, named{"HVC1", "hevc"}, named{"hvc1", "hevc"},
-		     named{"XVID", "mpeg4"}, named{"xvid", "mpeg4"}, named{"DIVX", "mpeg4"}, named{"DX50", "mpeg4"}, named{"FMP4", "mpeg4"},
-		     named{"MP4V", "mpeg4"}, named{"3IV2", "mpeg4"}, named{"DIV3", "msmpeg4v3"}, named{"MP43", "msmpeg4v3"},
-		     named{"MPG3", "msmpeg4v3"}, named{"div3", "msmpeg4v3"}, named{"MP42", "msmpeg4v2"}, named{"MP41", "msmpeg4v1"},
-		     named{"MPG4", "msmpeg4v1"}, named{"WMV1", "wmv1"}, named{"WMV2", "wmv2"}, named{"WMV3", "wmv3"}, named{"WVC1", "vc1"},
-		     named{"WMVA", "vc1"}, named{"MJPG", "mjpeg"}, named{"AVRn", "mjpeg"}, named{"AVRN", "mjpeg"}, named{"LJPG", "mjpeg"},
-		     named{"dmb1", "mjpeg"}, named{"DMB1", "mjpeg"}, named{"MJLS", "jpegls"}, named{"mjls", "jpegls"}, named{"dvsd", "dv"},
-		     named{"dv25", "dv"}, named{"dv50", "dv"}, named{"dvhd", "dv"}, named{"dvsl", "dv"}, named{"CDVC", "dv"},
-		     named{"mpg1", "mpeg1"}, named{"mpg2", "mpeg2"}, named{"MPEG", "mpeg2"}, named{"H263", "h263"}, named{"U263", "h263"},
-		     named{"I263", "h263i"}, named{"VP80", "vp8"}, named{"VP90", "vp9"}, named{"AV01", "av1"}, named{"cvid", "cinepak"},
-		     named{"MSVC", "msvideo1"}, named{"CRAM", "msvideo1"}, named{"WHAM", "msvideo1"}, named{"IV31", "indeo3"},
-		     named{"IV32", "indeo3"}, named{"IV41", "indeo4"}, named{"IV50", "indeo5"}, named{"HFYU", "huffyuv"},
-		     named{"FFVH", "ffvhuff"}, named{"FFV1", "ffv1"}, named{"tscc", "tscc"}, named{"YUY2", "rawvideo"}, named{"Y8  ", "rawvideo"},
-		     named{"FLV1", "flv1"}, named{"VP62", "vp6"}, named{"theo", "theora"}, named{"SVQ3", "svq3"}, named{"RV40", "rv40"},
-		     named{"ULY2", "utvideo"}, named{"MAGY", "magicyuv"}, named{"v210", "v210"}, named{"rpza", "rpza"}, named{"IMM5", "imm5"},
-		     named{"IMM6", "imm6"}})
+	for (const auto& [fourcc, codec] :
+	     {named{"H264", "h264"},      named{"h264", "h264"},      named{"avc1", "h264"},
+	      named{"AVC1", "h264"},      named{"X264", "h264"},      named{"DAVC", "h264"},
+	      named{"HEVC", "hevc"},      named{"H265", "hevc"},      named{"HVC1", "hevc"},
+	      named{"hvc1", "hevc"},      named{"XVID", "mpeg4"},     named{"xvid", "mpeg4"},
+	      named{"DIVX", "mpeg4"},     named{"DX50", "mpeg4"},     named{"FMP4", "mpeg4"},
+	      named{"MP4V", "mpeg4"},     named{"3IV2", "mpeg4"},     named{"DIV3", "msmpeg4v3"},
+	      named{"MP43", "msmpeg4v3"}, named{"MPG3", "msmpeg4v3"}, named{"div3", "msmpeg4v3"},
+	      named{"MP42", "msmpeg4v2"}, named{"MP41", "msmpeg4v1"}, named{"MPG4", "msmpeg4v1"},
+	      named{"WMV1", "wmv1"},      named{"WMV2", "wmv2"},      named{"WMV3", "wmv3"},
+	      named{"WVC1", "vc1"},       named{"WMVA", "vc1"},       named{"MJPG", "mjpeg"},
+	      named{"AVRn", "mjpeg"},     named{"AVRN", "mjpeg"},     named{"LJPG", "mjpeg"},
+	      named{"dmb1", "mjpeg"},     named{"DMB1", "mjpeg"},     named{"MJLS", "jpegls"},
+	      named{"mjls", "jpegls"},    named{"dvsd", "dv"},        named{"dv25", "dv"},
+	      named{"dv50", "dv"},        named{"dvhd", "dv"},        named{"dvsl", "dv"},
+	      named{"CDVC", "dv"},        named{"mpg1", "mpeg1"},     named{"mpg2", "mpeg2"},
+	      named{"MPEG", "mpeg2"},     named{"H263", "h263"},      named{"U263", "h263"},
+	      named{"I263", "h263i"},     named{"VP80", "vp8"},       named{"VP90", "vp9"},
+	      named{"AV01", "av1"},       named{"cvid", "cinepak"},   named{"MSVC", "msvideo1"},
+	      named{"CRAM", "msvideo1"},  named{"WHAM", "msvideo1"},  named{"IV31", "indeo3"},
+	      named{"IV32", "indeo3"},    named{"IV41", "indeo4"},    named{"IV50", "indeo5"},
+	      named{"HFYU", "huffyuv"},   named{"FFVH", "ffvhuff"},   named{"FFV1", "ffv1"},
+	      named{"tscc", "tscc"},      named{"YUY2", "rawvideo"},  named{"Y8  ", "rawvideo"},
+	      named{"FLV1", "flv1"},      named{"VP62", "vp6"},       named{"theo", "theora"},
+	      named{"SVQ3", "svq3"},      named{"RV40", "rv40"},      named{"ULY2", "utvideo"},
+	      named{"MAGY", "magicyuv"},  named{"v210", "v210"},      named{"rpza", "rpza"},
+	      named{"IMM5", "imm5"},      named{"IMM6", "imm6"}})
 	{
 		CHECK_STR(std::string(codec_from_fourcc(le_fourcc(fourcc))), codec);
 	}
@@ -1771,15 +1923,18 @@ TEST("media audio codec tables name FourCCs, WAVE tags and object types")
 		const char* codec;
 	};
 
-	for (const auto& [tag, codec] : {
-		     tagged{0x0001, "pcm"}, tagged{0x0003, "pcm"}, tagged{0x0002, "adpcm_ms"}, tagged{0x0006, "alaw"}, tagged{0x0007, "mulaw"},
-		     tagged{0x0011, "adpcm_ima_wav"}, tagged{0x0031, "gsm_ms"}, tagged{0x0050, "mp2"}, tagged{0x0055, "mp3"},
-		     tagged{0x00FF, "aac"}, tagged{0x1600, "aac"}, tagged{0x1601, "aac"}, tagged{0x1610, "aac"}, tagged{0x4143, "aac"},
-		     tagged{0x706D, "aac"}, tagged{0x0160, "wmav1"}, tagged{0x0161, "wmav2"}, tagged{0x0162, "wmapro"},
-		     tagged{0x0163, "wmalossless"}, tagged{0x000A, "wmavoice"}, tagged{0x2000, "ac3"}, tagged{0x2001, "dts"},
-		     tagged{0xF1AC, "flac"}, tagged{0x674F, "vorbis"}, tagged{0x6750, "vorbis"}, tagged{0x6771, "vorbis"},
-		     tagged{0x0057, "amr_nb"}, tagged{0x0058, "amr_wb"}, tagged{0xA109, "speex"}, tagged{0x1602, "aac_latm"},
-		     tagged{0x0400, "adpcm_citrix"}, tagged{0x0401, "imc"}, tagged{0x0402, "iac"}})
+	for (const auto& [tag, codec] :
+	     {tagged{0x0001, "pcm"},          tagged{0x0003, "pcm"},      tagged{0x0002, "adpcm_ms"},
+	      tagged{0x0006, "alaw"},         tagged{0x0007, "mulaw"},    tagged{0x0011, "adpcm_ima_wav"},
+	      tagged{0x0031, "gsm_ms"},       tagged{0x0050, "mp2"},      tagged{0x0055, "mp3"},
+	      tagged{0x00FF, "aac"},          tagged{0x1600, "aac"},      tagged{0x1601, "aac"},
+	      tagged{0x1610, "aac"},          tagged{0x4143, "aac"},      tagged{0x706D, "aac"},
+	      tagged{0x0160, "wmav1"},        tagged{0x0161, "wmav2"},    tagged{0x0162, "wmapro"},
+	      tagged{0x0163, "wmalossless"},  tagged{0x000A, "wmavoice"}, tagged{0x2000, "ac3"},
+	      tagged{0x2001, "dts"},          tagged{0xF1AC, "flac"},     tagged{0x674F, "vorbis"},
+	      tagged{0x6750, "vorbis"},       tagged{0x6771, "vorbis"},   tagged{0x0057, "amr_nb"},
+	      tagged{0x0058, "amr_wb"},       tagged{0xA109, "speex"},    tagged{0x1602, "aac_latm"},
+	      tagged{0x0400, "adpcm_citrix"}, tagged{0x0401, "imc"},      tagged{0x0402, "iac"}})
 	{
 		CHECK_STR(std::string(codec_from_wave_tag(tag)), codec);
 	}
@@ -1794,11 +1949,13 @@ TEST("media audio codec tables name FourCCs, WAVE tags and object types")
 		const char* codec;
 	};
 
-	for (const auto& [type, codec] : {
-		     typed{0x20, "mpeg4"}, typed{0x21, "h264"}, typed{0x23, "hevc"}, typed{0x40, "aac"}, typed{0x60, "mpeg2"}, typed{0x65, "mpeg2"},
-		     typed{0x66, "aac"}, typed{0x67, "aac"}, typed{0x68, "aac"}, typed{0x69, "mp3"}, typed{0x6A, "mpeg1"}, typed{0x6B, "mp3"},
-		     typed{0x6C, "mjpeg"}, typed{0x6D, "png"}, typed{0x6E, "jpeg2000"}, typed{0xA3, "vc1"}, typed{0xA4, "dirac"},
-		     typed{0xA5, "ac3"}, typed{0xA6, "eac3"}, typed{0xA9, "dts"}, typed{0xAD, "opus"}, typed{0xB1, "vp9"}, typed{0xDD, "vorbis"}})
+	for (const auto& [type, codec] :
+	     {typed{0x20, "mpeg4"}, typed{0x21, "h264"},  typed{0x23, "hevc"},     typed{0x40, "aac"},
+	      typed{0x60, "mpeg2"}, typed{0x65, "mpeg2"}, typed{0x66, "aac"},      typed{0x67, "aac"},
+	      typed{0x68, "aac"},   typed{0x69, "mp3"},   typed{0x6A, "mpeg1"},    typed{0x6B, "mp3"},
+	      typed{0x6C, "mjpeg"}, typed{0x6D, "png"},   typed{0x6E, "jpeg2000"}, typed{0xA3, "vc1"},
+	      typed{0xA4, "dirac"}, typed{0xA5, "ac3"},   typed{0xA6, "eac3"},     typed{0xA9, "dts"},
+	      typed{0xAD, "opus"},  typed{0xB1, "vp9"},   typed{0xDD, "vorbis"}})
 	{
 		CHECK_STR(std::string(codec_from_object_type(type)), codec);
 	}
@@ -1818,11 +1975,12 @@ TEST("media audio fixed video formats are known only where every stream shares t
 		const char* format;
 	};
 
-	for (const auto& [codec, format] : {
-		     fixed{"vp8", "yuv420"}, fixed{"h263", "yuv420"}, fixed{"flv1", "yuv420"}, fixed{"mpeg1", "yuv420"}, fixed{"mpeg4", "yuv420"},
-		     fixed{"msmpeg4v3", "yuv420"}, fixed{"wmv1", "yuv420"}, fixed{"wmv2", "yuv420"}, fixed{"wmv3", "yuv420"}, fixed{"vc1", "yuv420"},
-		     fixed{"cinepak", "yuv420"}, fixed{"svq1", "yuv410"}, fixed{"svq3", "yuv420"}, fixed{"indeo3", "yuv410"},
-		     fixed{"indeo5", "yuv410"}, fixed{"vp6a", "yuva420"}, fixed{"v210", "yuv422 10bit"}, fixed{"r210", "rgb 10bit"}})
+	for (const auto& [codec, format] :
+	     {fixed{"vp8", "yuv420"}, fixed{"h263", "yuv420"}, fixed{"flv1", "yuv420"}, fixed{"mpeg1", "yuv420"},
+	      fixed{"mpeg4", "yuv420"}, fixed{"msmpeg4v3", "yuv420"}, fixed{"wmv1", "yuv420"}, fixed{"wmv2", "yuv420"},
+	      fixed{"wmv3", "yuv420"}, fixed{"vc1", "yuv420"}, fixed{"cinepak", "yuv420"}, fixed{"svq1", "yuv410"},
+	      fixed{"svq3", "yuv420"}, fixed{"indeo3", "yuv410"}, fixed{"indeo5", "yuv410"}, fixed{"vp6a", "yuva420"},
+	      fixed{"v210", "yuv422 10bit"}, fixed{"r210", "rgb 10bit"}})
 	{
 		video_header h;
 		CHECK(fixed_video_format(codec, h));
@@ -1832,7 +1990,8 @@ TEST("media audio fixed video formats are known only where every stream shares t
 		CHECK(h.bit_depth >= 8);
 	}
 
-	for (const auto codec : {"h264", "hevc", "av1", "vp9", "mpeg2", "prores", "theora", "ffv1", "huffyuv", "mjpeg", "dv", "rawvideo", ""})
+	for (const auto codec :
+	     {"h264", "hevc", "av1", "vp9", "mpeg2", "prores", "theora", "ffv1", "huffyuv", "mjpeg", "dv", "rawvideo", ""})
 	{
 		video_header h;
 		h.chroma = chroma_format::yuv444;

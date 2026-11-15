@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The one reader of an ID3v2 tag's structure, which the media scan, read_packet and the MP3
 // writer share: the header, the extended header, the frame walk and the plain sizes iTunes wrote, how a
@@ -18,7 +18,7 @@ namespace libfiles::detail
 	std::uint32_t id3_syncsafe(const std::uint8_t* const p) noexcept
 	{
 		return static_cast<std::uint32_t>(p[0]) << 21 | static_cast<std::uint32_t>(p[1]) << 14 |
-			static_cast<std::uint32_t>(p[2]) << 7 | p[3];
+		       static_cast<std::uint32_t>(p[2]) << 7 | p[3];
 	}
 
 	std::optional<id3_header> parse_id3_header(const std::span<const std::uint8_t> bytes) noexcept
@@ -43,7 +43,8 @@ namespace libfiles::detail
 		return 10 + size + (head[3] == 4 && (head[5] & 0x10) ? 10 : 0);
 	}
 
-	std::optional<std::uint64_t> id3_frames_begin(reader& r, const id3_header& header, const std::uint64_t begin, const std::uint64_t end)
+	std::optional<std::uint64_t> id3_frames_begin(reader& r, const id3_header& header, const std::uint64_t begin,
+	                                              const std::uint64_t end)
 	{
 		if (!header.extended()) return begin;
 		if (end < begin || end - begin < 4) return {};
@@ -57,11 +58,7 @@ namespace libfiles::detail
 
 	id3_frame_walker::id3_frame_walker(reader& r, const int version, const std::uint64_t begin, const std::uint64_t end,
 	                                   const id3_sizes sizes) noexcept :
-		_r(r),
-		_version(version),
-		_position(begin),
-		_end(end),
-		_sizes(sizes)
+		_r(r), _version(version), _position(begin), _end(end), _sizes(sizes)
 	{
 	}
 
@@ -89,8 +86,10 @@ namespace libfiles::detail
 			f.id[i] = static_cast<char>(c);
 		}
 
-		if (_version == 2) f.size = static_cast<std::uint64_t>(h[3]) << 16 | static_cast<std::uint64_t>(h[4]) << 8 | h[5];
-		else if (_version == 3 || _sizes == id3_sizes::plain || ((h[4] | h[5] | h[6] | h[7]) & 0x80)) f.size = load_be32(h.data() + 4);
+		if (_version == 2)
+			f.size = static_cast<std::uint64_t>(h[3]) << 16 | static_cast<std::uint64_t>(h[4]) << 8 | h[5];
+		else if (_version == 3 || _sizes == id3_sizes::plain || ((h[4] | h[5] | h[6] | h[7]) & 0x80))
+			f.size = load_be32(h.data() + 4);
 		else f.size = id3_syncsafe(h.data() + 4);
 
 		if (f.size > _end - _position - header)
@@ -127,7 +126,8 @@ namespace libfiles::detail
 		}
 	}
 
-	bool id3_retry_with_plain_sizes(reader& r, const std::uint64_t offset, const id3_header& tag, const bool standard_walk_damaged)
+	bool id3_retry_with_plain_sizes(reader& r, const std::uint64_t offset, const id3_header& tag,
+	                                const bool standard_walk_damaged)
 	{
 		return standard_walk_damaged && tag.version == 4 && id3_walks_with_plain_sizes(r, offset, tag);
 	}
@@ -141,7 +141,8 @@ namespace libfiles::detail
 		return nullptr;
 	}
 
-	id3_resynchronised::id3_resynchronised(reader& file, const std::uint64_t begin, const std::uint64_t end) : _file(file), _end(end)
+	id3_resynchronised::id3_resynchronised(reader& file, const std::uint64_t begin, const std::uint64_t end) :
+		_file(file), _end(end)
 	{
 		// One pass counts what the bytes come to, marking where each block of them starts.
 		auto after_ff = false;
@@ -224,14 +225,15 @@ namespace libfiles::detail
 			l.compressed = (format & 0x08) != 0;
 			l.encrypted = (format & 0x04) != 0;
 			l.unsynchronised = (format & 0x02) != 0 || tag.unsynchronised();
-			l.prefix = ((format & 0x40) ? 1u : 0u) + (l.encrypted ? 1u : 0u) + ((format & 0x01) || l.compressed ? 4u : 0u);
+			l.prefix = ((format & 0x40) ? 1u : 0u) + (l.encrypted ? 1u : 0u) +
+			           ((format & 0x01) || l.compressed ? 4u : 0u);
 		}
 
 		return l;
 	}
 
-	std::optional<std::vector<std::uint8_t>> id3_frame_data(reader& source, const id3_frame& f, const id3_frame_layout& l,
-	                                                        const std::size_t max_size)
+	std::optional<std::vector<std::uint8_t>> id3_frame_data(reader& source, const id3_frame& f,
+	                                                        const id3_frame_layout& l, const std::size_t max_size)
 	{
 		if (l.encrypted || f.size > max_size) return {};
 
@@ -246,7 +248,8 @@ namespace libfiles::detail
 		return inflated;
 	}
 
-	std::optional<std::span<const std::uint8_t>> id3_owned_payload(const std::span<const std::uint8_t> data, const std::string_view owner)
+	std::optional<std::span<const std::uint8_t>> id3_owned_payload(const std::span<const std::uint8_t> data,
+	                                                               const std::string_view owner)
 	{
 		if (data.size() <= owner.size() || !starts_with(data, owner) || data[owner.size()] != 0) return {};
 		return data.subspan(owner.size() + 1);
@@ -316,7 +319,8 @@ namespace libfiles::detail
 				if (!packet && f->size != 0 && is_id3_private_frame(f->name()))
 				{
 					const auto l = id3_layout_of(*tag, *f);
-					if (const auto data = id3_frame_data(*source, *f, l, id3_max_frame)) packet = id3_xmp_payload(*data);
+					if (const auto data = id3_frame_data(*source, *f, l, id3_max_frame))
+						packet = id3_xmp_payload(*data);
 				}
 
 				if (++count == id3_max_frames) return std::pair{false, false};

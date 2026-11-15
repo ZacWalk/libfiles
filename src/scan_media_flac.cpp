@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning FLAC files: the metadata blocks after "fLaC" - STREAMINFO for the stream, the Vorbis
 // comment for its tags and PICTURE blocks for its cover art, located rather than read. When STREAMINFO
@@ -33,7 +33,8 @@ namespace libfiles::detail
 
 		std::string block_name(const unsigned type)
 		{
-			static constexpr std::string_view names[] = {"STREAMINFO", "PADDING", "APPLICATION", "SEEKTABLE", "VORBIS_COMMENT", "CUESHEET", "PICTURE"};
+			static constexpr std::string_view names[] = {"STREAMINFO",     "PADDING",  "APPLICATION", "SEEKTABLE",
+			                                             "VORBIS_COMMENT", "CUESHEET", "PICTURE"};
 			return type < std::size(names) ? std::string(names[type]) : std::format("Reserved ({})", type);
 		}
 
@@ -66,11 +67,14 @@ namespace libfiles::detail
 			if (!found && head.size() < length)
 			{
 				const auto fields = picture_fields_end(head);
-				if (fields > head.size() && fields <= length) found = read_flac_picture(r.view(data, length), data, picture);
+				if (fields > head.size() && fields <= length)
+					found = read_flac_picture(r.view(data, length), data, picture);
 			}
 
 			const auto& place = picture.location;
-			if (!found || place.offset < data || place.offset - data > length || place.size > length - (place.offset - data)) return {};
+			if (!found || place.offset < data || place.offset - data > length ||
+			    place.size > length - (place.offset - data))
+				return {};
 			return picture;
 		}
 
@@ -146,7 +150,8 @@ namespace libfiles::detail
 
 			at += size_bytes;
 
-			static constexpr std::uint32_t rates[12] = {0, 88200, 176400, 192000, 8000, 16000, 22050, 24000, 32000, 44100, 48000, 96000};
+			static constexpr std::uint32_t rates[12] = {0,     88200, 176400, 192000, 8000,  16000,
+			                                            22050, 24000, 32000,  44100,  48000, 96000};
 			std::uint32_t rate = 0;
 
 			if (rate_code < 12) rate = rates[rate_code];
@@ -190,7 +195,8 @@ namespace libfiles::detail
 	void scan_flac_media(reader& r, const scan_intent intent, const std::uint64_t offset, media_scan_result& out)
 	{
 		const auto inspect = intent == scan_intent::inspect;
-		if (!r.contains(offset, 4) || !starts_with(r.view(offset, 4), "fLaC")) throw format_error("the file has no FLAC signature");
+		if (!r.contains(offset, 4) || !starts_with(r.view(offset, 4), "fLaC"))
+			throw format_error("the file has no FLAC signature");
 
 		audio_header audio;
 		std::uint64_t total_samples = 0;
@@ -214,11 +220,13 @@ namespace libfiles::detail
 
 			if (count == 0)
 			{
-				if (type != streaminfo_type || length != streaminfo_size) throw format_error("the FLAC stream does not begin with its STREAMINFO block");
+				if (type != streaminfo_type || length != streaminfo_size)
+					throw format_error("the FLAC stream does not begin with its STREAMINFO block");
 
 				std::array<std::uint8_t, streaminfo_size> info;
 				r.read(data, info.data(), info.size());
-				if (!parse_flac_streaminfo(info, audio, total_samples)) throw format_error("the FLAC STREAMINFO block is damaged");
+				if (!parse_flac_streaminfo(info, audio, total_samples))
+					throw format_error("the FLAC STREAMINFO block is damaged");
 
 				shape = {audio.sample_rate, audio.channels, audio.bits_per_sample, load_be16(info.data() + 2)};
 				max_frame_size = load_be24(info.data() + 7);
@@ -233,7 +241,9 @@ namespace libfiles::detail
 				if (auto picture = read_picture_block(r, data, length)) out.pictures.push_back(std::move(*picture));
 			}
 
-			if (inspect) add_structure_row(out.structure, block_name(type), std::format("offset {}, {} bytes{}", at, length, last ? ", last" : ""));
+			if (inspect)
+				add_structure_row(out.structure, block_name(type),
+				                  std::format("offset {}, {} bytes{}", at, length, last ? ", last" : ""));
 
 			at = data + length;
 		}
@@ -253,7 +263,8 @@ namespace libfiles::detail
 			samples_source = "the last frame's header";
 		}
 
-		if (total_samples != 0 && audio.sample_rate != 0) stream.duration = static_cast<double>(total_samples) / audio.sample_rate;
+		if (total_samples != 0 && audio.sample_rate != 0)
+			stream.duration = static_cast<double>(total_samples) / audio.sample_rate;
 
 		out.brand = "FLAC";
 		out.streams.push_back(std::move(stream));
@@ -261,8 +272,11 @@ namespace libfiles::detail
 		if (inspect)
 		{
 			add_structure_section(out.structure, "Audio", "flac.audio", true);
-			add_structure_row(out.structure, "Frames", std::format("offset {}, {} bytes", at, r.size() - std::min(at, r.size())));
-			add_structure_row(out.structure, "Samples", total_samples != 0 ? std::format("{}, from {}", total_samples, samples_source) : "unknown");
+			add_structure_row(out.structure, "Frames",
+			                  std::format("offset {}, {} bytes", at, r.size() - std::min(at, r.size())));
+			add_structure_row(out.structure, "Samples",
+			                  total_samples != 0 ? std::format("{}, from {}", total_samples, samples_source)
+			                                     : "unknown");
 			finish_structure_sections(out.structure);
 		}
 	}

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the JPEG, PNG, WebP and JPEG XL encoders share: the signatures metadata blocks begin
 // with, and the EXIF block written when an image has no EXIF but an orientation.
@@ -28,13 +28,14 @@ namespace libfiles::encode_detail
 	inline bool is_exif_signature(const std::span<const std::uint8_t> block)
 	{
 		return block.size() >= exif_signature.size() &&
-			std::memcmp(exif_signature.data(), block.data(), exif_signature.size()) == 0;
+		       std::memcmp(exif_signature.data(), block.data(), exif_signature.size()) == 0;
 	}
 
 	// One IFD holding the orientation and nothing after it, without the "Exif\0\0" signature.
 	inline std::vector<std::uint8_t> orientation_exif(const std::uint16_t orientation)
 	{
 		return {
+			// clang-format off
 			0x49, 0x49,
 			0x2A, 0x00,
 			0x08, 0x00, 0x00, 0x00, // ifd0 offset
@@ -42,19 +43,17 @@ namespace libfiles::encode_detail
 			0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, static_cast<std::uint8_t>(orientation), 0x00, 0x00, 0x00,
 			// orientation
 			0x00, 0x00, 0x00, 0x00, // no next ifd
+			// clang-format on
 		};
 	}
 
 	// Runs a cleanup when it goes out of scope, whichever way.
-	template <typename F>
-	class on_exit
+	template <typename F> class on_exit
 	{
 		F _f;
 
 	public:
-		explicit on_exit(F f) : _f(std::move(f))
-		{
-		}
+		explicit on_exit(F f) : _f(std::move(f)) {}
 
 		~on_exit() { _f(); }
 

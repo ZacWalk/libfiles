@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Encoding a JPEG with libjpeg-turbo, its metadata markers included, and turning one losslessly
 // with libjpeg-turbo's transupp. Moved from Diffractor's files_jpeg.cpp.
@@ -27,7 +27,8 @@
 
 #include <jpeglib.h>
 
-extern "C" {
+extern "C"
+{
 #include <transupp.h>
 }
 
@@ -40,8 +41,8 @@ namespace libfiles
 		constexpr std::size_t write_buffer_size = 64u * 1024u;
 
 		constexpr auto XMP_EXIF_MARKER = JPEG_APP0 + 1; // EXIF marker / Adobe XMP marker
-		constexpr auto ICC_MARKER = JPEG_APP0 + 2; // ICC profile marker
-		constexpr auto IPTC_MARKER = JPEG_APP0 + 13; // IPTC marker / BIM marker
+		constexpr auto ICC_MARKER = JPEG_APP0 + 2;      // ICC profile marker
+		constexpr auto IPTC_MARKER = JPEG_APP0 + 13;    // IPTC marker / BIM marker
 
 		boolean fill_input_buffer(jpeg_decompress_struct* dinfo)
 		{
@@ -190,7 +191,7 @@ namespace libfiles
 			// Only plain 8-bit YCbCr is adopted. Grayscale, CMYK and YCCK sources would also need the
 			// encoder's input conversion to change, and a deeper precision would not fit this encoder.
 			if (JPEG_HEADER_OK != jpeg_read_header(&dinfo, TRUE) || dinfo.jpeg_color_space != JCS_YCbCr ||
-				dinfo.num_components != 3 || dinfo.data_precision != 8)
+			    dinfo.num_components != 3 || dinfo.data_precision != 8)
 			{
 				jpeg_destroy_decompress(&dinfo);
 				return false;
@@ -232,13 +233,13 @@ namespace libfiles
 		{
 			if (len > max_marker_payload)
 			{
-				throw encode_error(std::format("the {} block is {} bytes, over the {} byte JPEG marker limit",
-				                               what, len, max_marker_payload));
+				throw encode_error(std::format("the {} block is {} bytes, over the {} byte JPEG marker limit", what,
+				                               len, max_marker_payload));
 			}
 		}
 
-		void write_marker_checked(const j_compress_ptr cinfo, const int marker_code,
-		                          const std::uint8_t* data, const std::size_t len)
+		void write_marker_checked(const j_compress_ptr cinfo, const int marker_code, const std::uint8_t* data,
+		                          const std::size_t len)
 		{
 			check_marker_payload(len, "metadata"sv);
 			jpeg_write_marker(cinfo, marker_code, data, static_cast<unsigned int>(len));
@@ -248,7 +249,8 @@ namespace libfiles
 		std::vector<std::uint8_t> make_photoshop_iptc_resource(const std::span<const std::uint8_t> iptc)
 		{
 			std::vector<std::uint8_t> result;
-			if (iptc.size() > (std::numeric_limits<std::uint32_t>::max)()) throw encode_error("IPTC block is too large");
+			if (iptc.size() > (std::numeric_limits<std::uint32_t>::max)())
+				throw encode_error("IPTC block is too large");
 
 			result.reserve(4u + 2u + 2u + 4u + iptc.size() + (iptc.size() & 1u));
 
@@ -356,9 +358,9 @@ namespace libfiles
 		{
 			if (!metadata.exif.empty())
 			{
-				check_marker_payload(is_exif_signature(metadata.exif)
-					                     ? metadata.exif.size()
-					                     : exif_signature.size() + metadata.exif.size(), "exif"sv);
+				check_marker_payload(is_exif_signature(metadata.exif) ? metadata.exif.size()
+				                                                      : exif_signature.size() + metadata.exif.size(),
+				                     "exif"sv);
 			}
 
 			if (!metadata.iptc.empty() || !metadata.photoshop.empty())
@@ -384,9 +386,9 @@ namespace libfiles
 
 				if (icc_segments > icc_max_segments)
 				{
-					throw encode_error(std::format(
-						"the icc profile is {} bytes, needing {} of the {} APP2 segments JPEG allows",
-						metadata.icc.size(), icc_segments, icc_max_segments));
+					throw encode_error(
+						std::format("the icc profile is {} bytes, needing {} of the {} APP2 segments JPEG allows",
+					                metadata.icc.size(), icc_segments, icc_max_segments));
 				}
 			}
 		}
@@ -402,9 +404,9 @@ namespace libfiles
 			const exif_number numbers[] = {
 				{exif_directory::primary, 0x0112, 1}, // Orientation
 				{exif_directory::thumbnail, 0x0112, 1},
-				{exif_directory::exif, 0xa002, width}, // PixelXDimension
-				{exif_directory::exif, 0xa003, height}, // PixelYDimension
-				{exif_directory::interoperability, 0x1001, width}, // RelatedImageWidth
+				{exif_directory::exif, 0xa002, width},              // PixelXDimension
+				{exif_directory::exif, 0xa003, height},             // PixelYDimension
+				{exif_directory::interoperability, 0x1001, width},  // RelatedImageWidth
 				{exif_directory::interoperability, 0x1002, height}, // RelatedImageLength
 			};
 
@@ -416,6 +418,7 @@ namespace libfiles
 		JXFORM_CODE to_transform(const std::uint16_t orientation)
 		{
 			static constexpr JXFORM_CODE transform[] = {
+				// clang-format off
 				JXFORM_NONE, // 1
 				JXFORM_FLIP_H,
 				JXFORM_ROT_180,
@@ -424,11 +427,12 @@ namespace libfiles
 				JXFORM_ROT_90,
 				JXFORM_TRANSVERSE,
 				JXFORM_ROT_270, // 8
+				// clang-format on
 			};
 
 			return orientation <= 1 || static_cast<std::size_t>(orientation) > std::size(transform)
-				       ? JXFORM_NONE
-				       : transform[orientation - 1];
+			           ? JXFORM_NONE
+			           : transform[orientation - 1];
 		}
 
 		std::optional<JXFORM_CODE> to_transform(const jpeg_transform transform)
@@ -494,11 +498,10 @@ namespace libfiles
 		_state->cinfo.image_width = width;
 		_state->cinfo.image_height = height;
 		_state->cinfo.input_components = options.grayscale ? 1 : options.bgr24 ? 3 : 4;
-		_state->cinfo.in_color_space = options.grayscale ? JCS_GRAYSCALE :
-			options.bgr24 ? JCS_EXT_BGR : JCS_EXT_BGRX;
+		_state->cinfo.in_color_space = options.grayscale ? JCS_GRAYSCALE : options.bgr24 ? JCS_EXT_BGR : JCS_EXT_BGRX;
 
 		if (options.grayscale || options.bgr24 ||
-			!copy_source_encode_params(&_state->cinfo, options.source, _state->notes))
+		    !copy_source_encode_params(&_state->cinfo, options.source, _state->notes))
 		{
 			jpeg_set_defaults(&_state->cinfo);
 			jpeg_set_quality(&_state->cinfo, options.quality, TRUE);
@@ -519,8 +522,7 @@ namespace libfiles
 			{
 				const auto scaled = static_cast<std::uint64_t>(ppm) * 100;
 				const auto density = (scaled + 3937 / 2) / 3937;
-				return static_cast<std::uint16_t>(
-					std::min<std::uint64_t>(65535, std::max<std::uint64_t>(1, density)));
+				return static_cast<std::uint16_t>(std::min<std::uint64_t>(65535, std::max<std::uint64_t>(1, density)));
 			};
 			_state->cinfo.density_unit = 1;
 			_state->cinfo.X_density = jfif_density(options.pixels_per_meter_x);
@@ -532,6 +534,8 @@ namespace libfiles
 	                         const embedded_metadata& metadata, const jpeg_options& options)
 	{
 		_state->notes.clear();
+		// A JPEG says nothing of PQ or HLG, so a signal written as it is would show as SDR, washed out.
+		if (metadata.hdr) throw encode_error("a JPEG cannot hold an HDR picture's signal: map it to SDR first");
 		check_metadata_fits(metadata, _state->notes);
 
 		setup(width, height, options);
@@ -609,8 +613,8 @@ namespace libfiles
 
 	std::vector<std::uint8_t> jpeg_encoder::encode(const std::uint32_t width, const std::uint32_t height,
 	                                               const std::uint8_t* pixels, const std::size_t stride,
-	                                               const std::uint16_t orientation,
-	                                               const embedded_metadata& metadata, const jpeg_options& options)
+	                                               const std::uint16_t orientation, const embedded_metadata& metadata,
+	                                               const jpeg_options& options)
 	{
 		start(width, height, orientation, metadata, options);
 
@@ -730,7 +734,7 @@ namespace libfiles
 			const auto& comp = dinfo.comp_info[ci];
 
 			result += round_up(comp.width_in_blocks, comp.h_samp_factor) *
-				round_up(comp.height_in_blocks, comp.v_samp_factor) * static_cast<std::int64_t>(sizeof(JBLOCK));
+			          round_up(comp.height_in_blocks, comp.v_samp_factor) * static_cast<std::int64_t>(sizeof(JBLOCK));
 		}
 
 		return result;
@@ -832,8 +836,8 @@ namespace libfiles
 
 			// Adjust destination parameters if required by transform options;
 			// also find out which set of coefficient arrays will hold the output.
-			auto* const dst_coef_arrays = jtransform_adjust_parameters(&_state->dinfo, &cinfo,
-			                                                           src_coef_arrays, &transformoption);
+			auto* const dst_coef_arrays = jtransform_adjust_parameters(&_state->dinfo, &cinfo, src_coef_arrays,
+			                                                           &transformoption);
 
 			// Start compressor (note no image data is actually written here)
 			jpeg_write_coefficients(&cinfo, dst_coef_arrays);
@@ -848,8 +852,9 @@ namespace libfiles
 				if (marker->marker == XMP_EXIF_MARKER && is_exif_signature(block))
 				{
 					const auto fixed = fix_dims(block, cinfo.image_width, cinfo.image_height);
-					marker->data = static_cast<std::uint8_t*>(_state->dinfo.mem->alloc_large(
-						reinterpret_cast<j_common_ptr>(&_state->dinfo), JPOOL_IMAGE, fixed.size()));
+					marker->data = static_cast<std::uint8_t*>(
+						_state->dinfo.mem->alloc_large(reinterpret_cast<j_common_ptr>(&_state->dinfo), JPOOL_IMAGE,
+					                                   fixed.size()));
 					marker->original_length = static_cast<unsigned int>(fixed.size());
 					marker->data_length = static_cast<unsigned int>(fixed.size());
 					std::memcpy(marker->data, fixed.data(), fixed.size());
@@ -873,8 +878,8 @@ namespace libfiles
 	                                          const jpeg_transform_options& options) const
 	{
 		lossless_turn result;
-		if (options.density && (static_cast<std::uint8_t>(options.density->unit) > 2 ||
-			!options.density->x || !options.density->y))
+		if (options.density &&
+		    (static_cast<std::uint8_t>(options.density->unit) > 2 || !options.density->x || !options.density->y))
 		{
 			result.invalid = true;
 			result.error = "invalid JFIF output density";
@@ -927,8 +932,7 @@ namespace libfiles
 			_state->mem_source.next_input_byte = jpeg.data();
 			constexpr JCOPY_OPTION copyoption = JCOPYOPT_ALL;
 			jpeg_transform_info transformoption = {};
-			transformoption.perfect =
-				options.policy == jpeg_transform_policy::perfect && !options.trim ? TRUE : FALSE;
+			transformoption.perfect = options.policy == jpeg_transform_policy::perfect && !options.trim ? TRUE : FALSE;
 			transformoption.slow_hflip = FALSE;
 			transformoption.transform = *transform;
 			transformoption.trim = options.trim ? TRUE : FALSE;
@@ -988,8 +992,8 @@ namespace libfiles
 			jpeg_copy_critical_parameters(&_state->dinfo, &destination);
 			destination.optimize_coding = options.optimize_coding ? TRUE : FALSE;
 			if (options.progressive) jpeg_simple_progression(&destination);
-			auto* const destination_coefficients = jtransform_adjust_parameters(
-				&_state->dinfo, &destination, source_coefficients, &transformoption);
+			auto* const destination_coefficients = jtransform_adjust_parameters(&_state->dinfo, &destination,
+			                                                                    source_coefficients, &transformoption);
 			if (options.density)
 			{
 				destination.density_unit = static_cast<UINT8>(options.density->unit);
@@ -1004,8 +1008,9 @@ namespace libfiles
 				if (marker->marker == XMP_EXIF_MARKER && is_exif_signature(block))
 				{
 					const auto fixed = fix_dims(block, destination.image_width, destination.image_height);
-					marker->data = static_cast<std::uint8_t*>(_state->dinfo.mem->alloc_large(
-						reinterpret_cast<j_common_ptr>(&_state->dinfo), JPOOL_IMAGE, fixed.size()));
+					marker->data = static_cast<std::uint8_t*>(
+						_state->dinfo.mem->alloc_large(reinterpret_cast<j_common_ptr>(&_state->dinfo), JPOOL_IMAGE,
+					                                   fixed.size()));
 					marker->original_length = static_cast<unsigned int>(fixed.size());
 					marker->data_length = static_cast<unsigned int>(fixed.size());
 					std::memcpy(marker->data, fixed.data(), fixed.size());

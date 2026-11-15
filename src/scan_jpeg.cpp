@@ -1,13 +1,18 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The JPEG scanner. One pass over the marker segments up to the first scan: the frame
-// header for dimensions and sampling, APP0/APP14 for the colour convention, and the APP1, APP2 and
-// APP13 metadata. An inspect scan also reports the tables, comments and multi-picture index, and
-// what follows the end-of-image marker.
+// header for dimensions and sampling, APP0/APP14 for the colour convention, the APP1, APP2 and
+// APP13 metadata, and the multi-picture index, by which every scan says whether the photo carries a gain
+// map. An inspect scan also reports the tables, comments and that index - naming a gain map among its
+// images, from that image's own first segments - and what follows the end-of-image marker.
 
 #include "scan_internal.h"
+#include "gain_map_internal.h"
+#include "hdr_internal.h"
+#include "libfiles/encode.h"
+#include "libfiles/hdr.h"
 
 #include <algorithm>
 #include <cmath>
@@ -57,35 +62,24 @@ namespace libfiles::detail
 
 		// Zig-zag scan order: DQT stores coefficients in this sequence, the reference tables below
 		// are in natural raster order.
-		constexpr std::uint8_t zigzag_to_natural[64] = {
-			0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
-			12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
-			35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
-			58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
-		};
+		constexpr std::uint8_t zigzag_to_natural[64] = {0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
+		                                                12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6,  7,  14, 21, 28,
+		                                                35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
+		                                                58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
 
 		// The example tables from the JPEG specification, Annex K. Quality estimation scales these.
-		constexpr std::uint16_t annex_k_luminance_quant[64] = {
-			16, 11, 10, 16, 24, 40, 51, 61,
-			12, 12, 14, 19, 26, 58, 60, 55,
-			14, 13, 16, 24, 40, 57, 69, 56,
-			14, 17, 22, 29, 51, 87, 80, 62,
-			18, 22, 37, 56, 68, 109, 103, 77,
-			24, 35, 55, 64, 81, 104, 113, 92,
-			49, 64, 78, 87, 103, 121, 120, 101,
-			72, 92, 95, 98, 112, 100, 103, 99
-		};
+		constexpr std::uint16_t annex_k_luminance_quant[64] = {16,  11,  10,  16, 24,  40,  51,  61,  12,  12,  14,
+		                                                       19,  26,  58,  60, 55,  14,  13,  16,  24,  40,  57,
+		                                                       69,  56,  14,  17, 22,  29,  51,  87,  80,  62,  18,
+		                                                       22,  37,  56,  68, 109, 103, 77,  24,  35,  55,  64,
+		                                                       81,  104, 113, 92, 49,  64,  78,  87,  103, 121, 120,
+		                                                       101, 72,  92,  95, 98,  112, 100, 103, 99};
 
-		constexpr std::uint16_t annex_k_chrominance_quant[64] = {
-			17, 18, 24, 47, 99, 99, 99, 99,
-			18, 21, 26, 66, 99, 99, 99, 99,
-			24, 26, 56, 99, 99, 99, 99, 99,
-			47, 66, 99, 99, 99, 99, 99, 99,
-			99, 99, 99, 99, 99, 99, 99, 99,
-			99, 99, 99, 99, 99, 99, 99, 99,
-			99, 99, 99, 99, 99, 99, 99, 99,
-			99, 99, 99, 99, 99, 99, 99, 99
-		};
+		constexpr std::uint16_t annex_k_chrominance_quant[64] = {17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66, 99,
+		                                                         99, 99, 99, 24, 26, 56, 99, 99, 99, 99, 99, 47, 66,
+		                                                         99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+		                                                         99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+		                                                         99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99};
 
 		// The code-length counts of the Annex K example Huffman tables. Camera firmware normally
 		// writes these unchanged; software encoders usually fit tables to the image instead.
@@ -185,12 +179,31 @@ namespace libfiles::detail
 			return chroma_format::unknown;
 		}
 
+		// Where an image the MPF index lists lies, its MP type code, and the row the listing gives it, so a gain map
+		// among them can be named once the walk is over.
+		struct mpf_image
+		{
+			std::size_t row = 0;
+			std::uint32_t index = 0;
+			std::uint64_t offset = 0;
+			std::uint32_t size = 0;
+			std::uint32_t type = 0;
+		};
+
+		// MP type codes 0x010001 and 0x010002: a large thumbnail of the primary image, which a camera stores for its
+		// own display. Never a gain map, so an index scan does not read one to ask.
+		bool is_mpf_thumbnail(const mpf_image& image)
+		{
+			return (image.type >> 16) == 0x01;
+		}
+
 		// A Multi-Picture APP2 segment indexes further whole JPEGs stored in the same file: the second
 		// frame of a burst, a depth or gain map, or the full-size image behind a thumbnail. The index is
 		// a TIFF directory whose MPEntry tag holds one 16-byte record per image. Offsets are relative to
 		// this segment's TIFF header, except the first image, which is the file itself and stores zero.
-		void parse_mpf_index(std::vector<structure_row>& rows, const std::uint8_t* data, const std::uint32_t len,
-		                     const std::uint64_t tiff_offset)
+		// Rows are added only where the caller lists the structure.
+		void parse_mpf_index(std::vector<structure_row>* rows, const std::uint8_t* data, const std::uint32_t len,
+		                     const std::uint64_t tiff_offset, std::vector<mpf_image>& images)
 		{
 			constexpr std::uint32_t mpf_signature_len = 4u; // "MPF\0"
 
@@ -261,47 +274,46 @@ namespace libfiles::detail
 				const auto size = read32(at + 4);
 				const auto offset = read32(at + 8);
 
-				// Bits 24-30 of the attributes carry the MP type code.
-				const auto type = (attributes >> 24) & 0x7f;
+				// The low 24 bits of the attributes are the MP type code; the top byte holds the image's flags and
+				// its data format.
+				const auto type = attributes & 0x00FFFFFFu;
 				const auto representative = (attributes & 0x20000000u) != 0;
 
-				std::string_view role;
-
-				switch (type)
+				if (rows)
 				{
-				case 0x01: role = "large thumbnail, VGA";
-					break;
-				case 0x02: role = "large thumbnail, full HD";
-					break;
-				case 0x03: role = "multi-frame panorama";
-					break;
-				case 0x04: role = "multi-frame disparity";
-					break;
-				case 0x05: role = "multi-angle";
-					break;
-				case 0x30: role = "baseline primary image";
-					break;
-				default: role = "undefined type";
-					break;
+					std::string_view role;
+
+					switch (type)
+					{
+					case 0x010001: role = "large thumbnail, VGA"; break;
+					case 0x010002: role = "large thumbnail, full HD"; break;
+					case 0x020001: role = "multi-frame panorama"; break;
+					case 0x020002: role = "multi-frame disparity"; break;
+					case 0x020003: role = "multi-angle"; break;
+					case 0x030000: role = "baseline primary image"; break;
+					default: role = "undefined type"; break;
+					}
+
+					// Only the first individual image stores zero, so a later entry claiming it is naming
+					// an offset it does not have rather than pointing at this file.
+					auto& row = add_row(*rows, std::format("Image {}", i + 1),
+					                    (i == 0 && offset == 0)
+					                        ? std::format("{}, {} bytes, this file", role, size)
+					                        : std::format("{}, {} bytes, offset {}", role, size, tiff_offset + offset));
+
+					row.depth = 1;
+					row.shape = representative ? std::format("0x{:08x}, representative", attributes)
+					                           : std::format("0x{:08x}", attributes);
+					row.id = std::format("jpeg.mpf.{}", i);
 				}
 
-				// Only the first individual image stores zero, so a later entry claiming it is naming
-				// an offset it does not have rather than pointing at this file.
-				auto& row = add_row(rows, std::format("Image {}", i + 1),
-				                    (i == 0 && offset == 0)
-					                    ? std::format("{}, {} bytes, this file", role, size)
-					                    : std::format("{}, {} bytes, offset {}", role, size, tiff_offset + offset));
-
-				row.depth = 1;
-				row.shape = representative
-					            ? std::format("0x{:08x}, representative", attributes)
-					            : std::format("0x{:08x}", attributes);
-				row.id = std::format("jpeg.mpf.{}", i);
+				if (i != 0 && offset != 0)
+					images.push_back({rows ? rows->size() - 1 : 0, i + 1, tiff_offset + offset, size, type});
 			}
 
-			if (reported > image_count)
+			if (rows && reported > image_count)
 			{
-				auto& row = add_row(rows, "Unread images",
+				auto& row = add_row(*rows, "Unread images",
 				                    std::format("{} of {} declared entries lie outside the segment",
 				                                reported - image_count, reported));
 				row.depth = 1;
@@ -312,6 +324,58 @@ namespace libfiles::detail
 		void append_rows(std::vector<structure_row>& to, std::vector<structure_row>& from)
 		{
 			to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end()));
+		}
+
+		// The first XMP packet a JPEG's segments hold before its image data, as far as the bytes read of it reach.
+		std::span<const std::uint8_t> leading_xmp(const std::span<const std::uint8_t> jpeg)
+		{
+			if (jpeg.size() < 4 || jpeg[0] != 0xFF || jpeg[1] != M_SOI) return {};
+
+			for (std::size_t at = 2; at + 4 <= jpeg.size() && jpeg[at] == 0xFF;)
+			{
+				const auto marker = jpeg[at + 1];
+				if (marker == M_SOS || marker == M_EOI) break;
+
+				const auto length = load_be16(jpeg.data() + at + 2);
+				if (length < 2 || at + 2u + length > jpeg.size()) break;
+
+				const auto block = jpeg.subspan(at + 4, length - 2u);
+				if (marker == M_APP1 && starts_with(block, xmp_signature)) return block.subspan(xmp_signature.size());
+				at += 2u + length;
+			}
+
+			return {};
+		}
+
+		bool contains(const std::span<const std::uint8_t> bytes, const std::string_view text)
+		{
+			return std::ranges::search(bytes, text, [](const std::uint8_t a, const char b) {
+				return a == static_cast<std::uint8_t>(b);
+			}).begin() != bytes.end();
+		}
+
+		// A gain map a JPEG's MPF index lists says so in its own first segments - Apple's auxiliary type in its XMP,
+		// Adobe's hdrgm XMP, which Ultra HDR writes, or ISO 21496-1's APP2 - and what it says of its reach: the headroom
+		// Apple's metadata gives, the gain map's XMP or else the photo's maker note, or the ISO 21496-1 or hdrgm
+		// metadata's. The kind, then the reach where it is known; nothing for an image that is no gain map.
+		std::optional<std::pair<std::string, std::string>> gain_map_text(const std::span<const std::uint8_t> head,
+		                                                                 const std::span<const std::uint8_t> exif)
+		{
+			const auto xmp = leading_xmp(head);
+
+			if (contains(xmp, "urn:com:apple:photo:2020:aux:hdrgainmap"))
+			{
+				const auto headroom = apple_gain_map_headroom(xmp, exif);
+				return std::pair{std::string("Apple"), headroom ? headroom_text(std::log2(*headroom)) : std::string()};
+			}
+
+			const auto adobe = contains(xmp, "http://ns.adobe.com/hdr-gain-map/1.0/");
+			const auto iso = contains(head, "urn:iso:std:iso:ts:21496:-1");
+			if (!adobe && !iso) return {};
+
+			const auto metadata = read_jpeg_gain_map_metadata(head);
+			return std::pair{std::string(adobe ? "Ultra HDR" : "ISO 21496-1"),
+			                 metadata ? headroom_text(metadata->alternate_headroom) : std::string()};
 		}
 	}
 
@@ -339,6 +403,8 @@ namespace libfiles::detail
 		std::vector<structure_row> huffman_rows;
 		std::vector<structure_row> comment_rows;
 		std::vector<structure_row> embedded_image_rows;
+		std::vector<mpf_image> mpf_images;
+		auto iso_gain_map_box = false;
 		auto sof_marker = 0;
 		auto sof_precision = 0;
 		auto restart_interval = 0;
@@ -453,147 +519,147 @@ namespace libfiles::detail
 			case M_SOF13:
 			case M_SOF14:
 			case M_SOF15:
+			{
+				if (block_data_len < 6u) break;
+
+				const auto* const block_data = r.view(data_offset, block_data_len).data();
+				const auto bits = *block_data;
+				result.height = load_be16(block_data + 1);
+				result.width = load_be16(block_data + 3);
+				channels = block_data[5];
+
+				sof_marker = block_marker;
+				sof_precision = bits;
+
+				// Each component contributes its identifier, sampling factors and quantisation table.
+				// The luma factors are what chroma subsampling is read from, so they are collected
+				// whether or not the structure report was asked for.
+				for (auto c = 0; c < channels; ++c)
 				{
-					if (block_data_len < 6u) break;
+					const auto component_offset = 6u + c * 3u;
+					if (component_offset + 3u > block_data_len) break;
 
-					const auto* const block_data = r.view(data_offset, block_data_len).data();
-					const auto bits = *block_data;
-					result.height = load_be16(block_data + 1);
-					result.width = load_be16(block_data + 3);
-					channels = block_data[5];
+					const auto id = block_data[component_offset];
+					const auto h = block_data[component_offset + 1] >> 4;
+					const auto v = block_data[component_offset + 1] & 0x0f;
+					const auto tq = block_data[component_offset + 2];
 
-					sof_marker = block_marker;
-					sof_precision = bits;
-
-					// Each component contributes its identifier, sampling factors and quantisation table.
-					// The luma factors are what chroma subsampling is read from, so they are collected
-					// whether or not the structure report was asked for.
-					for (auto c = 0; c < channels; ++c)
+					if (c == 0)
 					{
-						const auto component_offset = 6u + c * 3u;
-						if (component_offset + 3u > block_data_len) break;
-
-						const auto id = block_data[component_offset];
-						const auto h = block_data[component_offset + 1] >> 4;
-						const auto v = block_data[component_offset + 1] & 0x0f;
-						const auto tq = block_data[component_offset + 2];
-
-						if (c == 0)
-						{
-							luma_h = h;
-							luma_v = v;
-						}
-
-						if (want_structure)
-						{
-							if (!components_text.empty()) components_text += ", ";
-							components_text += std::format("{}:{}x{} q{}", id, h, v, tq);
-						}
+						luma_h = h;
+						luma_v = v;
 					}
 
-					if (!want_structure) break;
-
-					const auto h0 = luma_h;
-					const auto v0 = luma_v;
-
-					if (channels >= 3 && h0 > 0 && v0 > 0)
+					if (want_structure)
 					{
-						if (h0 == 1 && v0 == 1) subsampling_text = "4:4:4 (none)";
-						else if (h0 == 2 && v0 == 1) subsampling_text = "4:2:2";
-						else if (h0 == 2 && v0 == 2) subsampling_text = "4:2:0";
-						else if (h0 == 1 && v0 == 2) subsampling_text = "4:4:0";
-						else subsampling_text = std::format("{}x{} luma sampling", h0, v0);
-					}
-					else if (channels == 1)
-					{
-						subsampling_text = "single component";
+						if (!components_text.empty()) components_text += ", ";
+						components_text += std::format("{}:{}x{} q{}", id, h, v, tq);
 					}
 				}
-				break;
+
+				if (!want_structure) break;
+
+				const auto h0 = luma_h;
+				const auto v0 = luma_v;
+
+				if (channels >= 3 && h0 > 0 && v0 > 0)
+				{
+					if (h0 == 1 && v0 == 1) subsampling_text = "4:4:4 (none)";
+					else if (h0 == 2 && v0 == 1) subsampling_text = "4:2:2";
+					else if (h0 == 2 && v0 == 2) subsampling_text = "4:2:0";
+					else if (h0 == 1 && v0 == 2) subsampling_text = "4:4:0";
+					else subsampling_text = std::format("{}x{} luma sampling", h0, v0);
+				}
+				else if (channels == 1)
+				{
+					subsampling_text = "single component";
+				}
+			}
+			break;
 
 			case M_DQT:
+			{
+				if (!want_structure) break;
+
+				const auto* const block_data = r.view(data_offset, block_data_len).data();
+				std::uint32_t p = 0;
+
+				while (p < block_data_len)
 				{
-					if (!want_structure) break;
+					const auto precision = block_data[p] >> 4;
+					const auto table_id = block_data[p] & 0x0f;
+					const auto entry_bytes = precision ? 2u : 1u;
+					const auto table_bytes = 64u * entry_bytes;
+					++p;
 
-					const auto* const block_data = r.view(data_offset, block_data_len).data();
-					std::uint32_t p = 0;
+					if (p + table_bytes > block_data_len) break;
 
-					while (p < block_data_len)
+					std::uint16_t table[64] = {};
+
+					for (auto i = 0; i < 64; ++i)
 					{
-						const auto precision = block_data[p] >> 4;
-						const auto table_id = block_data[p] & 0x0f;
-						const auto entry_bytes = precision ? 2u : 1u;
-						const auto table_bytes = 64u * entry_bytes;
-						++p;
-
-						if (p + table_bytes > block_data_len) break;
-
-						std::uint16_t table[64] = {};
-
-						for (auto i = 0; i < 64; ++i)
-						{
-							table[zigzag_to_natural[i]] = precision ? load_be16(block_data + p + i * 2) : block_data[p + i];
-						}
-
-						p += table_bytes;
-
-						const auto chrominance = table_id != 0;
-						const auto quality = estimate_quality(table, chrominance);
-						if (!chrominance && luminance_quality == 0) luminance_quality = quality;
-
-						const auto* const reference = chrominance ? annex_k_chrominance_quant : annex_k_luminance_quant;
-						const auto is_annex_k = std::memcmp(table, reference, sizeof(table)) == 0;
-
-						auto& row = add_row(quant_rows,
-						                    std::format("Table {} ({})", table_id, chrominance ? "chrominance" : "luminance"),
-						                    std::format("quality about {}{}", quality,
-						                                is_annex_k ? ", the Annex K example table unscaled" : ""));
-						row.depth = 1;
-						row.shape = std::format("{}-bit, {} bytes", precision ? 16 : 8, table_bytes);
-						row.detail = structure_table{std::vector<std::uint16_t>(std::begin(table), std::end(table)), 8};
+						table[zigzag_to_natural[i]] = precision ? load_be16(block_data + p + i * 2) : block_data[p + i];
 					}
+
+					p += table_bytes;
+
+					const auto chrominance = table_id != 0;
+					const auto quality = estimate_quality(table, chrominance);
+					if (!chrominance && luminance_quality == 0) luminance_quality = quality;
+
+					const auto* const reference = chrominance ? annex_k_chrominance_quant : annex_k_luminance_quant;
+					const auto is_annex_k = std::memcmp(table, reference, sizeof(table)) == 0;
+
+					auto& row = add_row(quant_rows,
+					                    std::format("Table {} ({})", table_id,
+					                                chrominance ? "chrominance" : "luminance"),
+					                    std::format("quality about {}{}", quality,
+					                                is_annex_k ? ", the Annex K example table unscaled" : ""));
+					row.depth = 1;
+					row.shape = std::format("{}-bit, {} bytes", precision ? 16 : 8, table_bytes);
+					row.detail = structure_table{std::vector<std::uint16_t>(std::begin(table), std::end(table)), 8};
 				}
-				break;
+			}
+			break;
 
 			case M_DHT:
+			{
+				if (!want_structure) break;
+
+				const auto* const block_data = r.view(data_offset, block_data_len).data();
+				std::uint32_t p = 0;
+
+				while (p + 17u <= block_data_len)
 				{
-					if (!want_structure) break;
+					const auto table_class = block_data[p] >> 4;
+					const auto table_id = block_data[p] & 0x0f;
+					const auto* const bits = block_data + p + 1;
 
-					const auto* const block_data = r.view(data_offset, block_data_len).data();
-					std::uint32_t p = 0;
+					auto code_count = 0u;
+					for (auto i = 0; i < 16; ++i) code_count += bits[i];
 
-					while (p + 17u <= block_data_len)
-					{
-						const auto table_class = block_data[p] >> 4;
-						const auto table_id = block_data[p] & 0x0f;
-						const auto* const bits = block_data + p + 1;
+					if (p + 17u + code_count > block_data_len) break;
 
-						auto code_count = 0u;
-						for (auto i = 0; i < 16; ++i) code_count += bits[i];
+					const auto* const reference = table_class == 0 ? (table_id == 0 ? annex_k_dc_luminance_bits
+					                                                                : annex_k_dc_chrominance_bits)
+					                                               : (table_id == 0 ? annex_k_ac_luminance_bits
+					                                                                : annex_k_ac_chrominance_bits);
 
-						if (p + 17u + code_count > block_data_len) break;
+					const auto is_annex_k = table_id < 2 && std::memcmp(bits, reference, 16) == 0;
 
-						const auto* const reference = table_class == 0
-							                              ? (table_id == 0 ? annex_k_dc_luminance_bits : annex_k_dc_chrominance_bits)
-							                              : (table_id == 0 ? annex_k_ac_luminance_bits : annex_k_ac_chrominance_bits);
+					++huffman_tables;
+					if (is_annex_k) ++standard_huffman_tables;
 
-						const auto is_annex_k = table_id < 2 && std::memcmp(bits, reference, 16) == 0;
+					add_structure_bytes(huffman_rows,
+					                    std::format("{} table {}", table_class == 0 ? "DC" : "AC", table_id),
+					                    is_annex_k ? std::format("standard (Annex K), {} codes", code_count)
+					                               : std::format("optimised, {} codes", code_count),
+					                    std::format("{} bytes", 17u + code_count), {block_data + p, 17u + code_count});
 
-						++huffman_tables;
-						if (is_annex_k) ++standard_huffman_tables;
-
-						add_structure_bytes(huffman_rows,
-						                    std::format("{} table {}", table_class == 0 ? "DC" : "AC", table_id),
-						                    is_annex_k
-							                    ? std::format("standard (Annex K), {} codes", code_count)
-							                    : std::format("optimised, {} codes", code_count),
-						                    std::format("{} bytes", 17u + code_count),
-						                    {block_data + p, 17u + code_count});
-
-						p += 17u + code_count;
-					}
+					p += 17u + code_count;
 				}
-				break;
+			}
+			break;
 
 			case M_DRI:
 				if (want_structure && block_data_len >= 2u)
@@ -603,99 +669,106 @@ namespace libfiles::detail
 				break;
 
 			case M_COM:
-				{
-					if (!want_structure) break;
+			{
+				if (!want_structure) break;
 
-					const auto block = r.view(data_offset, block_data_len);
-					std::string text(block.begin(), block.end());
-					add_structure_row(comment_rows, "Comment", std::move(text),
-					                  std::format("offset {}, {} bytes", block_offset, block_data_len));
-					comment_rows.back().id = std::format("jpeg.com.{}", block_offset);
-				}
-				break;
+				const auto block = r.view(data_offset, block_data_len);
+				std::string text(block.begin(), block.end());
+				add_structure_row(comment_rows, "Comment", std::move(text),
+				                  std::format("offset {}, {} bytes", block_offset, block_data_len));
+				comment_rows.back().id = std::format("jpeg.com.{}", block_offset);
+			}
+			break;
 
 			case M_APP0:
+			{
+				const auto block = r.view(data_offset, block_data_len);
+
+				// JFIF declares the colour convention YCbCr. It lives here, in APP0: a baseline SOF0
+				// frame says nothing about it, and treating SOF0 as JFIF hid the Adobe APP14
+				// transform that marks a 3-channel JPEG as RGB.
+				if (starts_with(block, {"JFIF\0", 5}))
 				{
-					const auto block = r.view(data_offset, block_data_len);
-
-					// JFIF declares the colour convention YCbCr. It lives here, in APP0: a baseline SOF0
-					// frame says nothing about it, and treating SOF0 as JFIF hid the Adobe APP14
-					// transform that marks a 3-channel JPEG as RGB.
-					if (starts_with(block, {"JFIF\0", 5}))
-					{
-						has_jfif_marker = true;
-					}
-
-					constexpr std::size_t jfxx_header_len = 6u;
-					constexpr std::uint8_t jfxx_extension_jpeg = 0x10;
-
-					// Extension codes 0x11 and 0x13 carry a raw palettised or RGB raster, not a JPEG
-					// stream, so only 0x10 is a thumbnail an image loader can take.
-					if (block.size() >= jfxx_header_len && starts_with(block, {"JFXX\0", 5}) &&
-						block[5] == jfxx_extension_jpeg)
-					{
-						result.jfif_thumbnail = {data_offset + jfxx_header_len, block_data_len - jfxx_header_len};
-					}
+					has_jfif_marker = true;
 				}
-				break;
+
+				constexpr std::size_t jfxx_header_len = 6u;
+				constexpr std::uint8_t jfxx_extension_jpeg = 0x10;
+
+				// Extension codes 0x11 and 0x13 carry a raw palettised or RGB raster, not a JPEG
+				// stream, so only 0x10 is a thumbnail an image loader can take.
+				if (block.size() >= jfxx_header_len && starts_with(block, {"JFXX\0", 5}) &&
+				    block[5] == jfxx_extension_jpeg)
+				{
+					result.jfif_thumbnail = {data_offset + jfxx_header_len, block_data_len - jfxx_header_len};
+				}
+			}
+			break;
 
 			case M_APP1:
-				{
-					const auto block = r.view(data_offset, block_data_len);
+			{
+				const auto block = r.view(data_offset, block_data_len);
 
-					if (starts_with(block, exif_signature))
-					{
-						const auto exif = block.subspan(exif_signature.size());
-						result.metadata.exif.assign(exif.begin(), exif.end());
-						has_exif = true;
-					}
-					else if (starts_with(block, xmp_signature))
-					{
-						const auto xmp = block.subspan(xmp_signature.size());
-						result.metadata.xmp.assign(xmp.begin(), xmp.end());
-						has_xmp = true;
-					}
+				if (starts_with(block, exif_signature))
+				{
+					const auto exif = block.subspan(exif_signature.size());
+					result.metadata.exif.assign(exif.begin(), exif.end());
+					has_exif = true;
 				}
-				break;
+				else if (starts_with(block, xmp_signature))
+				{
+					const auto xmp = block.subspan(xmp_signature.size());
+					result.metadata.xmp.assign(xmp.begin(), xmp.end());
+					has_xmp = true;
+				}
+			}
+			break;
 
 			case M_APP2:
-				{
-					const auto block = r.view(data_offset, block_data_len);
+			{
+				const auto block = r.view(data_offset, block_data_len);
 
-					if (starts_with(block, icc_signature) && block.size() >= icc_header_len)
-					{
-						const auto sequence = block[icc_signature.size()];
-						const auto icc = block.subspan(icc_header_len);
-						icc_segments.insert_or_assign(sequence, std::vector<std::uint8_t>(icc.begin(), icc.end()));
-					}
-					else if (want_structure && block_data_len >= 4u && std::memcmp(block.data(), "MPF\0", 4) == 0)
-					{
-						// MPF offsets are measured from this segment's TIFF header, which follows the identifier.
-						parse_mpf_index(embedded_image_rows, block.data(), block_data_len, data_offset + 4u);
-					}
+				if (starts_with(block, icc_signature) && block.size() >= icc_header_len)
+				{
+					const auto sequence = block[icc_signature.size()];
+					const auto icc = block.subspan(icc_header_len);
+					icc_segments.insert_or_assign(sequence, std::vector<std::uint8_t>(icc.begin(), icc.end()));
 				}
-				break;
+				else if (block_data_len >= 4u && std::memcmp(block.data(), "MPF\0", 4) == 0)
+				{
+					// MPF offsets are measured from this segment's TIFF header, which follows the identifier. The
+					// index is in the segment already read, so even an index scan learns what the file lists.
+					parse_mpf_index(want_structure ? &embedded_image_rows : nullptr, block.data(), block_data_len,
+					                data_offset + 4u, mpf_images);
+				}
+				else if (is_iso_version_segment(block))
+				{
+					// ISO 21496-1's versions alone, in the primary: a gain map follows.
+					iso_gain_map_box = true;
+				}
+			}
+			break;
 
 			case M_APP13:
+			{
+				const auto block = r.view(data_offset, block_data_len);
+
+				if (starts_with(block, photoshop_signature))
 				{
-					const auto block = r.view(data_offset, block_data_len);
+					const auto body = block.subspan(photoshop_signature.size());
 
-					if (starts_with(block, photoshop_signature))
+					if (!photoshop_resources_capped)
 					{
-						const auto body = block.subspan(photoshop_signature.size());
-
-						if (!photoshop_resources_capped)
-						{
-							const auto remaining = photoshop_resources.size() < photoshop_resource_cap
-								                       ? photoshop_resource_cap - photoshop_resources.size()
-								                       : std::size_t{0};
-							const auto to_copy = std::min(remaining, body.size());
-							photoshop_resources.insert(photoshop_resources.end(), body.begin(), body.begin() + to_copy);
-							if (to_copy < body.size()) photoshop_resources_capped = true;
-						}
+						const auto remaining = photoshop_resources.size() < photoshop_resource_cap
+						                           ? photoshop_resource_cap - photoshop_resources.size()
+						                           : std::size_t{0};
+						const auto to_copy = std::min(remaining, body.size());
+						photoshop_resources.insert(photoshop_resources.end(), body.begin(), body.begin() + to_copy);
+						if (to_copy < body.size()) photoshop_resources_capped = true;
 					}
 				}
-				break;
+			}
+			break;
 
 			case M_APP14:
 				if (block_data_len >= app14_data_len)
@@ -710,8 +783,7 @@ namespace libfiles::detail
 				}
 				break;
 
-			default:
-				break;
+			default: break;
 			}
 
 			add_segment(block_marker, block_offset, block_len + 2u, segment_identifier);
@@ -748,8 +820,8 @@ namespace libfiles::detail
 				// Named as HEIF, WebP and video name their sampling, so one search for it reaches them all.
 				result.picture.chroma = ycbcr_chroma(luma_h, luma_v);
 				result.pixel_format = result.picture.chroma == chroma_format::unknown
-					                      ? "YCbCr"
-					                      : picture_format{result.picture.chroma}.name();
+				                          ? "YCbCr"
+				                          : picture_format{result.picture.chroma}.name();
 			}
 			else
 			{
@@ -760,12 +832,42 @@ namespace libfiles::detail
 
 		case 4:
 			result.pixel_format = has_adobe_marker && adobe_transform != 0 ? "ycck" : "cmyk";
-			result.picture.chroma = has_adobe_marker && adobe_transform != 0 ? chroma_format::ycck : chroma_format::cmyk;
+			result.picture.chroma = has_adobe_marker && adobe_transform != 0 ? chroma_format::ycck
+			                                                                 : chroma_format::cmyk;
 			break;
 
-		default:
-			result.pixel_format = "YCbCr";
-			break;
+		default: result.pixel_format = "YCbCr"; break;
+		}
+
+		// A gain map is said beside a multi-picture index that lists another image: by the photo's own segments,
+		// which are believed without a further read, or else by the first segments of a listed image that is no
+		// thumbnail, the only place Apple says it. The listing below reads every listed image's head anyway, and
+		// comes to the same answer by the same rule.
+		constexpr std::uint64_t gain_map_head = 64u * 1024u;
+		const auto read_head = [&r, file_len](const mpf_image& image)
+		{
+			return r.read(image.offset, static_cast<std::size_t>(std::min<std::uint64_t>(
+											{image.size, file_len - image.offset, gain_map_head})));
+		};
+
+		const auto photo_says_gain_map = !mpf_images.empty() &&
+		                                 (iso_gain_map_box ||
+		                                  signals_adobe_gain_map(std::string_view(reinterpret_cast<const char*>(
+																					  result.metadata.xmp.data()),
+		                                                                          result.metadata.xmp.size())));
+
+		// The rule the listing applies too, and the reading every gain map's own header is held to.
+		const auto listed_says_gain_map = [](const mpf_image& image, const std::span<const std::uint8_t> head)
+		{
+			return !is_mpf_thumbnail(image) && read_gain_map_schemes(head).any();
+		};
+
+		if (success && !want_structure && !mpf_images.empty())
+		{
+			result.gain_map = photo_says_gain_map || std::ranges::any_of(mpf_images, [&](const mpf_image& image) {
+				return !is_mpf_thumbnail(image) && image.offset < file_len &&
+				       listed_says_gain_map(image, read_head(image));
+			});
 		}
 
 		// Report what the file says about its own construction. The scan data is not decoded, so only
@@ -811,15 +913,12 @@ namespace libfiles::detail
 
 			if (!components_text.empty())
 				add_structure_row(kv, "Component sampling", components_text, "id:HxV quant-table");
-			if (!subsampling_text.empty())
-				add_structure_row(kv, "Chroma subsampling", subsampling_text);
+			if (!subsampling_text.empty()) add_structure_row(kv, "Chroma subsampling", subsampling_text);
 
 			add_structure_row(kv, "Colour convention",
-			                  has_jfif_marker
-				                  ? "JFIF (APP0)"
-				                  : has_adobe_marker
-				                  ? std::format("Adobe APP14, transform {}", adobe_transform)
-				                  : "not declared");
+			                  has_jfif_marker    ? "JFIF (APP0)"
+			                  : has_adobe_marker ? std::format("Adobe APP14, transform {}", adobe_transform)
+			                                     : "not declared");
 
 			if (restart_interval)
 				add_structure_row(kv, "Restart interval", std::format("{} MCU rows", restart_interval));
@@ -833,27 +932,50 @@ namespace libfiles::detail
 				// tables to the image, so a mismatch marks a re-encode.
 				add_structure_row(kv, "Huffman tables",
 				                  standard_huffman_tables == huffman_tables
-					                  ? std::format("{}, all standard (Annex K)", huffman_tables)
-					                  : standard_huffman_tables == 0
-					                  ? std::format("{}, all optimised", huffman_tables)
-					                  : std::format("{}, {} standard and {} optimised", huffman_tables,
-					                                standard_huffman_tables,
-					                                huffman_tables - standard_huffman_tables));
+				                      ? std::format("{}, all standard (Annex K)", huffman_tables)
+				                  : standard_huffman_tables == 0
+				                      ? std::format("{}, all optimised", huffman_tables)
+				                      : std::format("{}, {} standard and {} optimised", huffman_tables,
+				                                    standard_huffman_tables, huffman_tables - standard_huffman_tables));
 			}
 
 			add_structure_row(kv, "Metadata carried",
-			                  std::format("{}{}{}{}",
-			                              has_exif ? "Exif " : "",
-			                              has_xmp ? "XMP " : "",
-			                              has_iptc ? "IPTC " : "",
-			                              result.metadata.icc.empty() ? "" : "ICC"));
+			                  std::format("{}{}{}{}", has_exif ? "Exif " : "", has_xmp ? "XMP " : "",
+			                              has_iptc ? "IPTC " : "", result.metadata.icc.empty() ? "" : "ICC"));
+
+			// A gain map among the images the MPF index lists - what makes an Ultra HDR or iPhone HDR JPEG HDR - is
+			// named in its row and in the summary, from its own first segments.
+			std::optional<std::string> gain_map;
+			auto listed_gain_map = false;
+
+			for (const auto& image : mpf_images)
+			{
+				if (image.offset >= file_len) continue;
+
+				const auto head = read_head(image);
+				if (listed_says_gain_map(image, head)) listed_gain_map = true;
+
+				const auto text = gain_map_text(head, result.metadata.exif);
+				if (!text) continue;
+
+				embedded_image_rows[image.row].value = std::format("gain map, {} bytes, offset {}", image.size,
+				                                                   image.offset);
+				if (!gain_map)
+				{
+					const auto& [kind, reach] = *text;
+					gain_map = reach.empty() ? std::format("{}, image {}", kind, image.index)
+					                         : std::format("{}, image {}, {}", kind, image.index, reach);
+				}
+			}
+
+			if (gain_map) add_structure_row(kv, "Gain map", *gain_map);
+			result.gain_map = photo_says_gain_map || listed_gain_map;
 
 			add_structure_row(kv, "End of image marker",
-			                  eoi_found
-				                  ? trailing_bytes == 0
-					                    ? "present, nothing follows it"
-					                    : std::format("present, {} bytes follow it", trailing_bytes)
-				                  : "not found in the last 64 KB");
+			                  eoi_found ? trailing_bytes == 0
+			                                  ? "present, nothing follows it"
+			                                  : std::format("present, {} bytes follow it", trailing_bytes)
+			                            : "not found in the last 64 KB");
 
 			add_structure_section(kv, "Segments", "jpeg.segments");
 			append_rows(kv, segment_rows);

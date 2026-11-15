@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: A minimal test harness: named tests registered at static initialization, checks that
 // record failures without stopping the test, and a runner that filters by name.
@@ -42,10 +42,7 @@ namespace test
 
 	struct registrar
 	{
-		registrar(const char* name, std::function<void()> body)
-		{
-			registry().push_back({name, std::move(body)});
-		}
+		registrar(const char* name, std::function<void()> body) { registry().push_back({name, std::move(body)}); }
 	};
 
 	inline void fail(const char* file, const int line, const std::string& message)
@@ -68,8 +65,9 @@ namespace test
 		++current().checks;
 		if (actual != expected)
 		{
-			fail(file, line, std::string(expr) + "\n    expected: '" + std::string(expected) + "'\n    actual:   '" +
-			     std::string(actual) + "'");
+			fail(file, line,
+			     std::string(expr) + "\n    expected: '" + std::string(expected) + "'\n    actual:   '" +
+			         std::string(actual) + "'");
 		}
 	}
 
@@ -79,8 +77,9 @@ namespace test
 		++current().checks;
 		if (!(actual == expected))
 		{
-			fail(file, line, std::string(expr) + " (expected " + std::to_string(expected) + ", actual " +
-			     std::to_string(actual) + ")");
+			fail(file, line,
+			     std::string(expr) + " (expected " + std::to_string(expected) + ", actual " + std::to_string(actual) +
+			         ")");
 		}
 	}
 }
@@ -88,26 +87,27 @@ namespace test
 #define TEST_CONCAT_INNER(a, b) a##b
 #define TEST_CONCAT(a, b) TEST_CONCAT_INNER(a, b)
 
-#define TEST(name) \
-	static void TEST_CONCAT(test_body_, __LINE__)(); \
-	static const test::registrar TEST_CONCAT(test_registrar_, __LINE__)(name, TEST_CONCAT(test_body_, __LINE__)); \
+#define TEST(name)                                                                                                     \
+	static void TEST_CONCAT(test_body_, __LINE__)();                                                                   \
+	static const test::registrar TEST_CONCAT(test_registrar_, __LINE__)(name, TEST_CONCAT(test_body_, __LINE__));      \
 	static void TEST_CONCAT(test_body_, __LINE__)()
 
 #define CHECK(expr) test::check(static_cast<bool>(expr), #expr, __FILE__, __LINE__)
-#define CHECK_STR(actual, expected) test::check_equal((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
-#define CHECK_EQ(actual, expected) test::check_equal_value((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
-#define CHECK_THROWS(expr) \
-	do \
-	{ \
-		auto threw_ = false; \
-		try \
-		{ \
-			(void)(expr); \
-		} \
-		catch (...) \
-		{ \
-			threw_ = true; \
-		} \
-		test::check(threw_, "throws: " #expr, __FILE__, __LINE__); \
-	} \
-	while (false)
+#define CHECK_STR(actual, expected)                                                                                    \
+	test::check_equal((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
+#define CHECK_EQ(actual, expected)                                                                                     \
+	test::check_equal_value((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
+#define CHECK_THROWS(expr)                                                                                             \
+	do                                                                                                                 \
+	{                                                                                                                  \
+		auto threw_ = false;                                                                                           \
+		try                                                                                                            \
+		{                                                                                                              \
+			(void)(expr);                                                                                              \
+		}                                                                                                              \
+		catch (...)                                                                                                    \
+		{                                                                                                              \
+			threw_ = true;                                                                                             \
+		}                                                                                                              \
+		test::check(threw_, "throws: " #expr, __FILE__, __LINE__);                                                     \
+	} while (false)

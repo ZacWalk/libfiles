@@ -1,0 +1,8 @@
+# The vendored dd build driver.
+.dd/**
+# The headers the codecs' own builds would generate, carried beside their recipes.
+cmake/**
+# Code ported from libexif and libiptcdata, which keeps their licence and stays close to them (README, Licence).
+src/libexif_*
+src/exif_listing.cpp
+src/iptc.cpp

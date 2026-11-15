@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the MP4 and QuickTime media scan. Every file is built here box by box, so every field
 // a scan reports is one the test put there. Each file a test sweeps is also cut short near its ends and
@@ -70,12 +70,14 @@ namespace
 	// A language as mdhd and QuickTime's text pack it.
 	std::uint16_t packed(const std::string_view language)
 	{
-		return static_cast<std::uint16_t>((language[0] - 0x60) << 10 | (language[1] - 0x60) << 5 | (language[2] - 0x60));
+		return static_cast<std::uint16_t>((language[0] - 0x60) << 10 | (language[1] - 0x60) << 5 |
+		                                  (language[2] - 0x60));
 	}
 
 	const std::uint16_t und = packed("und");
 
-	bytes ftyp(const std::string_view major, const std::vector<std::string_view>& compatible = {}, const std::uint32_t minor = 0)
+	bytes ftyp(const std::string_view major, const std::vector<std::string_view>& compatible = {},
+	           const std::uint32_t minor = 0)
 	{
 		builder w;
 		w.raw(major).be32(minor);
@@ -99,8 +101,8 @@ namespace
 		w.be32(0).be32(0).be32(0x40000000);
 	}
 
-	bytes mvhd(const std::uint32_t timescale, const std::uint64_t duration, const std::uint64_t created = 0, const unsigned version = 0,
-	           const transform& m = {})
+	bytes mvhd(const std::uint32_t timescale, const std::uint64_t duration, const std::uint64_t created = 0,
+	           const unsigned version = 0, const transform& m = {})
 	{
 		builder w;
 
@@ -111,7 +113,10 @@ namespace
 		}
 		else
 		{
-			w.be32(static_cast<std::uint32_t>(created)).be32(0).be32(timescale).be32(static_cast<std::uint32_t>(duration));
+			w.be32(static_cast<std::uint32_t>(created))
+				.be32(0)
+				.be32(timescale)
+				.be32(static_cast<std::uint32_t>(duration));
 		}
 
 		w.be32(0x10000).be16(0x100).zeros(10);
@@ -132,7 +137,8 @@ namespace
 		return full("tkhd", version, flags, w.b);
 	}
 
-	bytes mdhd(const std::uint32_t timescale, const std::uint64_t duration, const std::uint16_t language, const unsigned version = 0)
+	bytes mdhd(const std::uint32_t timescale, const std::uint64_t duration, const std::uint16_t language,
+	           const unsigned version = 0)
 	{
 		builder w;
 
@@ -163,8 +169,8 @@ namespace
 	}
 
 	// A visual sample description, its 78 bytes of fields and then its boxes.
-	bytes visual(const std::string_view type, const unsigned width, const unsigned height, const bytes& boxes = {}, const unsigned depth = 24,
-	             const bytes& colour_table = {})
+	bytes visual(const std::string_view type, const unsigned width, const unsigned height, const bytes& boxes = {},
+	             const unsigned depth = 24, const bytes& colour_table = {})
 	{
 		builder w;
 		w.zeros(6).be16(1).zeros(16).be16(width).be16(height).be32(0x480000).be32(0x480000).be32(0).be16(1);
@@ -175,19 +181,28 @@ namespace
 
 	// A sound sample description: ISO's, which is QuickTime's version 0, or QuickTime's version 1 with
 	// its four more fields.
-	bytes sound(const std::string_view type, const unsigned channels, const unsigned sample_size, const std::uint32_t rate,
-	            const bytes& boxes = {}, const unsigned version = 0)
+	bytes sound(const std::string_view type, const unsigned channels, const unsigned sample_size,
+	            const std::uint32_t rate, const bytes& boxes = {}, const unsigned version = 0)
 	{
 		builder w;
-		w.zeros(6).be16(1).be16(version).be16(0).be32(0).be16(channels).be16(sample_size).be16(0).be16(0).be32(rate << 16);
+		w.zeros(6)
+			.be16(1)
+			.be16(version)
+			.be16(0)
+			.be32(0)
+			.be16(channels)
+			.be16(sample_size)
+			.be16(0)
+			.be16(0)
+			.be32(rate << 16);
 		if (version == 1) w.be32(1024).be32(1).be32(2).be32(2);
 		w.raw(boxes);
 		return box(type, w.b);
 	}
 
 	// QuickTime's version 2 sound description, with its rate as a double and LPCM's flags.
-	bytes sound_v2(const std::string_view type, const std::uint32_t channels, const std::uint32_t bits, const double rate,
-	               const std::uint32_t flags, const bytes& boxes = {})
+	bytes sound_v2(const std::string_view type, const std::uint32_t channels, const std::uint32_t bits,
+	               const double rate, const std::uint32_t flags, const bytes& boxes = {})
 	{
 		builder w;
 		w.zeros(6).be16(1).be16(2).be16(0).be32(0).be16(3).be16(16).be16(0xFFFE).be16(0).be32(0x10000);
@@ -200,7 +215,8 @@ namespace
 
 	// An esds box: an ES_Descriptor holding the decoder configuration, its lengths written in one byte
 	// or, as Apple writes them, in four.
-	bytes esds(const std::uint8_t object_type, const std::uint32_t average, const bytes& specific = {}, const bool long_lengths = false)
+	bytes esds(const std::uint8_t object_type, const std::uint32_t average, const bytes& specific = {},
+	           const bool long_lengths = false)
 	{
 		const auto length = [long_lengths](builder& w, const std::size_t n)
 		{
@@ -242,16 +258,16 @@ namespace
 
 	bytes colr_nclx(const unsigned primaries, const unsigned transfer, const unsigned matrix, const bool full_range)
 	{
-		return box("colr", builder().raw("nclx").be16(primaries).be16(transfer).be16(matrix).u8(full_range ? 0x80 : 0).b);
+		return box("colr",
+		           builder().raw("nclx").be16(primaries).be16(transfer).be16(matrix).u8(full_range ? 0x80 : 0).b);
 	}
 
 	// The avcC of a 640 x 480 High profile x264 stream, 4:2:0 at 8 bits, whose SPS says its pixels are
 	// 4:3, as anamorphic.mp4 holds it.
-	const bytes avc_config = {
-		0x01, 0x64, 0x00, 0x16, 0xFF, 0xE1, 0x00, 0x19, 0x67, 0x64, 0x00, 0x16, 0xAC, 0xD9, 0x40, 0xA0, 0x3D, 0xB0, 0xE1, 0x00,
-		0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x1E, 0x0F, 0x16, 0x2D, 0x96, 0x01, 0x00, 0x06, 0x68, 0xEB, 0xE3, 0xCB,
-		0x22, 0xC0, 0xFD, 0xF8, 0xF8, 0x00
-	};
+	const bytes avc_config = {0x01, 0x64, 0x00, 0x16, 0xFF, 0xE1, 0x00, 0x19, 0x67, 0x64, 0x00, 0x16,
+	                          0xAC, 0xD9, 0x40, 0xA0, 0x3D, 0xB0, 0xE1, 0x00, 0x00, 0x03, 0x00, 0x01,
+	                          0x00, 0x00, 0x03, 0x00, 0x1E, 0x0F, 0x16, 0x2D, 0x96, 0x01, 0x00, 0x06,
+	                          0x68, 0xEB, 0xE3, 0xCB, 0x22, 0xC0, 0xFD, 0xF8, 0xF8, 0x00};
 
 	// AudioSpecificConfigs: AAC LC at 48 kHz in mono, and at 24 kHz in stereo, the core of an HE-AAC
 	// stream whose SBR only the stream itself signals.
@@ -320,7 +336,8 @@ namespace
 		const auto header = p.handler == "soun" ? full("smhd", 0, 0, bytes(4, 0)) : full("vmhd", 0, 1, bytes(8, 0));
 		const auto information = box("dinf", full("dref", 0, 0, join({builder().be32(1).b, full("url ", 0, 1, {})})));
 		const auto minf = box("minf", join({header, information, table}));
-		const auto mdia = box("mdia", join({mdhd(p.timescale, p.duration, p.language), hdlr(p.handler, p.handler_name, p.quicktime), minf}));
+		const auto mdia = box("mdia", join({mdhd(p.timescale, p.duration, p.language),
+		                                    hdlr(p.handler, p.handler_name, p.quicktime), minf}));
 		return box("trak", join({tkhd(p.id, p.flags, p.width, p.height, p.matrix), p.before, mdia, p.after}));
 	}
 
@@ -385,7 +402,10 @@ namespace
 		for (const auto key : keys) k.be32(static_cast<std::uint32_t>(key.size() + 8)).raw("mdta").raw(key);
 
 		builder items;
-		for (std::size_t i = 0; i < values.size(); ++i) items.be32(static_cast<std::uint32_t>(values[i].size() + 8)).be32(static_cast<std::uint32_t>(i + 1)).raw(values[i]);
+		for (std::size_t i = 0; i < values.size(); ++i)
+			items.be32(static_cast<std::uint32_t>(values[i].size() + 8))
+				.be32(static_cast<std::uint32_t>(i + 1))
+				.raw(values[i]);
 
 		return box("meta", join({hdlr("mdta"), full("keys", 0, 0, k.b), box("ilst", items.b)}));
 	}
@@ -416,8 +436,11 @@ namespace
 		for (const auto& [name, values] : entries)
 		{
 			builder v;
-			for (const auto& value : values) v.be32(static_cast<std::uint32_t>(value.data.size() + 6)).be16(value.type).raw(value.data);
-			w.be32(static_cast<std::uint32_t>(12 + name.size() + v.size())).be32(static_cast<std::uint32_t>(name.size())).raw(name);
+			for (const auto& value : values)
+				v.be32(static_cast<std::uint32_t>(value.data.size() + 6)).be16(value.type).raw(value.data);
+			w.be32(static_cast<std::uint32_t>(12 + name.size() + v.size()))
+				.be32(static_cast<std::uint32_t>(name.size()))
+				.raw(name);
 			w.be32(static_cast<std::uint32_t>(values.size())).raw(v.b);
 		}
 
@@ -432,7 +455,8 @@ namespace
 		return w.b;
 	}
 
-	const bytes xmp_uuid_id = {0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
+	const bytes xmp_uuid_id = {0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+	                           0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC};
 
 	bytes xmp_box(const std::string_view packet)
 	{
@@ -448,7 +472,8 @@ namespace
 		const auto file_type = ftyp(brand, {brand, "iso2", "mp41"}, 512);
 		const auto movie = box("moov", moov_payload);
 		const auto data = box("mdat", media);
-		return moov_last ? join({file_type, box("free", {}), data, movie, trailing}) : join({file_type, movie, data, trailing});
+		return moov_last ? join({file_type, box("free", {}), data, movie, trailing})
+		                 : join({file_type, movie, data, trailing});
 	}
 
 	// A file built from a head, a run of zeros a read cannot tell from media, and a tail: a large file
@@ -456,7 +481,8 @@ namespace
 	class sparse_stream final : public libfiles::stream
 	{
 	public:
-		sparse_stream(bytes head, const std::uint64_t gap, bytes tail) : _head(std::move(head)), _gap(gap), _tail(std::move(tail))
+		sparse_stream(bytes head, const std::uint64_t gap, bytes tail) :
+			_head(std::move(head)), _gap(gap), _tail(std::move(tail))
 		{
 		}
 
@@ -490,7 +516,8 @@ namespace
 		bytes _tail;
 	};
 
-	libfiles::media_scan_result scan_of(const bytes& file, const libfiles::scan_intent intent = libfiles::scan_intent::index)
+	libfiles::media_scan_result scan_of(const bytes& file,
+	                                    const libfiles::scan_intent intent = libfiles::scan_intent::index)
 	{
 		libfiles::reader r(file);
 		return libfiles::scan_media(r, intent);
@@ -502,8 +529,8 @@ namespace
 	{
 		if (!s.success)
 		{
-			if (s.error.empty() || !s.streams.empty() || !s.tags.empty() || !s.xmp.empty() || !s.pictures.empty() || !s.brand.empty() ||
-			    s.duration != 0)
+			if (s.error.empty() || !s.streams.empty() || !s.tags.empty() || !s.xmp.empty() || !s.pictures.empty() ||
+			    !s.brand.empty() || s.duration != 0)
 			{
 				CHECK(!"a scan that failed reported more than its format");
 			}
@@ -514,7 +541,8 @@ namespace
 
 		for (const auto& p : s.pictures)
 		{
-			if (p.location.empty() || p.location.offset > file.size() || p.location.size > file.size() - p.location.offset)
+			if (p.location.empty() || p.location.offset > file.size() ||
+			    p.location.size > file.size() - p.location.offset)
 			{
 				CHECK(!"a picture lies outside the file");
 			}
@@ -522,7 +550,8 @@ namespace
 
 		for (const auto& stream : s.streams)
 		{
-			if (!std::isfinite(stream.duration) || stream.duration < 0 || !std::isfinite(stream.video.frame_rate)) CHECK(!"a stream's time is not a number");
+			if (!std::isfinite(stream.duration) || stream.duration < 0 || !std::isfinite(stream.video.frame_rate))
+				CHECK(!"a stream's time is not a number");
 		}
 
 		if (!std::isfinite(s.duration) || s.duration < 0) CHECK(!"the duration is not a number");
@@ -541,8 +570,8 @@ namespace
 
 		const auto inspected = scan_of(file, libfiles::scan_intent::inspect);
 
-		if (index.success != inspected.success || index.streams.size() != inspected.streams.size() || index.tags.size() != inspected.tags.size() ||
-		    index.xmp != inspected.xmp)
+		if (index.success != inspected.success || index.streams.size() != inspected.streams.size() ||
+		    index.tags.size() != inspected.tags.size() || index.xmp != inspected.xmp)
 		{
 			CHECK(!"an inspection read the file otherwise");
 		}
@@ -556,8 +585,10 @@ namespace
 		for (std::size_t i = 0; i + 8 <= file.size(); ++i)
 		{
 			const auto size = libfiles::detail::load_be32(file.data() + i);
-			const auto printable = std::all_of(file.begin() + static_cast<std::ptrdiff_t>(i + 4), file.begin() + static_cast<std::ptrdiff_t>(i + 8),
-			                                   [](const std::uint8_t c) { return (c >= 0x20 && c < 0x7F) || c == 0xA9; });
+			const auto printable = std::all_of(file.begin() + static_cast<std::ptrdiff_t>(i + 4),
+			                                   file.begin() + static_cast<std::ptrdiff_t>(i + 8),
+			                                   [](const std::uint8_t c)
+			{ return (c >= 0x20 && c < 0x7F) || c == 0xA9; });
 			if (printable && size >= 8 && size <= file.size() - i) found.push_back(i);
 		}
 
@@ -574,7 +605,8 @@ namespace
 		std::set<std::size_t> damage;
 		const auto headers = box_headers(file);
 
-		const auto around = [&file](std::set<std::size_t>& to, const std::size_t at, const std::size_t before, const std::size_t after)
+		const auto around =
+			[&file](std::set<std::size_t>& to, const std::size_t at, const std::size_t before, const std::size_t after)
 		{
 			for (auto i = at > before ? at - before : 0; i <= at + after && i < file.size(); ++i) to.insert(i);
 		};
@@ -596,7 +628,8 @@ namespace
 		}
 
 		std::size_t n = 0;
-		for (const auto cut : cuts) check_scan(bytes(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(cut)), n++ % 8 == 0);
+		for (const auto cut : cuts)
+			check_scan(bytes(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(cut)), n++ % 8 == 0);
 
 		for (const auto i : damage)
 		{
@@ -624,7 +657,8 @@ namespace
 	}
 
 	// Every file a test scans is swept once.
-	libfiles::media_scan_result scan_bytes(const bytes& file, const libfiles::scan_intent intent = libfiles::scan_intent::index,
+	libfiles::media_scan_result scan_bytes(const bytes& file,
+	                                       const libfiles::scan_intent intent = libfiles::scan_intent::index,
 	                                       const bool thorough = false)
 	{
 		static std::set<std::string> swept;
@@ -653,7 +687,8 @@ namespace
 	std::vector<std::string> tag_values(const libfiles::media_scan_result& s, const std::string_view key)
 	{
 		std::vector<std::string> values;
-		for (const auto& t : s.tags) if (t.key == key) values.push_back(t.value);
+		for (const auto& t : s.tags)
+			if (t.key == key) values.push_back(t.value);
 		return values;
 	}
 
@@ -770,13 +805,16 @@ TEST("media mp4 keeps the sample description's rate for AAC whose SBR only its s
 TEST("media mp4 reads QuickTime's sound descriptions")
 {
 	// Version 1, its configuration in a wave box, as QuickTime writes AAC.
-	const auto wave = box("wave", join({box("frma", to_bytes("mp4a")), box("mp4a", bytes(4, 0)), esds(0x40, 48000, aac_48k_mono, true), bytes(8, 0)}));
+	const auto wave = box("wave", join({box("frma", to_bytes("mp4a")), box("mp4a", bytes(4, 0)),
+	                                    esds(0x40, 48000, aac_48k_mono, true), bytes(8, 0)}));
 	auto v1 = audio_track(1);
 	v1.entry = sound("mp4a", 1, 16, 48000, wave, 1);
 	v1.quicktime = true;
 	v1.handler_name = "Apple Sound Media Handler";
 
-	const auto s = scan_bytes(join({ftyp("qt  ", {"qt  "}), box("wide", {}), box("mdat", media), box("moov", join({mvhd(600, 1200), trak(v1)}))}), libfiles::scan_intent::index, true);
+	const auto s = scan_bytes(join({ftyp("qt  ", {"qt  "}), box("wide", {}), box("mdat", media),
+	                                box("moov", join({mvhd(600, 1200), trak(v1)}))}),
+	                          libfiles::scan_intent::index, true);
 	CHECK(s.success);
 	CHECK_STR(s.brand, "qt  ");
 	CHECK_STR(stream_of(s, 0).codec, "aac");
@@ -788,7 +826,8 @@ TEST("media mp4 reads QuickTime's sound descriptions")
 	// Version 2, whose rate is a double and whose channels follow it.
 	auto v2 = audio_track(1);
 	v2.entry = sound_v2("lpcm", 6, 24, 96000.0, 4 | 8);
-	const auto s2 = scan_bytes(join({ftyp("qt  "), box("moov", join({mvhd(600, 1200), trak(v2)})), box("mdat", media)}));
+	const auto s2 = scan_bytes(
+		join({ftyp("qt  "), box("moov", join({mvhd(600, 1200), trak(v2)})), box("mdat", media)}));
 	CHECK(s2.success);
 	CHECK_STR(stream_of(s2, 0).codec, "pcm");
 	CHECK_STR(stream_of(s2, 0).codec_tag, "lpcm");
@@ -810,7 +849,8 @@ TEST("media mp4 reads PCM in each of its forms")
 		bool sweep = false;
 	};
 
-	const auto little = box("wave", join({box("frma", to_bytes("in24")), box("enda", builder().be16(1).b), bytes(4, 0)}));
+	const auto little = box("wave",
+	                        join({box("frma", to_bytes("in24")), box("enda", builder().be16(1).b), bytes(4, 0)}));
 	const pcm_case cases[] = {
 		{sound("twos", 2, 16, 44100), 2, 16, false},
 		{sound("twos", 1, 8, 22050), 1, 8, false},
@@ -851,7 +891,8 @@ TEST("media mp4 names sound QuickTime keeps by its WAVE format tag as WAVE does"
 		std::uint16_t tag;
 	};
 
-	for (const auto& [type, tag] : {wave_case{"ulaw", 7}, wave_case{"alaw", 6}, wave_case{std::string_view("ms\0\x11", 4), 0x11}})
+	for (const auto& [type, tag] :
+	     {wave_case{"ulaw", 7}, wave_case{"alaw", 6}, wave_case{std::string_view("ms\0\x11", 4), 0x11}})
 	{
 		auto t = audio_track(1);
 		t.entry = sound(type, 1, 16, 8000);
@@ -888,7 +929,8 @@ TEST("media mp4 reads the other audio configurations")
 	info.be16(4096).be16(4096).u8(0).be16(0).u8(0).be16(0);
 	info.u8(0x0A).u8(0xC4).u8(0x42).u8(0xF0).zeros(4).zeros(16);
 	auto flac = audio_track(1);
-	flac.entry = sound("fLaC", 2, 16, 44100, full("dfLa", 0, 0, join({builder().u8(0x80).u8(0).u8(0).u8(34).b, info.b})));
+	flac.entry = sound("fLaC", 2, 16, 44100,
+	                   full("dfLa", 0, 0, join({builder().u8(0x80).u8(0).u8(0).u8(34).b, info.b})));
 
 	// ALAC: 24 bits, stereo, 96 kHz.
 	builder alac_config;
@@ -936,8 +978,9 @@ TEST("media mp4 turns and mirrors a picture as its matrices say")
 
 	constexpr std::int32_t one = 0x10000;
 	const turn turns[] = {
-		{{one, 0, 0, one}, 0, false}, {{0, one, -one, 0}, 90, false}, {{-one, 0, 0, -one}, 180, false}, {{0, -one, one, 0}, 270, false},
-		{{-one, 0, 0, one}, 0, true}, {{0, -one, -one, 0}, 90, true}, {{one, 0, 0, -one}, 180, true}, {{0, one, one, 0}, 270, true},
+		{{one, 0, 0, one}, 0, false},    {{0, one, -one, 0}, 90, false}, {{-one, 0, 0, -one}, 180, false},
+		{{0, -one, one, 0}, 270, false}, {{-one, 0, 0, one}, 0, true},   {{0, -one, -one, 0}, 90, true},
+		{{one, 0, 0, -one}, 180, true},  {{0, one, one, 0}, 270, true},
 	};
 
 	for (const auto& t : turns)
@@ -1027,11 +1070,15 @@ TEST("media mp4 reads iTunes metadata")
 	const auto png = join({bytes{0x89, 'P', 'N', 'G'}, bytes(30, 0x50)});
 
 	builder free_form;
-	free_form.raw(full("mean", 0, 0, to_bytes("com.apple.iTunes"))).raw(full("name", 0, 0, to_bytes("ISRC"))).raw(data(1, to_bytes("USABC0901234")));
+	free_form.raw(full("mean", 0, 0, to_bytes("com.apple.iTunes")))
+		.raw(full("name", 0, 0, to_bytes("ISRC")))
+		.raw(data(1, to_bytes("USABC0901234")));
 
 	const std::vector<bytes> items = {
 		text_item("\xA9nam", "Song"),
-		item("\xA9" "ART", {data(2, builder().be16(0xC4).be16('r').be16('t').be16('i').be16('s').be16('t').b)}),
+		item("\xA9"
+	         "ART",
+	         {data(2, builder().be16(0xC4).be16('r').be16('t').be16('i').be16('s').be16('t').b)}),
 		text_item("aART", "Band"),
 		item("trkn", {data(0, {0, 0, 0, 3, 0, 12, 0, 0})}),
 		item("disk", {data(0, {0, 0, 0, 1, 0, 2})}),
@@ -1039,21 +1086,29 @@ TEST("media mp4 reads iTunes metadata")
 		item("tmpo", {data(21, {0, 120})}),
 		item("cpil", {data(21, {1})}),
 		box("stik", {9}),
-		text_item("\xA9" "day", "2009-05-04T10:20:30Z"),
-		item("\xA9" "cmt", {data(1, to_bytes("Bonjour"), packed("fra"))}),
+		text_item("\xA9"
+	              "day",
+	              "2009-05-04T10:20:30Z"),
+		item("\xA9"
+	         "cmt",
+	         {data(1, to_bytes("Bonjour"), packed("fra"))}),
 		box("----", free_form.b),
 		item("covr", {data(13, jpeg), data(14, png)}),
 		item("plID", {data(21, {0, 0, 0, 0, 0, 0, 1, 2})}),
 		item("zzzz", {data(0, {1, 2, 3})}),
 		item("\xA9too", {data(0, to_bytes("Caf\x8E"))}),
-		item("\xA9" "alb", {data(1, to_bytes("Album")), data(1, to_bytes("Second"))}),
+		item("\xA9"
+	         "alb",
+	         {data(1, to_bytes("Album")), data(1, to_bytes("Second"))}),
 	};
 
-	const auto file = iso_file(join({mvhd(1000, 2000), trak(audio_track(1)), box("udta", itunes(items))}), false, "M4A ");
+	const auto file = iso_file(join({mvhd(1000, 2000), trak(audio_track(1)), box("udta", itunes(items))}), false,
+	                           "M4A ");
 	const auto s = scan_bytes(file, libfiles::scan_intent::index, true);
 	CHECK(s.success);
 	CHECK_STR(s.brand, "M4A ");
 
+	// clang-format off
 	CHECK_STR(tag_value(s, "\xC2\xA9nam"), "Song");
 	CHECK_STR(tag_value(s, "\xC2\xA9" "ART"), "\xC3\x84rtist");
 	CHECK_STR(tag_value(s, "aART"), "Band");
@@ -1072,6 +1127,7 @@ TEST("media mp4 reads iTunes metadata")
 	CHECK_STR(tag_value(s, "zzzz"), "binary, 3 bytes");
 	CHECK_STR(tag_value(s, "\xC2\xA9too"), "Caf\xC3\xA9");
 	CHECK(tag_values(s, "\xC2\xA9" "alb") == std::vector<std::string>({"Album", "Second"}));
+	// clang-format on
 	CHECK(find_tag(s, "covr") == nullptr);
 
 	// Cover art is located, not read.
@@ -1103,33 +1159,37 @@ TEST("media mp4 reads iTunes metadata")
 TEST("media mp4 reads QuickTime user data, its languages and its metadata keys")
 {
 	const auto udta = box("udta", join({
-		text_atom("\xA9nam", to_bytes("Caf\x8E"), 1),
-		text_atom("\xA9xyz", to_bytes("+51.5142-000.0985+027.885/"), packed("eng")),
-		text_atom("\xA9mak", to_bytes("Apple"), 0),
-		text_atom("\xA9" "day", to_bytes("2011-03-13T15:13:49+0000"), 0x7FFF),
-		// A text atom too short for its length is its text alone, as 'name' often is.
-		box("name", to_bytes("Movie")),
-		// A camera's binary atom is not text.
-		box("\xA9TSC", {0, 2, 0, 0, 1, 0}),
-		box("free", bytes(16, 0)),
-		bytes(4, 0),
-	}));
+									  text_atom("\xA9nam", to_bytes("Caf\x8E"), 1),
+									  text_atom("\xA9xyz", to_bytes("+51.5142-000.0985+027.885/"), packed("eng")),
+									  text_atom("\xA9mak", to_bytes("Apple"), 0),
+									  text_atom("\xA9"
+	                                            "day",
+	                                            to_bytes("2011-03-13T15:13:49+0000"), 0x7FFF),
+									  // A text atom too short for its length is its text alone, as 'name' often is.
+									  box("name", to_bytes("Movie")),
+									  // A camera's binary atom is not text.
+									  box("\xA9TSC", {0, 2, 0, 0, 1, 0}),
+									  box("free", bytes(16, 0)),
+									  bytes(4, 0),
+								  }));
 
 	const auto artwork = join({bytes{0xFF, 0xD8, 0xFF}, bytes(20, 0x11)});
-	const auto keys = keyed({"com.apple.quicktime.make", "com.apple.quicktime.model", "com.apple.quicktime.creationdate",
-	                         "com.apple.quicktime.location.ISO6709", "com.apple.quicktime.rating.user", "com.apple.quicktime.artwork"},
+	const auto keys = keyed({"com.apple.quicktime.make", "com.apple.quicktime.model",
+	                         "com.apple.quicktime.creationdate", "com.apple.quicktime.location.ISO6709",
+	                         "com.apple.quicktime.rating.user", "com.apple.quicktime.artwork"},
 	                        {
-		                        data(1, to_bytes("Apple"), packed("eng")),
-		                        data(1, to_bytes("iPhone 3GS")),
-		                        data(1, to_bytes("2011-03-13T15:13:49+0100")),
-		                        data(1, to_bytes("+51.5142-000.0985/")),
-		                        data(23, builder().be32(std::bit_cast<std::uint32_t>(0.75f)).b),
-		                        data(13, artwork),
-	                        });
+								data(1, to_bytes("Apple"), packed("eng")),
+								data(1, to_bytes("iPhone 3GS")),
+								data(1, to_bytes("2011-03-13T15:13:49+0100")),
+								data(1, to_bytes("+51.5142-000.0985/")),
+								data(23, builder().be32(std::bit_cast<std::uint32_t>(0.75f)).b),
+								data(13, artwork),
+							});
 
 	auto video = video_track();
 	video.quicktime = true;
-	const auto file = join({ftyp("qt  ", {"qt  "}), box("wide", {}), box("mdat", media), box("moov", join({mvhd(600, 1200, 3382866829u), trak(video), udta, keys}))});
+	const auto file = join({ftyp("qt  ", {"qt  "}), box("wide", {}), box("mdat", media),
+	                        box("moov", join({mvhd(600, 1200, 3382866829u), trak(video), udta, keys}))});
 	const auto s = scan_bytes(file, libfiles::scan_intent::index, true);
 	CHECK(s.success);
 
@@ -1139,7 +1199,9 @@ TEST("media mp4 reads QuickTime user data, its languages and its metadata keys")
 	CHECK_STR(tag_language(s, "\xC2\xA9xyz"), "eng");
 	CHECK_STR(tag_value(s, "\xC2\xA9mak"), "Apple");
 	CHECK_STR(tag_language(s, "\xC2\xA9mak"), "eng");
+	// clang-format off
 	CHECK_STR(tag_language(s, "\xC2\xA9" "day"), "");
+	// clang-format on
 	CHECK_STR(tag_value(s, "name"), "Movie");
 	CHECK(find_tag(s, "\xC2\xA9TSC") == nullptr);
 
@@ -1173,18 +1235,21 @@ TEST("media mp4 reads 3GPP's asset boxes")
 	builder words;
 	words.be16(packed("eng")).u8(2).u8(5).raw("beach").u8(4).raw("dogs");
 
-	const auto udta = box("udta", join({
-		asset("titl", to_bytes("Title")),
-		asset("auth", join({bytes{0xFE, 0xFF}, builder().be16('A').be16('u').be16('t').be16('h').be16(0x00F6).be16('r').b, bytes{0}})),
-		asset("perf", to_bytes("Performer")),
-		asset("gnre", to_bytes("Jazz")),
-		asset("dscp", to_bytes("A description"), packed("fra")),
-		asset("cprt", to_bytes("(c) 2009")),
-		asset("albm", join({to_bytes("Album"), bytes{0, 7}})),
-		full("yrrc", 0, 0, builder().be16(2009).b),
-		full("loci", 0, 0, place.b),
-		full("kywd", 0, 0, words.b),
-	}));
+	const auto udta = box(
+		"udta",
+		join({
+			asset("titl", to_bytes("Title")),
+			asset("auth", join({bytes{0xFE, 0xFF},
+	                            builder().be16('A').be16('u').be16('t').be16('h').be16(0x00F6).be16('r').b, bytes{0}})),
+			asset("perf", to_bytes("Performer")),
+			asset("gnre", to_bytes("Jazz")),
+			asset("dscp", to_bytes("A description"), packed("fra")),
+			asset("cprt", to_bytes("(c) 2009")),
+			asset("albm", join({to_bytes("Album"), bytes{0, 7}})),
+			full("yrrc", 0, 0, builder().be16(2009).b),
+			full("loci", 0, 0, place.b),
+			full("kywd", 0, 0, words.b),
+		}));
 
 	const auto s = scan_bytes(iso_file(join({mvhd(1000, 2000), trak(audio_track(1)), udta}), false, "3gp6"));
 	CHECK(s.success);
@@ -1226,9 +1291,11 @@ TEST("media mp4 reads the tags and rating Windows keeps in the Xtra box")
 	});
 
 	// An entry that runs past the box ends the entries, keeping those before it.
-	const auto damaged = box("Xtra", join({bytes(entries.begin() + 8, entries.end()), builder().be32(100).be32(4).raw("WM/X").be32(1).b}));
+	const auto damaged = box("Xtra", join({bytes(entries.begin() + 8, entries.end()),
+	                                       builder().be32(100).be32(4).raw("WM/X").be32(1).b}));
 
-	const auto s = scan_bytes(iso_file(join({mvhd(1000, 2000), trak(video_track()), box("udta", damaged)})), libfiles::scan_intent::index, true);
+	const auto s = scan_bytes(iso_file(join({mvhd(1000, 2000), trak(video_track()), box("udta", damaged)})),
+	                          libfiles::scan_intent::index, true);
 	CHECK(s.success);
 	CHECK_STR(tag_value(s, "WM/SharedUserRating"), "75");
 	CHECK(tag_values(s, "WM/Category") == std::vector<std::string>({"beach", "Zurich"}));
@@ -1277,13 +1344,19 @@ TEST("media mp4 dates a movie by its header until a tag dates it")
 	CHECK_EQ(scan_of(iso_file(join({mvhd(1000, 2000, 3376728829u), trak(video_track())}))).properties.year, 2011);
 
 	// A tag's date replaces the header's, wherever the tag lies.
-	const auto after = scan_bytes(iso_file(join({mvhd(1000, 2000, 3376728829u), trak(video_track()), box("udta", itunes({text_item("\xA9" "day", "1999-12-31")}))})));
+	const auto after = scan_bytes(iso_file(join({mvhd(1000, 2000, 3376728829u), trak(video_track()),
+	                                             box("udta", itunes({text_item("\xA9"
+	                                                                           "day",
+	                                                                           "1999-12-31")}))})));
 	CHECK_EQ(after.properties.created.year, 1999);
 	CHECK_EQ(after.properties.created.month, 12);
 	CHECK(!after.properties.created.has_time);
 	CHECK_EQ(after.properties.year, 1999);
 
-	const auto before = scan_of(iso_file(join({box("udta", itunes({text_item("\xA9" "day", "1999-12-31")})), mvhd(1000, 2000, 3376728829u), trak(video_track())})));
+	const auto before = scan_of(iso_file(join({box("udta", itunes({text_item("\xA9"
+	                                                                         "day",
+	                                                                         "1999-12-31")})),
+	                                           mvhd(1000, 2000, 3376728829u), trak(video_track())})));
 	CHECK_EQ(before.properties.created.year, 1999);
 	CHECK_EQ(before.properties.year, 1999);
 }
@@ -1293,7 +1366,9 @@ TEST("media mp4 reads the packet read_packet reads")
 	const auto movie = join({mvhd(1000, 2000), trak(video_track())});
 	const auto quicktime_movie = [&movie](const std::string_view packet)
 	{
-		return box("moov", join({movie, box("udta", join({text_atom("\xA9nam", to_bytes("x"), 0), box("XMP_", to_bytes(packet))}))}));
+		return box("moov",
+		           join({movie,
+		                 box("udta", join({text_atom("\xA9nam", to_bytes("x"), 0), box("XMP_", to_bytes(packet))}))}));
 	};
 
 	struct packet_case
@@ -1304,7 +1379,9 @@ TEST("media mp4 reads the packet read_packet reads")
 
 	const packet_case cases[] = {
 		// An ISO file's last XMP uuid box, after the movie or before it.
-		{join({ftyp("isom"), box("moov", movie), box("mdat", media), xmp_box("<first/>"), box("free", {}), xmp_box("<last/>")}), "<last/>"},
+		{join({ftyp("isom"), box("moov", movie), box("mdat", media), xmp_box("<first/>"), box("free", {}),
+	           xmp_box("<last/>")}),
+	     "<last/>"},
 		{join({ftyp("isom"), xmp_box("<before/>"), box("moov", movie), box("mdat", media)}), "<before/>"},
 		// A QuickTime file prefers its movie's, an ISO file its uuid box; each takes the other's alone.
 		{join({ftyp("qt  "), quicktime_movie("<movie/>"), box("mdat", media), xmp_box("<uuid/>")}), "<movie/>"},
@@ -1372,7 +1449,8 @@ TEST("media mp4 reads a movie wherever it lies and however its boxes are sized")
 
 namespace
 {
-	bytes sidx(const std::uint32_t id, const std::uint32_t timescale, const std::uint32_t earliest, const std::vector<std::uint32_t>& durations)
+	bytes sidx(const std::uint32_t id, const std::uint32_t timescale, const std::uint32_t earliest,
+	           const std::vector<std::uint32_t>& durations)
 	{
 		builder w;
 		w.be32(id).be32(timescale).be32(earliest).be32(0).be16(0).be16(static_cast<unsigned>(durations.size()));
@@ -1397,15 +1475,17 @@ TEST("media mp4 times a fragmented movie by mehd, else its segment indexes, else
 	empty.times = {};
 	empty.samples = 0;
 
-	const auto stated = scan_bytes(join({ftyp("iso6"), box("moov", join({mvhd(1000, 0), trak(empty), mvex(true)})), fragment, fragment}));
+	const auto stated = scan_bytes(
+		join({ftyp("iso6"), box("moov", join({mvhd(1000, 0), trak(empty), mvex(true)})), fragment, fragment}));
 	CHECK(stated.success);
 	CHECK(near(stated.duration, 90.0));
 	CHECK(near(stream_of(stated, 0).duration, 0.0));
 	// Without samples to count, the frame rate is the default duration's.
 	CHECK(near(stream_of(stated, 0).video.frame_rate, 25.0));
 
-	const auto indexed = scan_bytes(join({ftyp("iso6"), box("moov", join({mvhd(1000, 0), trak(empty), mvex(false)})),
-	                                      sidx(1, 12800, 0, {25600, 25600}), fragment, sidx(1, 12800, 51200, {76800}), fragment}));
+	const auto indexed = scan_bytes(
+		join({ftyp("iso6"), box("moov", join({mvhd(1000, 0), trak(empty), mvex(false)})),
+	          sidx(1, 12800, 0, {25600, 25600}), fragment, sidx(1, 12800, 51200, {76800}), fragment}));
 	CHECK(indexed.success);
 	CHECK(near(indexed.duration, 10.0));
 	CHECK(near(stream_of(indexed, 0).duration, 10.0));
@@ -1413,11 +1493,13 @@ TEST("media mp4 times a fragmented movie by mehd, else its segment indexes, else
 	// Neither: the movie lasts as long as its longest track says.
 	auto stated_track = empty;
 	stated_track.duration = 38400;
-	const auto tracks = scan_of(join({ftyp("iso6"), box("moov", join({mvhd(1000, 1000), trak(stated_track), mvex(false)})), fragment}));
+	const auto tracks = scan_of(
+		join({ftyp("iso6"), box("moov", join({mvhd(1000, 1000), trak(stated_track), mvex(false)})), fragment}));
 	CHECK(near(tracks.duration, 3.0));
 
 	// A movie that may have fragments but has none is timed by its header.
-	const auto whole = scan_of(join({ftyp("isom"), box("moov", join({mvhd(1000, 3000), trak(video_track()), mvex(true)})), box("mdat", media)}));
+	const auto whole = scan_of(join(
+		{ftyp("isom"), box("moov", join({mvhd(1000, 3000), trak(video_track()), mvex(true)})), box("mdat", media)}));
 	CHECK(near(whole.duration, 3.0));
 }
 
@@ -1428,7 +1510,8 @@ TEST("media mp4 knows chapter tracks, track names and roles")
 
 	auto audio = audio_track();
 	audio.flags = 2;
-	audio.after = box("udta", join({box("name", to_bytes("Stereo")), full("kind", 0, 0, join({lit("urn:mpeg:dash:role:2011\0commentary"), bytes{0}}))}));
+	audio.after = box("udta", join({box("name", to_bytes("Stereo")),
+	                                full("kind", 0, 0, join({lit("urn:mpeg:dash:role:2011\0commentary"), bytes{0}}))}));
 
 	track_parts chapters;
 	chapters.id = 3;
@@ -1444,7 +1527,8 @@ TEST("media mp4 knows chapter tracks, track names and roles")
 	subtitles.entry = box("tx3g", bytes(38, 0));
 	subtitles.after = box("udta", text_atom("\xA9nam", to_bytes("English"), packed("eng")));
 
-	const auto s = scan_bytes(iso_file(join({mvhd(1000, 2000), trak(video), trak(audio), trak(chapters), trak(subtitles)})));
+	const auto s = scan_bytes(
+		iso_file(join({mvhd(1000, 2000), trak(video), trak(audio), trak(chapters), trak(subtitles)})));
 	CHECK(s.success);
 	CHECK_EQ(s.streams.size(), std::size_t{4});
 	if (s.streams.size() != 4) return;
@@ -1452,7 +1536,8 @@ TEST("media mp4 knows chapter tracks, track names and roles")
 	CHECK_STR(stream_of(s, 1).title, "Stereo");
 	CHECK(stream_of(s, 1).commentary);
 	CHECK(!stream_of(s, 1).is_default);
-	CHECK(stream_of(s, 1).tags.size() == 1 && stream_of(s, 1).tags[0].key == "name" && stream_of(s, 1).tags[0].value == "Stereo");
+	CHECK(stream_of(s, 1).tags.size() == 1 && stream_of(s, 1).tags[0].key == "name" &&
+	      stream_of(s, 1).tags[0].value == "Stereo");
 
 	CHECK(stream_of(s, 2).kind == media_stream_kind::data);
 	CHECK_STR(stream_of(s, 2).codec, "mov_text");
@@ -1485,7 +1570,12 @@ namespace
 		}
 
 		builder w;
-		w.u8(0x78).u8(0x01).u8(1).le16(static_cast<unsigned>(data.size())).le16(static_cast<unsigned>(~data.size() & 0xFFFF)).raw(data);
+		w.u8(0x78)
+			.u8(0x01)
+			.u8(1)
+			.le16(static_cast<unsigned>(data.size()))
+			.le16(static_cast<unsigned>(~data.size() & 0xFFFF))
+			.raw(data);
 		w.be32(b << 16 | a);
 		return w.b;
 	}
@@ -1494,8 +1584,13 @@ namespace
 TEST("media mp4 reads a compressed movie")
 {
 	const auto cover = join({bytes{0xFF, 0xD8, 0xFF}, bytes(20, 0x11)});
-	const auto inner = box("moov", join({mvhd(1000, 2000, 3376728829u), trak(video_track()), box("udta", itunes({text_item("\xA9nam", "Packed"), item("covr", {data(13, cover)})}))}));
-	const auto compressed = box("cmov", join({box("dcom", to_bytes("zlib")), box("cmvd", join({builder().be32(static_cast<std::uint32_t>(inner.size())).b, zlib_stored(inner)}))}));
+	const auto inner = box("moov", join({mvhd(1000, 2000, 3376728829u), trak(video_track()),
+	                                     box("udta", itunes({text_item("\xA9nam", "Packed"),
+	                                                         item("covr", {data(13, cover)})}))}));
+	const auto compressed = box("cmov",
+	                            join({box("dcom", to_bytes("zlib")),
+	                                  box("cmvd", join({builder().be32(static_cast<std::uint32_t>(inner.size())).b,
+	                                                    zlib_stored(inner)}))}));
 
 	const auto s = scan_bytes(join({ftyp("qt  "), box("moov", compressed), box("mdat", media)}));
 	CHECK(s.success);
@@ -1510,7 +1605,8 @@ TEST("media mp4 reads a compressed movie")
 
 TEST("media mp4 reads the format an encrypted sample description stands for")
 {
-	const auto scheme = box("sinf", join({box("frma", to_bytes("avc1")), full("schm", 0, 0, builder().raw("cenc").be32(0x10000).b)}));
+	const auto scheme = box("sinf", join({box("frma", to_bytes("avc1")),
+	                                      full("schm", 0, 0, builder().raw("cenc").be32(0x10000).b)}));
 	auto video = video_track();
 	video.entry = visual("encv", 640, 480, join({box("avcC", avc_config), scheme}));
 
@@ -1564,7 +1660,8 @@ TEST("media mp4 reads the counts of sample tables but never their entries")
 	video.times = {{100000, 512}};
 	video.duration = 100000ull * 512;
 
-	const auto file = iso_file(join({mvhd(1000, 4000000), trak(video), trak(audio_track()), box("udta", itunes({text_item("\xA9nam", "Long")}))}));
+	const auto file = iso_file(join(
+		{mvhd(1000, 4000000), trak(video), trak(audio_track()), box("udta", itunes({text_item("\xA9nam", "Long")}))}));
 	libfiles::memory_stream source(file);
 	libfiles::reader r(source);
 	const auto s = libfiles::scan_media(r);
@@ -1578,7 +1675,8 @@ TEST("media mp4 reads the counts of sample tables but never their entries")
 
 TEST("media mp4 describes its boxes and tracks when asked")
 {
-	const auto file = iso_file(join({mvhd(1000, 2000), trak(video_track()), trak(audio_track())}), true, "isom", xmp_box("<x/>"));
+	const auto file = iso_file(join({mvhd(1000, 2000), trak(video_track()), trak(audio_track())}), true, "isom",
+	                           xmp_box("<x/>"));
 	const auto s = scan_bytes(file, libfiles::scan_intent::inspect);
 	CHECK(s.success);
 
@@ -1595,8 +1693,10 @@ TEST("media mp4 describes its boxes and tracks when asked")
 	CHECK(row("Compatible brands") && row("Compatible brands")->value == "isom, iso2, mp41");
 	CHECK(row("moov") && row("moov")->value.starts_with("movie, offset "));
 	CHECK(row("uuid") && row("uuid")->value.starts_with("XMP packet, "));
-	CHECK(row("Track 1") && row("Track 1")->value.starts_with("vide handler \"VideoHandler\", sample description avc1"));
-	CHECK(row("Track 2") && row("Track 2")->value.starts_with("soun handler \"SoundHandler\", sample description mp4a"));
+	CHECK(row("Track 1") &&
+	      row("Track 1")->value.starts_with("vide handler \"VideoHandler\", sample description avc1"));
+	CHECK(row("Track 2") &&
+	      row("Track 2")->value.starts_with("soun handler \"SoundHandler\", sample description mp4a"));
 
 	CHECK(scan_of(file).structure.empty());
 }
@@ -1661,7 +1761,9 @@ TEST("media mp4 reads boxes as the writer does, which refuses one smaller than i
 {
 	// The movie's user data holds a box whose 64-bit size, 8, is less than its own sixteen-byte header.
 	const auto small = builder().be32(1).raw("XMP_").be32(0).be32(8).b;
-	const auto file = join({ftyp("qt  "), box("moov", join({mvhd(1000, 2000), trak(video_track()), box("udta", small)})), box("mdat", media)});
+	const auto file = join({ftyp("qt  "),
+	                        box("moov", join({mvhd(1000, 2000), trak(video_track()), box("udta", small)})),
+	                        box("mdat", media)});
 
 	libfiles::reader r(file);
 	CHECK(!libfiles::read_packet(r).readable);

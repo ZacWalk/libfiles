@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The XML layer of the XMP parser. Decodes UTF-8, UTF-16 and UTF-32 input, repairs 8-bit
 // text the way the XMP Toolkit does (Windows-1252 bytes and ASCII controls), and builds an XML tree
@@ -76,7 +76,8 @@ namespace libfiles::xmp::detail
 				const auto big = encoding == input_encoding::utf16_big;
 				const auto unit_at = [b, big](const std::size_t i) -> char32_t
 				{
-					return big ? static_cast<char32_t>((b[i] << 8) | b[i + 1]) : static_cast<char32_t>(b[i] | (b[i + 1] << 8));
+					return big ? static_cast<char32_t>((b[i] << 8) | b[i + 1])
+					           : static_cast<char32_t>(b[i] | (b[i + 1] << 8));
 				};
 
 				for (std::size_t i = 0; i + 1 < size; i += 2)
@@ -105,9 +106,10 @@ namespace libfiles::xmp::detail
 
 				for (std::size_t i = 0; i + 3 < size; i += 4)
 				{
-					const auto cp = big
-						                ? static_cast<char32_t>((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3])
-						                : static_cast<char32_t>(b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24));
+					const auto cp = big ? static_cast<char32_t>((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) |
+					                                            b[i + 3])
+					                    : static_cast<char32_t>(b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) |
+					                                            (b[i + 3] << 24));
 					if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) break;
 					append_utf8(out, cp);
 				}
@@ -131,7 +133,8 @@ namespace libfiles::xmp::detail
 			if (start >= end || (*start & 0xC0) != 0xC0) return 0;
 
 			auto count = 2;
-			for (auto lead = static_cast<unsigned char>(*start << 2); (lead & 0x80) != 0; lead = static_cast<unsigned char>(lead << 1))
+			for (auto lead = static_cast<unsigned char>(*start << 2); (lead & 0x80) != 0;
+			     lead = static_cast<unsigned char>(lead << 1))
 			{
 				++count;
 			}
@@ -347,7 +350,7 @@ namespace libfiles::xmp::detail
 		struct open_element
 		{
 			xml_node* node = nullptr;
-			std::string qname; // As written, to match the end tag.
+			std::string qname;        // As written, to match the end tag.
 			std::size_t bindings = 0; // Namespace bindings this element declared.
 		};
 
@@ -474,7 +477,8 @@ namespace libfiles::xmp::detail
 				while (p < _text.size() && (is_name_char(static_cast<unsigned char>(_text[p])) || _text[p] == ':')) ++p;
 				const auto target = _text.substr(target_start, p - target_start);
 
-				if (target.size() == 3 && (target[0] | 0x20) == 'x' && (target[1] | 0x20) == 'm' && (target[2] | 0x20) == 'l')
+				if (target.size() == 3 && (target[0] | 0x20) == 'x' && (target[1] | 0x20) == 'm' &&
+				    (target[2] | 0x20) == 'l')
 				{
 					return false; // A reserved target, or a misplaced XML declaration.
 				}
@@ -741,7 +745,8 @@ namespace libfiles::xmp::detail
 
 					if (!attr.value.empty())
 					{
-						register_namespace(fix_dc_uri(attr.value), prefix.empty() ? std::string_view("_dflt_") : prefix);
+						register_namespace(fix_dc_uri(attr.value),
+						                   prefix.empty() ? std::string_view("_dflt_") : prefix);
 					}
 				}
 
@@ -970,7 +975,8 @@ namespace libfiles::xmp::detail
 					else
 					{
 						const auto next = _text.find_first_of("<&", _pos);
-						const auto run = _text.substr(_pos, next == std::string_view::npos ? std::string_view::npos : next - _pos);
+						const auto run = _text.substr(_pos, next == std::string_view::npos ? std::string_view::npos
+						                                                                   : next - _pos);
 						if (run.find("]]>") != std::string_view::npos) return fail_with_text();
 						append_text(run);
 						_pos += run.size();

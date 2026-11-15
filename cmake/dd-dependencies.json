@@ -46,6 +46,11 @@
       "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
       "method": "application"
     },
+    "aom": {
+      "url": "https://storage.googleapis.com/aom-releases/libaom-3.15.1.tar.gz",
+      "sha256": "8ca0c52746174603500f0adb6f2a215d69c9ca2aab2acb3caa06fb791d8d01bf",
+      "method": "application"
+    },
     "libheif": {
       "url": "https://github.com/strukturag/libheif/releases/download/v1.23.7/libheif-1.23.7.tar.gz",
       "sha256": "f7483e818503ea6224c8863e4a56ac02c7089021a98472c811c12aa19faf2475",
@@ -62,13 +67,13 @@
       "method": "application"
     },
     "libjxl": {
-      "url": "https://github.com/libjxl/libjxl/archive/refs/tags/v0.12.0.tar.gz",
-      "sha256": "03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992",
+      "url": "https://github.com/libjxl/libjxl/archive/refs/tags/v0.13.0.tar.gz",
+      "sha256": "24d18c9af2d1f5a17730b3f8d3f70a5c16e5ac303f5d9d5fe9dc00cf7ca82af2",
       "method": "application"
     },
     "skcms": {
       "url": "https://skia.googlesource.com/skcms",
-      "commit": "f0bbebbebb50851813e4f11d3d4b9edd2878a056",
+      "commit": "074a8d439d75df5bff2746458306f7760ee74dd8",
       "method": "application"
     },
     "libraw": {
@@ -77,8 +82,8 @@
       "method": "application"
     },
     "dngsdk": {
-      "url": "https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2768_20261013.zip",
-      "sha256": "c1d3a545ed45b150e59af2e6aa0695c1551f0e2bed34ad87436898a05194d2b1",
+      "url": "https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2802_20261110.zip",
+      "sha256": "e9bb04e956da3605d8ef4f821bdb979a250c22546b0332b7f81a93b11da7cceb",
       "method": "application"
     }
   }

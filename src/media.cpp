@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The media scan's front: telling the containers apart, dispatching to each one's scanner,
 // and what every scan finishes with - the duration and bit rate, whether the scan is complete, and the
@@ -24,12 +24,13 @@ namespace libfiles
 		constexpr std::uint32_t le_tag(const char (&s)[5])
 		{
 			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
 		}
 
-		bool is_transport_stream(const std::span<const std::uint8_t> head, const std::size_t first, const std::size_t packet)
+		bool is_transport_stream(const std::span<const std::uint8_t> head, const std::size_t first,
+		                         const std::size_t packet)
 		{
 			for (auto i = 0; i < 3; ++i)
 			{
@@ -55,7 +56,8 @@ namespace libfiles
 			const auto id = detail::load_le32(head.data());
 			const auto type = detail::load_le32(head.data() + 8);
 
-			if ((id == le_tag("RIFF") || id == le_tag("RF64") || id == le_tag("BW64")) && type == le_tag("WAVE")) return media_format::wav;
+			if ((id == le_tag("RIFF") || id == le_tag("RF64") || id == le_tag("BW64")) && type == le_tag("WAVE"))
+				return media_format::wav;
 			if (id == le_tag("RIFF") && type == le_tag("AVI ")) return media_format::avi;
 			if (id == le_tag("FORM") && (type == le_tag("AIFF") || type == le_tag("AIFC"))) return media_format::aiff;
 		}
@@ -105,7 +107,9 @@ namespace libfiles
 
 			std::uint8_t head[detail::id3_header_size];
 			r.read(0, head, sizeof(head));
-			const auto tag_size = format == media_format::mpeg_audio || format == media_format::flac ? detail::leading_id3_size(head) : 0;
+			const auto tag_size = format == media_format::mpeg_audio || format == media_format::flac
+			                          ? detail::leading_id3_size(head)
+			                          : 0;
 
 			if (tag_size != 0)
 			{
@@ -114,33 +118,19 @@ namespace libfiles
 
 			switch (format)
 			{
-			case media_format::mp4: detail::scan_mp4_media(r, intent, result);
-				break;
-			case media_format::matroska: detail::scan_matroska_media(r, intent, budget, result);
-				break;
-			case media_format::avi: detail::scan_avi_media(r, intent, result);
-				break;
-			case media_format::wav: detail::scan_wav_media(r, intent, budget, result);
-				break;
-			case media_format::aiff: detail::scan_aiff_media(r, intent, budget, result);
-				break;
-			case media_format::asf: detail::scan_asf_media(r, intent, result);
-				break;
-			case media_format::mpeg_audio: detail::scan_mpeg_audio_media(r, intent, tag_size, budget, result);
-				break;
-			case media_format::flac: detail::scan_flac_media(r, intent, tag_size, result);
-				break;
-			case media_format::ogg: detail::scan_ogg_media(r, intent, result);
-				break;
-			case media_format::flv: detail::scan_flv_media(r, intent, result);
-				break;
-			case media_format::mpeg_ts: detail::scan_mpeg_ts_media(r, intent, result);
-				break;
-			case media_format::mpeg_ps: detail::scan_mpeg_ps_media(r, intent, result);
-				break;
-			case media_format::unknown:
-				result.error = "the file is not audio or video libfiles reads";
-				return result;
+			case media_format::mp4: detail::scan_mp4_media(r, intent, result); break;
+			case media_format::matroska: detail::scan_matroska_media(r, intent, budget, result); break;
+			case media_format::avi: detail::scan_avi_media(r, intent, result); break;
+			case media_format::wav: detail::scan_wav_media(r, intent, budget, result); break;
+			case media_format::aiff: detail::scan_aiff_media(r, intent, budget, result); break;
+			case media_format::asf: detail::scan_asf_media(r, intent, result); break;
+			case media_format::mpeg_audio: detail::scan_mpeg_audio_media(r, intent, tag_size, budget, result); break;
+			case media_format::flac: detail::scan_flac_media(r, intent, tag_size, result); break;
+			case media_format::ogg: detail::scan_ogg_media(r, intent, result); break;
+			case media_format::flv: detail::scan_flv_media(r, intent, result); break;
+			case media_format::mpeg_ts: detail::scan_mpeg_ts_media(r, intent, result); break;
+			case media_format::mpeg_ps: detail::scan_mpeg_ps_media(r, intent, result); break;
+			case media_format::unknown: result.error = "the file is not audio or video libfiles reads"; return result;
 			}
 
 			detail::finish_media_scan(result, r.size());
@@ -176,10 +166,10 @@ namespace libfiles::detail
 
 	std::string fourcc_text(const std::uint32_t little_endian_fourcc)
 	{
-		const std::uint8_t c[4] = {
-			static_cast<std::uint8_t>(little_endian_fourcc), static_cast<std::uint8_t>(little_endian_fourcc >> 8),
-			static_cast<std::uint8_t>(little_endian_fourcc >> 16), static_cast<std::uint8_t>(little_endian_fourcc >> 24)
-		};
+		const std::uint8_t c[4] = {static_cast<std::uint8_t>(little_endian_fourcc),
+		                           static_cast<std::uint8_t>(little_endian_fourcc >> 8),
+		                           static_cast<std::uint8_t>(little_endian_fourcc >> 16),
+		                           static_cast<std::uint8_t>(little_endian_fourcc >> 24)};
 
 		if (std::ranges::all_of(c, printable)) return {reinterpret_cast<const char*>(c), 4};
 		return hex32(little_endian_fourcc);
@@ -187,13 +177,14 @@ namespace libfiles::detail
 
 	std::string box_type_text(const std::uint32_t big_endian_type)
 	{
-		const std::uint8_t c[4] = {
-			static_cast<std::uint8_t>(big_endian_type >> 24), static_cast<std::uint8_t>(big_endian_type >> 16),
-			static_cast<std::uint8_t>(big_endian_type >> 8), static_cast<std::uint8_t>(big_endian_type)
-		};
+		const std::uint8_t c[4] = {static_cast<std::uint8_t>(big_endian_type >> 24),
+		                           static_cast<std::uint8_t>(big_endian_type >> 16),
+		                           static_cast<std::uint8_t>(big_endian_type >> 8),
+		                           static_cast<std::uint8_t>(big_endian_type)};
 
 		// QuickTime and iTunes name their text atoms with a leading copyright sign, 0xA9 in Mac Roman.
-		if (!std::ranges::all_of(c, [](const std::uint8_t b) { return printable(b) || b == 0xA9; })) return hex32(big_endian_type);
+		if (!std::ranges::all_of(c, [](const std::uint8_t b) { return printable(b) || b == 0xA9; }))
+			return hex32(big_endian_type);
 
 		std::string out;
 		for (const auto b : c) append_utf8(out, b == 0xA9 ? U'\u00A9' : static_cast<char32_t>(b));

@@ -1,17 +1,21 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Purpose: Decoding a PNG with libpng into memory the caller provides, as B8G8R8A8: every colour type
-// and bit depth brought to 8 bits a channel with an alpha channel - opaque where the file has none -
-// and corrected for an sRGB display when the file gives its gamma and no sRGB chunk. Moved from
-// Diffractor's loader unchanged, call for call.
+// Purpose: Decoding a PNG with libpng into memory the caller provides: as B8G8R8A8, every colour type and bit
+// depth brought to 8 bits a channel with an alpha channel - opaque where the file has none - and corrected
+// for an sRGB display when the file gives its gamma and no sRGB chunk, or an iCCP profile decode() maps; or,
+// for a 16-bit PNG and a caller that takes sixteen bits, as R16G16B16A16. A PNG whose cICP chunk names PQ or
+// HLG is an HDR still, mapped to SDR as hdr_internal.h describes, or kept as its signal, at sixteen bits, for a
+// caller that keeps HDR.
 
 #include "decode_internal.h"
 #include "document_internal.h"
+#include "hdr_internal.h"
 #include "scan_internal.h"
 
 #include "libfiles/exif.h"
+#include "libfiles/icc.h"
 #include "libfiles/scan.h"
 
 #include <png.h>
@@ -22,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,7 +60,8 @@ namespace libfiles::detail
 			auto& source = *static_cast<png_source*>(png_get_error_ptr(png));
 			if (source.jump)
 			{
-				std::snprintf(source.message, sizeof(source.message), "%s", message && *message ? message : "libpng failed");
+				std::snprintf(source.message, sizeof(source.message), "%s",
+				              message && *message ? message : "libpng failed");
 				std::longjmp(*source.jump, 1);
 			}
 			throw png_failure{message && *message ? message : "libpng failed"};
@@ -132,11 +138,24 @@ namespace libfiles::detail
 			png_reader& operator=(const png_reader&) = delete;
 		};
 
+		// The file has an iCCP profile, and decode() is to map the colours it describes to sRGB.
+		bool mapped_profile(const png_reader& p)
+		{
+			png_charp name = nullptr;
+			int compression = 0;
+			png_bytep profile = nullptr;
+			png_uint_32 length = 0;
+
+			return png_get_iCCP(p.png, p.info, &name, &compression, &profile, &length) != 0 && profile && length > 0 &&
+			       icc_maps_to_srgb({profile, length});
+		}
+
 		// Everything libpng reads, in a function with nothing of its own to destroy: libpng's errors are
 		// thrown through its C frames, which a compiler told that C functions never throw need not unwind
 		// a caller's objects across. The rows and the reader live in decode_png, which catches.
-		void read_image(png_reader& p, png_source& source, image_sink& sink, frame_info& frame,
-		                std::vector<png_bytep>& rows, decode_result& result)
+		void read_image(png_reader& p, png_source& source, image_sink& sink, const decode_options& options,
+		                frame_info& frame, std::vector<png_bytep>& rows, std::vector<std::uint8_t>& signal,
+		                std::optional<hdr_mapping>& mapping, decode_result& result)
 		{
 			png_set_read_fn(p.png, &source, on_read);
 			png_set_sig_bytes(p.png, sizeof(png_signature));
@@ -146,11 +165,54 @@ namespace libfiles::detail
 			int bit_depth = 0, color_type = 0;
 			png_get_IHDR(p.png, p.info, &width, &height, &bit_depth, &color_type, nullptr, nullptr, nullptr);
 
+			// A cICP chunk naming PQ or HLG makes the PNG an HDR still, which is mapped to SDR, or kept as its signal
+			// for a caller that keeps HDR. It takes precedence over gAMA, as the PNG specification has it.
+			std::optional<hdr_description> hdr;
+			png_byte primaries = 0, transfer = 0, matrix = 0, full_range = 0;
+
+			if (png_get_cICP(p.png, p.info, &primaries, &transfer, &matrix, &full_range) != 0)
+			{
+				if (const auto hdr_transfer = hdr_transfer_of(transfer))
+				{
+					hdr_description described;
+					described.transfer = *hdr_transfer;
+					described.colour_primaries = primaries;
+					// Primaries it does not name are taken as BT.709's, as they always were.
+					described.primaries = chromaticities_of(primaries).value_or(chromaticities{});
+
+					double max_cll = 0.0, max_fall = 0.0;
+					double wx = 0, wy = 0, rx = 0, ry = 0, gx = 0, gy = 0, bx = 0, by = 0, max_lum = 0, min_lum = 0;
+
+					if (png_get_cLLI(p.png, p.info, &max_cll, &max_fall) != 0)
+					{
+						described.max_cll = max_cll;
+						described.max_fall = max_fall;
+					}
+
+					if (png_get_mDCV(p.png, p.info, &wx, &wy, &rx, &ry, &gx, &gy, &bx, &by, &max_lum, &min_lum) != 0)
+					{
+						described.mastering = hdr_description::mastering_display{{rx, ry, gx, gy, bx, by, wx, wy},
+						                                                         max_lum,
+						                                                         min_lum};
+					}
+
+					hdr = described;
+				}
+			}
+
+			const auto has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0 ||
+			                       png_get_valid(p.png, p.info, PNG_INFO_tRNS) != 0;
+			const auto keep = hdr && options.keep_hdr;
+			const auto wide = (bit_depth == 16 && options.allow_16bit) || keep;
+
 			frame.source_width = width;
 			frame.source_height = height;
 			frame.width = width;
 			frame.height = height;
-			frame.format = pixel_format::bgra8;
+			// Bytes come as B8G8R8A8 whether or not the file has alpha, as they always have.
+			frame.format = wide ? output_format(16, has_alpha, options, keep) : pixel_format::bgra8;
+			frame.tone_mapped = hdr && !keep;
+			frame.hdr = hdr;
 
 			// Asked as soon as the header has given the size, before anything more is read: a caller that
 			// cannot afford the image refuses it from the header alone.
@@ -163,15 +225,27 @@ namespace libfiles::detail
 				return;
 			}
 
-			if (bit_depth == 16)
+			// Sixteen bits are read where they are kept or mapped; otherwise the samples come down to bytes.
+			const auto read_wide = wide || hdr;
+
+			if (read_wide)
+			{
+				if (bit_depth < 16) png_set_expand_16(p.png);
+				png_set_swap(p.png);
+			}
+			else if (bit_depth == 16)
+			{
 				png_set_scale_16(p.png);
+			}
 
 			// A PNG that declares its own transfer function has to be converted for an sRGB display, or it
-			// shows washed out or over-contrasted. Without gAMA the file is already taken to be sRGB.
+			// shows washed out or over-contrasted. Without gAMA the file is already taken to be sRGB. An iCCP
+			// profile decode() is to map takes precedence over gAMA, as the PNG specification has it.
 			double file_gamma = 0.0;
 
-			if (png_get_valid(p.png, p.info, PNG_INFO_sRGB) == 0 &&
-				png_get_gAMA(p.png, p.info, &file_gamma) != 0 && file_gamma > 0.0)
+			if (!hdr && png_get_valid(p.png, p.info, PNG_INFO_sRGB) == 0 &&
+			    !(options.map_to_srgb && mapped_profile(p)) && png_get_gAMA(p.png, p.info, &file_gamma) != 0 &&
+			    file_gamma > 0.0)
 			{
 				png_set_gamma(p.png, 2.2, file_gamma);
 			}
@@ -197,37 +271,51 @@ namespace libfiles::detail
 			}
 
 			// The filler is a fourth channel for a colour type without alpha, so every image comes out as
-			// four bytes a pixel.
+			// four channels a pixel.
 			if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_RGB ||
-				color_type == PNG_COLOR_TYPE_PALETTE)
+			    color_type == PNG_COLOR_TYPE_PALETTE)
 			{
-				png_set_filler(p.png, 0xFF, PNG_FILLER_AFTER);
+				png_set_filler(p.png, read_wide ? 0xFFFF : 0xFF, PNG_FILLER_AFTER);
 			}
 
-			png_set_bgr(p.png);
+			// Bytes go straight into the sink, blue first; sixteen bits are read red first and written to it.
+			if (!read_wide) png_set_bgr(p.png);
 			png_read_update_info(p.png, p.info);
 
-			if (png_get_channels(p.png, p.info) != 4 || png_get_rowbytes(p.png, p.info) > pixels.stride)
+			const auto signal_stride = std::size_t{8} * width;
+
+			if (png_get_channels(p.png, p.info) != 4 ||
+			    png_get_rowbytes(p.png, p.info) > (read_wide ? signal_stride : pixels.stride))
 			{
 				result.error = "a decoded PNG row is not the size the image was given";
 				return;
 			}
 
+			if (read_wide) signal.resize(signal_stride * height);
 			rows.resize(height);
 
 			for (png_uint_32 y = 0; y < height; ++y)
 			{
-				rows[y] = pixels.pixels + static_cast<std::size_t>(y) * pixels.stride;
+				rows[y] = read_wide ? signal.data() + signal_stride * y
+				                    : pixels.pixels + static_cast<std::size_t>(y) * pixels.stride;
 			}
 
 			// An interlaced file is read with libpng's interlace handling turned on here rather than before
 			// png_read_update_info, which libpng puts right and warns of.
 			png_read_image(p.png, rows.data());
+
+			if (read_wide)
+			{
+				if (hdr && !keep) mapping.emplace(*hdr);
+				write_wide_rows(signal.data(), signal_stride, 65535, width, height, false,
+				                mapping ? &*mapping : nullptr, frame.format, pixels);
+			}
+
 			result.success = true;
 		}
 	}
 
-	void decode_png(reader& r, image_sink& sink, decode_result& result)
+	void decode_png(reader& r, image_sink& sink, const decode_options& options, decode_result& result)
 	{
 		std::uint8_t signature[sizeof(png_signature)] = {};
 		if (r.size() >= sizeof(signature)) r.read(0, signature, sizeof(signature));
@@ -255,10 +343,12 @@ namespace libfiles::detail
 		}
 
 		std::vector<png_bytep> rows;
+		std::vector<std::uint8_t> signal;
+		std::optional<hdr_mapping> mapping;
 
 		try
 		{
-			read_image(p, source, sink, frame, rows, result);
+			read_image(p, source, sink, options, frame, rows, signal, mapping, result);
 		}
 		catch (const png_failure& failure)
 		{
@@ -282,7 +372,7 @@ namespace libfiles::detail
 #pragma warning(disable : 4611) // all owning objects live outside the setjmp frame
 #endif
 	static void read_document_png(document_decode& decode, png_source& source, png_reader& owner,
-		std::vector<std::uint8_t>& rows, std::array<std::uint32_t, 256>& palette)
+	                              std::vector<std::uint8_t>& rows, std::array<std::uint32_t, 256>& palette)
 	{
 		std::jmp_buf jump;
 		source.jump = &jump;

@@ -1,5 +1,5 @@
 // Copyright (C) 1998-2026 Zac Walker.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native GIF frames, local palettes, disposal and comments, through giflib.
 
@@ -25,8 +25,8 @@ namespace libfiles::detail
 		{
 			auto& input = *static_cast<gif_input*>(file->UserData);
 			if (requested <= 0) return 0;
-			const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(
-				requested, input.decode.input.size() - input.position));
+			const auto count = static_cast<std::size_t>(
+				std::min<std::uint64_t>(requested, input.decode.input.size() - input.position));
 			try
 			{
 				input.decode.input.read(input.position, bytes, count);
@@ -50,12 +50,16 @@ namespace libfiles::detail
 	{
 		std::array<std::uint8_t, 6> signature{};
 		decode.input.read(0, signature.data(), signature.size());
-		if (std::memcmp(signature.data(), "GIF87a", 6) && std::memcmp(signature.data(), "GIF89a", 6))
+		if (std::memcmp(signature.data(), "GIF87a", 6) != 0 && std::memcmp(signature.data(), "GIF89a", 6) != 0)
 			decode.fail("invalid GIF signature");
 		gif_input source{decode};
 		int error = 0;
-		std::unique_ptr<GifFileType, void(*)(GifFileType*)> owner(DGifOpen(&source, gif_read, &error),
-			[](GifFileType* file) { int error = 0; DGifCloseFile(file, &error); });
+		std::unique_ptr<GifFileType, void (*)(GifFileType*)> owner(DGifOpen(&source, gif_read, &error),
+		                                                           [](GifFileType* file)
+		{
+			int error = 0;
+			DGifCloseFile(file, &error);
+		});
 		if (!owner) decode.fail("the GIF header could not be read");
 		auto* file = owner.get();
 		auto& info = decode.result.info;
@@ -73,8 +77,7 @@ namespace libfiles::detail
 			GifRecordType type{};
 			if (DGifGetRecordType(file, &type) == GIF_ERROR)
 			{
-				if (source.failed || file->Error != D_GIF_ERR_READ_FAILED)
-					damage = "the GIF record stream is damaged";
+				if (source.failed || file->Error != D_GIF_ERR_READ_FAILED) damage = "the GIF record stream is damaged";
 				break;
 			}
 			if (type == TERMINATE_RECORD_TYPE) break;
@@ -87,7 +90,7 @@ namespace libfiles::detail
 				}
 				const auto& image = file->Image;
 				if (image.Left + image.Width > file->SWidth || image.Top + image.Height > file->SHeight ||
-					image.Width <= 0 || image.Height <= 0)
+				    image.Width <= 0 || image.Height <= 0)
 				{
 					damage = "a GIF frame exceeds its canvas";
 					break;
@@ -98,8 +101,8 @@ namespace libfiles::detail
 				{
 					info.storage = storage_from_bits(colors->BitsPerPixel);
 					for (int i = 0; i < colors->ColorCount && i < 256; ++i)
-						palette[i] = 0xff000000u | (colors->Colors[i].Red << 16) |
-							(colors->Colors[i].Green << 8) | colors->Colors[i].Blue;
+						palette[i] = 0xff000000u | (colors->Colors[i].Red << 16) | (colors->Colors[i].Green << 8) |
+						             colors->Colors[i].Blue;
 				}
 				else
 					for (unsigned i = 0; i < palette.size(); ++i) palette[i] = i * 0x010101;
@@ -153,8 +156,7 @@ namespace libfiles::detail
 				{
 					frame.sequential = true;
 					decode.begin(frame);
-					for (unsigned y = 0; y < frame.height; ++y)
-						decode.row(y, {saved.data() + y * stride, stride});
+					for (unsigned y = 0; y < frame.height; ++y) decode.row(y, {saved.data() + y * stride, stride});
 				}
 				decode.end();
 				transparent = -1;
@@ -186,7 +188,8 @@ namespace libfiles::detail
 						}
 						transparent = extension[1] & 1 ? extension[4] : -1;
 						disposal = (extension[1] >> 2) & 7;
-						delay = static_cast<unsigned>(static_cast<std::int16_t>(extension[2] | (extension[3] << 8))) * 10;
+						delay = static_cast<unsigned>(static_cast<std::int16_t>(extension[2] | (extension[3] << 8))) *
+						        10;
 					}
 					if (DGifGetExtensionNext(file, &extension) == GIF_ERROR)
 					{

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to ISO base media (MP4, M4A, M4V, 3GP) and QuickTime files without moving
 // their media. The packet lives where the toolkit kept it: a top-level XMP 'uuid' box in an ISO file,
@@ -40,7 +40,8 @@ namespace libfiles::detail
 		constexpr std::uint8_t commit = 1;
 
 		// A box with an eight-byte header, or with the sixteen-byte one when asked for or needed.
-		bytes make_box(const std::uint32_t type, const std::span<const std::uint8_t> payload, const std::size_t header = 8)
+		bytes make_box(const std::uint32_t type, const std::span<const std::uint8_t> payload,
+		               const std::size_t header = 8)
 		{
 			bytes out;
 
@@ -84,6 +85,7 @@ namespace libfiles::detail
 			if (list.damaged) throw format_error("an MP4 box holds a damaged child");
 
 			std::vector<raw_box> out;
+			out.reserve(list.boxes.size());
 			terminator = list.terminator;
 
 			for (const auto& b : list.boxes)
@@ -174,7 +176,8 @@ namespace libfiles::detail
 
 			void remove_udta(const std::uint32_t type)
 			{
-				if (std::erase_if(user_data, [type](const raw_box& b) { return b.type == type; }) != 0) user_data_changed = true;
+				if (std::erase_if(user_data, [type](const raw_box& b) { return b.type == type; }) != 0)
+					user_data_changed = true;
 			}
 
 			// The bytes the user data's boxes take, free space aside.
@@ -283,13 +286,15 @@ namespace libfiles::detail
 
 			if (existing)
 			{
-				old_content.assign(existing->raw.begin() + static_cast<std::ptrdiff_t>(existing->header()), existing->raw.end());
+				old_content.assign(existing->raw.begin() + static_cast<std::ptrdiff_t>(existing->header()),
+				                   existing->raw.end());
 
 				for_each_xtra_entry(old_content, [&](const xtra_entry& entry)
 				{
 					if (entry.name.empty()) return;
 
-					const auto owned = (owns_category && entry.name == vocabulary::wm_category) || (owns_rating && entry.name == vocabulary::wm_shared_user_rating);
+					const auto owned = (owns_category && entry.name == vocabulary::wm_category) ||
+					                   (owns_rating && entry.name == vocabulary::wm_shared_user_rating);
 					if (!owned) content.insert(content.end(), entry.bytes.begin(), entry.bytes.end());
 				});
 			}
@@ -385,7 +390,8 @@ namespace libfiles::detail
 		const auto type = load_be32(head.data() + 4);
 		if (type == ftyp && head.size() >= 12 && load_be32(head.data() + 8) == fourcc("crx ")) return false;
 
-		return type == ftyp || type == moov || type == mdat || type == free_ || type == skip || type == wide || type == pnot;
+		return type == ftyp || type == moov || type == mdat || type == free_ || type == skip || type == wide ||
+		       type == pnot;
 	}
 
 	void read_mp4_packet(reader& r, packet_reading& out)
@@ -453,8 +459,8 @@ namespace libfiles::detail
 		if (auto xtra_content = updated_xtra(m.find_udta(xtra), update.legacy))
 		{
 			const auto* const old = m.find_udta(xtra);
-			const auto same = old && std::equal(old->raw.begin() + static_cast<std::ptrdiff_t>(old->header()), old->raw.end(),
-			                                    xtra_content->begin(), xtra_content->end());
+			const auto same = old && std::equal(old->raw.begin() + static_cast<std::ptrdiff_t>(old->header()),
+			                                    old->raw.end(), xtra_content->begin(), xtra_content->end());
 
 			if (!same)
 			{
@@ -524,11 +530,16 @@ namespace libfiles::detail
 
 			const std::span<const std::uint8_t> before(moov_bytes);
 			const std::span<const std::uint8_t> after(updated);
-			const auto [u0, u1] = m.user_data_changed ? m.user_data_range() : std::pair<std::size_t, std::size_t>{before.size(), before.size()};
+			const auto [u0, u1] = m.user_data_changed
+			                          ? m.user_data_range()
+			                          : std::pair<std::size_t, std::size_t>{before.size(), before.size()};
 
-			for (auto& p : diff_patches(mb.start, before.first(u0), after.first(u0))) patch(p.offset, std::move(p.data), commit);
-			if (auto p = changed_span(mb.start + u0, before.subspan(u0, u1 - u0), after.subspan(u0, u1 - u0), commit)) plan.replacements.push_back(std::move(*p));
-			for (auto& p : diff_patches(mb.start + u1, before.subspan(u1), after.subspan(u1))) patch(p.offset, std::move(p.data), commit);
+			for (auto& p : diff_patches(mb.start, before.first(u0), after.first(u0)))
+				patch(p.offset, std::move(p.data), commit);
+			if (auto p = changed_span(mb.start + u0, before.subspan(u0, u1 - u0), after.subspan(u0, u1 - u0), commit))
+				plan.replacements.push_back(std::move(*p));
+			for (auto& p : diff_patches(mb.start + u1, before.subspan(u1), after.subspan(u1)))
+				patch(p.offset, std::move(p.data), commit);
 		}
 
 		// An ISO packet's uuid box. FFmpeg reads none that comes before the movie box, so the packet is

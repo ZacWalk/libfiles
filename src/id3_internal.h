@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The one reader of an ID3v2 tag's structure - its header, its extended header and the headers
 // of its frames, how each frame's data lies behind its flags, the faults that make a tag one an update
@@ -67,7 +67,8 @@ namespace libfiles::detail
 
 	// Where the frames begin in [begin, end) of what r reads, after the extended header when the tag has
 	// one; nothing when the extended header's size is damaged.
-	std::optional<std::uint64_t> id3_frames_begin(reader& r, const id3_header& header, std::uint64_t begin, std::uint64_t end);
+	std::optional<std::uint64_t> id3_frames_begin(reader& r, const id3_header& header, std::uint64_t begin,
+	                                              std::uint64_t end);
 
 	struct id3_frame
 	{
@@ -186,11 +187,12 @@ namespace libfiles::detail
 
 	// A frame's data with its unsynchronisation and compression undone and the bytes before it dropped;
 	// nothing when it is encrypted, damaged, or more than max_size before or after inflating.
-	std::optional<std::vector<std::uint8_t>> id3_frame_data(reader& source, const id3_frame& f, const id3_frame_layout& l,
-	                                                        std::size_t max_size);
+	std::optional<std::vector<std::uint8_t>> id3_frame_data(reader& source, const id3_frame& f,
+	                                                        const id3_frame_layout& l, std::size_t max_size);
 
 	// What follows the owner in a PRIV frame's data when the owner, NUL-terminated, is the one named.
-	std::optional<std::span<const std::uint8_t>> id3_owned_payload(std::span<const std::uint8_t> data, std::string_view owner);
+	std::optional<std::span<const std::uint8_t>> id3_owned_payload(std::span<const std::uint8_t> data,
+	                                                               std::string_view owner);
 
 	// A PRIV frame's packet when its owner is "XMP", trailing NULs removed: the toolkit's place for one.
 	std::optional<std::vector<std::uint8_t>> id3_xmp_payload(std::span<const std::uint8_t> data);

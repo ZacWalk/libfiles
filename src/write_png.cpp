@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing XMP to a PNG. The packet lives in an uncompressed iTXt chunk keyed
 // "XML:com.adobe.xmp" with no language, as the XMP specification and the toolkit write it. A packet
@@ -50,7 +50,8 @@ namespace libfiles::detail
 		bool is_toolkit_form(reader& r, const chunk& c, const std::uint32_t type)
 		{
 			if (type != iTXt || c.length < itxt_header.size()) return false;
-			return std::memcmp(r.view(c.start + 8, itxt_header.size()).data(), itxt_header.data(), itxt_header.size()) == 0;
+			return std::memcmp(r.view(c.start + 8, itxt_header.size()).data(), itxt_header.data(),
+			                   itxt_header.size()) == 0;
 		}
 
 		std::uint32_t chunk_crc(const std::string_view type, const std::vector<std::uint8_t>& data)
@@ -67,7 +68,7 @@ namespace libfiles::detail
 		const auto size = r.size();
 
 		if (size < sizeof(png_signature) ||
-			std::memcmp(r.view(0, sizeof(png_signature)).data(), png_signature, sizeof(png_signature)) != 0)
+		    std::memcmp(r.view(0, sizeof(png_signature)).data(), png_signature, sizeof(png_signature)) != 0)
 		{
 			throw format_error("not a PNG file");
 		}
@@ -83,7 +84,8 @@ namespace libfiles::detail
 			const chunk c{pos, r.be32(pos)};
 			const auto type = r.be32(pos + 4);
 
-			if (c.length > 0x7fffffffu || c.length > size - pos - 12u) throw format_error("a PNG chunk runs past the end of the file");
+			if (c.length > 0x7fffffffu || c.length > size - pos - 12u)
+				throw format_error("a PNG chunk runs past the end of the file");
 
 			if (!ihdr_end)
 			{
@@ -145,6 +147,7 @@ namespace libfiles::detail
 		{
 			if (!inserted && old.start == *ihdr_end)
 			{
+				// NOLINTNEXTLINE(bugprone-use-after-move): moved once, after which inserted is true
 				plan.replacements.push_back({old.start, old.size(), std::move(bytes)});
 				inserted = true;
 			}

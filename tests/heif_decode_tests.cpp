@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding HEIF and AVIF: libheif's own HEVC and AV1 examples, as libheif decodes them;
 // images libheif writes through its uncompressed codec, whose every pixel is known - premultiplied alpha
@@ -103,7 +103,8 @@ namespace
 		}
 	};
 
-	libfiles::decode_result decode_file(const bytes& file, heif_sink& sink, const libfiles::decode_options& options = {})
+	libfiles::decode_result decode_file(const bytes& file, heif_sink& sink,
+	                                    const libfiles::decode_options& options = {})
 	{
 		libfiles::reader r{std::span<const std::uint8_t>(file)};
 		return libfiles::decode(r, sink, options);
@@ -118,8 +119,9 @@ namespace
 		heif_image* image = nullptr;
 
 		if (heif_context_read_from_memory_without_copy(ctx, file.data(), file.size(), nullptr).code == heif_error_Ok &&
-			heif_context_get_primary_image_handle(ctx, &handle).code == heif_error_Ok &&
-			heif_decode_image(handle, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, nullptr).code == heif_error_Ok)
+		    heif_context_get_primary_image_handle(ctx, &handle).code == heif_error_Ok &&
+		    heif_decode_image(handle, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, nullptr).code ==
+		        heif_error_Ok)
 		{
 			int stride = 0;
 			const auto* const plane = heif_image_get_plane_readonly(image, heif_channel_interleaved, &stride);
@@ -163,7 +165,8 @@ namespace
 	// The pixel at x, y of a written image, as RGBA.
 	std::array<std::uint8_t, 4> source_pixel(const int x, const int y, const bool alpha)
 	{
-		return {static_cast<std::uint8_t>(x * 30), static_cast<std::uint8_t>(y * 40), static_cast<std::uint8_t>(200 - x * y),
+		return {static_cast<std::uint8_t>(x * 30), static_cast<std::uint8_t>(y * 40),
+		        static_cast<std::uint8_t>(200 - x * y),
 		        alpha ? static_cast<std::uint8_t>((x + y) % 3 == 0 ? 0 : 60 + x * 20) : std::uint8_t{255}};
 	}
 
@@ -171,7 +174,8 @@ namespace
 	bytes write_heif(const written_spec& s)
 	{
 		heif_image* image = nullptr;
-		heif_image_create(s.width, s.height, heif_colorspace_RGB, s.alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB, &image);
+		heif_image_create(s.width, s.height, heif_colorspace_RGB,
+		                  s.alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB, &image);
 		heif_image_add_plane(image, heif_channel_interleaved, s.width, s.height, 8);
 		int stride = 0;
 		auto* const plane = heif_image_get_plane(image, heif_channel_interleaved, &stride);
@@ -197,7 +201,8 @@ namespace
 		heif_image_handle* handle = nullptr;
 		heif_context_encode_image(ctx, image, encoder, options, &handle);
 
-		if (!s.exif.empty()) heif_context_add_exif_metadata(ctx, handle, s.exif.data(), static_cast<int>(s.exif.size()));
+		if (!s.exif.empty())
+			heif_context_add_exif_metadata(ctx, handle, s.exif.data(), static_cast<int>(s.exif.size()));
 
 		if (s.thumbnail)
 		{
@@ -222,8 +227,7 @@ namespace
 
 	bytes orientation_exif(const std::uint16_t value)
 	{
-		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0)
-		                .le32(0).b;
+		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0).le32(0).b;
 	}
 }
 

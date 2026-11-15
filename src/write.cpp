@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The update framework: dispatch to each format's planner, validation of the plan it
 // returns, patching a file in place, and the one-pass rewrite.
@@ -15,18 +15,14 @@ namespace libfiles
 {
 	bool write_plan::in_place() const noexcept
 	{
-		return ok() && std::ranges::all_of(replacements, [](const replacement& r)
-		{
-			return r.length == r.data.size();
-		});
+		return ok() &&
+		       std::ranges::all_of(replacements, [](const replacement& r) { return r.length == r.data.size(); });
 	}
 
 	bool write_plan::patchable() const noexcept
 	{
 		return ok() && std::ranges::all_of(replacements, [this](const replacement& r)
-		{
-			return r.length == r.data.size() || (r.length == 0 && r.offset == source_size);
-		});
+		{ return r.length == r.data.size() || (r.length == 0 && r.offset == source_size); });
 	}
 
 	std::uint64_t write_plan::result_size() const noexcept
@@ -47,7 +43,7 @@ namespace libfiles
 		case image_format::tiff: return file_format::tiff;
 		case image_format::psd: return file_format::psd;
 		case image_format::jxl: return file_format::jxl;
-		case image_format::heif: return file_format::unknown;
+		case image_format::heif: return file_format::heif;
 		default: break;
 		}
 
@@ -83,49 +79,36 @@ namespace libfiles
 			{
 			case file_type::heif:
 			case file_type::jxl:
-				{
-					// HEIF cannot be updated, but its packet reads; JPEG XL's is read as its scan reads it.
-					std::vector<std::uint8_t> packet;
-					result.readable = type == file_type::heif
-						                  ? detail::heif_packet(source, packet)
-						                  : detail::jxl_packet(source, packet, brotli ? &brotli : nullptr);
-					if (result.readable) result.packet.assign(packet.begin(), packet.end());
-				}
-				break;
-			case file_type::mp4:
-				detail::read_mp4_packet(source, result);
-				break;
-			case file_type::asf:
-				detail::read_asf_packet(source, result);
-				break;
+			{
+				// A HEIF's packet is read as its scan reads it, and JPEG XL's too.
+				std::vector<std::uint8_t> packet;
+				result.readable = type == file_type::heif
+				                      ? detail::heif_packet(source, packet)
+				                      : detail::jxl_packet(source, packet, brotli ? &brotli : nullptr);
+				if (result.readable) result.packet.assign(packet.begin(), packet.end());
+			}
+			break;
+			case file_type::mp4: detail::read_mp4_packet(source, result); break;
+			case file_type::asf: detail::read_asf_packet(source, result); break;
 			case file_type::avi:
-			case file_type::wav:
-				detail::read_riff_packet(source, result);
-				break;
+			case file_type::wav: detail::read_riff_packet(source, result); break;
 			case file_type::mpeg_audio:
-			case file_type::flac:
-				detail::read_mp3_packet(source, result);
-				break;
-			case file_type::flv:
-				detail::read_flv_packet(source, result);
-				break;
-			case file_type::aiff:
-				detail::read_aiff_packet(source, result);
-				break;
+			case file_type::flac: detail::read_mp3_packet(source, result); break;
+			case file_type::flv: detail::read_flv_packet(source, result); break;
+			case file_type::aiff: detail::read_aiff_packet(source, result); break;
 			case file_type::jpeg:
 			case file_type::png:
 			case file_type::gif:
 			case file_type::webp:
 			case file_type::tiff:
 			case file_type::psd:
-				{
-					const auto scanned = scan(source);
-					result.readable = scanned.success;
-					result.packet.assign(scanned.metadata.xmp.begin(), scanned.metadata.xmp.end());
-				}
-				break;
-			default:
-				break;
+			{
+				const auto scanned = scan(source);
+				result.readable = scanned.success;
+				result.packet.assign(scanned.metadata.xmp.begin(), scanned.metadata.xmp.end());
+			}
+			break;
+			default: break;
 			}
 		}
 		catch (const std::exception&)
@@ -151,41 +134,26 @@ namespace libfiles
 		{
 			switch (info(identify(source)).update_format)
 			{
-			case file_format::jpeg: detail::plan_jpeg(source, update, plan);
-				break;
-			case file_format::png: detail::plan_png(source, update, plan);
-				break;
-			case file_format::gif: detail::plan_gif(source, update, plan);
-				break;
-			case file_format::webp: detail::plan_webp(source, update, plan);
-				break;
-			case file_format::tiff: detail::plan_tiff(source, update, plan);
-				break;
-			case file_format::psd: detail::plan_psd(source, update, plan);
-				break;
-			case file_format::jxl: detail::plan_jxl(source, update, plan);
-				break;
-			case file_format::mp4: detail::plan_mp4(source, update, plan);
-				break;
-			case file_format::asf: detail::plan_asf(source, update, plan);
-				break;
-			case file_format::riff: detail::plan_riff(source, update, plan);
-				break;
-			case file_format::mp3: detail::plan_mp3(source, update, plan);
-				break;
-			case file_format::flv: detail::plan_flv(source, update, plan);
-				break;
-			default:
-				plan.error = "this file format cannot be updated";
-				return plan;
+			case file_format::jpeg: detail::plan_jpeg(source, update, plan); break;
+			case file_format::png: detail::plan_png(source, update, plan); break;
+			case file_format::gif: detail::plan_gif(source, update, plan); break;
+			case file_format::webp: detail::plan_webp(source, update, plan); break;
+			case file_format::tiff: detail::plan_tiff(source, update, plan); break;
+			case file_format::psd: detail::plan_psd(source, update, plan); break;
+			case file_format::jxl: detail::plan_jxl(source, update, plan); break;
+			case file_format::heif: detail::plan_heif(source, update, plan); break;
+			case file_format::mp4: detail::plan_mp4(source, update, plan); break;
+			case file_format::asf: detail::plan_asf(source, update, plan); break;
+			case file_format::riff: detail::plan_riff(source, update, plan); break;
+			case file_format::mp3: detail::plan_mp3(source, update, plan); break;
+			case file_format::flv: detail::plan_flv(source, update, plan); break;
+			default: plan.error = "this file format cannot be updated"; return plan;
 			}
 
 			// Insertions come before a replacement at the same offset, and keep the order their
 			// planner gave them.
 			std::ranges::stable_sort(plan.replacements, [](const replacement& a, const replacement& b)
-			{
-				return a.offset != b.offset ? a.offset < b.offset : (a.length == 0 && b.length != 0);
-			});
+			{ return a.offset != b.offset ? a.offset < b.offset : (a.length == 0 && b.length != 0); });
 
 			std::uint64_t end = 0;
 
@@ -213,7 +181,10 @@ namespace libfiles
 		if (!plan.patchable()) throw write_error("the plan moves what the file holds");
 		if (file.size() != plan.source_size) throw write_error("the file changed after the update was planned");
 
-		const auto appended = [&plan](const replacement& r) { return r.length == 0 && r.offset == plan.source_size; };
+		const auto appended = [&plan](const replacement& r)
+		{
+			return r.length == 0 && r.offset == plan.source_size;
+		};
 
 		// What is added at the end goes first: until a patch refers to it, it is only bytes after
 		// the end of everything the file describes.
@@ -229,7 +200,8 @@ namespace libfiles
 		if (end != plan.source_size && !file.flush()) throw write_error("the file could not be flushed");
 
 		std::vector<std::uint8_t> steps;
-		for (const auto& r : plan.replacements) if (!appended(r)) steps.push_back(r.step);
+		for (const auto& r : plan.replacements)
+			if (!appended(r)) steps.push_back(r.step);
 		std::ranges::sort(steps);
 		steps.erase(std::ranges::unique(steps).begin(), steps.end());
 
@@ -238,13 +210,15 @@ namespace libfiles
 			for (const auto& r : plan.replacements)
 			{
 				if (appended(r) || r.step != step || r.data.empty()) continue;
-				if (!file.write(r.offset, r.data.data(), r.data.size())) throw write_error("the file could not be written");
+				if (!file.write(r.offset, r.data.data(), r.data.size()))
+					throw write_error("the file could not be written");
 			}
 
 			if (!file.flush()) throw write_error("the file could not be flushed");
 		}
 
-		if (steps.empty() && end == plan.source_size && !file.flush()) throw write_error("the file could not be flushed");
+		if (steps.empty() && end == plan.source_size && !file.flush())
+			throw write_error("the file could not be flushed");
 	}
 
 	void write_updated(reader& source, const write_plan& plan, writable_stream& destination)
@@ -316,8 +290,9 @@ namespace libfiles::detail
 				if (original[j] != updated[j]) end = j + 1;
 			}
 
-			out.push_back({offset + start, end - start, std::vector<std::uint8_t>(updated.begin() + static_cast<std::ptrdiff_t>(start),
-			                                                                       updated.begin() + static_cast<std::ptrdiff_t>(end))});
+			out.push_back({offset + start, end - start,
+			               std::vector<std::uint8_t>(updated.begin() + static_cast<std::ptrdiff_t>(start),
+			                                         updated.begin() + static_cast<std::ptrdiff_t>(end))});
 			i = end;
 		}
 
@@ -333,12 +308,14 @@ namespace libfiles::detail
 		auto last = original.size();
 		while (last > first && original[last - 1] == updated[last - 1]) --last;
 
-		return replacement{offset + first, last - first, std::vector<std::uint8_t>(updated.begin() + static_cast<std::ptrdiff_t>(first),
-		                                                                            updated.begin() + static_cast<std::ptrdiff_t>(last)), step};
+		return replacement{offset + first, last - first,
+		                   std::vector<std::uint8_t>(updated.begin() + static_cast<std::ptrdiff_t>(first),
+		                                             updated.begin() + static_cast<std::ptrdiff_t>(last)),
+		                   step};
 	}
 
-	void push_changed(reader& r, write_plan& plan, const std::uint64_t offset, const std::span<const std::uint8_t> updated,
-	                  const std::uint8_t step)
+	void push_changed(reader& r, write_plan& plan, const std::uint64_t offset,
+	                  const std::span<const std::uint8_t> updated, const std::uint8_t step)
 	{
 		const auto original = r.read(offset, updated.size());
 		if (auto p = changed_span(offset, original, updated, step)) plan.replacements.push_back(std::move(*p));

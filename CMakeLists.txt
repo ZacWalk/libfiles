@@ -8,7 +8,7 @@ project(libfiles LANGUAGES CXX VERSION 0.1.0)
 option(LIBFILES_JPEG "Build libjpeg-turbo, for JPEG decoding and for consumers that link libfiles::jpeg" ON)
 option(LIBFILES_PNG "Build libpng and zlib-ng, for PNG decoding and for consumers that link libfiles::png and libfiles::zlib" ON)
 option(LIBFILES_WEBP "Build libwebp, for WebP decoding and for consumers that link libfiles::webp" ON)
-option(LIBFILES_HEIF "Build libheif with libde265 and dav1d, for HEIF decoding and for consumers that link libfiles::heif" ON)
+option(LIBFILES_HEIF "Build libheif with libde265, dav1d and libaom, for HEIF decoding, AVIF encoding and for consumers that link libfiles::heif" ON)
 option(LIBFILES_JXL "Build libjxl with Highway, Brotli and skcms, for JPEG XL and for consumers that link libfiles::jxl" ON)
 option(LIBFILES_RAW "Build LibRaw with Adobe's DNG SDK, for consumers that link libfiles::raw and libfiles::dng" ON)
 option(LIBFILES_GIF "Build giflib for native animated GIF documents" ON)
@@ -53,6 +53,7 @@ add_library(libfiles STATIC
     include/libfiles/encode.h
     include/libfiles/exif.h
     include/libfiles/exif_listing.h
+    include/libfiles/hdr.h
     include/libfiles/icc.h
     include/libfiles/identify.h
     include/libfiles/iptc.h
@@ -71,6 +72,8 @@ add_library(libfiles STATIC
     src/decode.cpp
     src/decode_internal.h
     src/decode_psd.cpp
+    src/hdr.cpp
+    src/hdr_internal.h
     src/document.cpp
     src/document_bmp.cpp
     src/document_internal.h
@@ -99,6 +102,9 @@ add_library(libfiles STATIC
     src/asf_internal.h
     src/flv_internal.h
     src/jpeg_carry.cpp
+    src/jpeg_gain_map.cpp
+    src/gain_map.cpp
+    src/gain_map_internal.h
     src/photoshop_internal.h
     src/photo_internal.h
     src/photo_values.cpp
@@ -108,6 +114,7 @@ add_library(libfiles STATIC
     src/scan.cpp
     src/scan_gif_bmp.cpp
     src/scan_heif.cpp
+    src/heif_internal.h
     src/scan_internal.h
     src/scan_jpeg.cpp
     src/scan_jxl.cpp
@@ -131,6 +138,7 @@ add_library(libfiles STATIC
     src/write_asf.cpp
     src/write_flv.cpp
     src/write_gif.cpp
+    src/write_heif.cpp
     src/write_internal.h
     src/write_jpeg.cpp
     src/write_jxl.cpp
@@ -189,7 +197,7 @@ if(LIBFILES_WEBP)
 endif()
 
 if(LIBFILES_HEIF)
-    target_sources(libfiles PRIVATE src/decode_heif.cpp)
+    target_sources(libfiles PRIVATE src/decode_heif.cpp src/encode_avif.cpp)
     target_link_libraries(libfiles PRIVATE libfiles::heif)
     target_compile_definitions(libfiles PRIVATE LIBFILES_HEIF)
 endif()
@@ -246,7 +254,9 @@ if(PROJECT_IS_TOP_LEVEL)
         tests/document_encode_tests.cpp
         tests/encode_tests.cpp
         tests/exif_tests.cpp
+        tests/hdr_tests.cpp
         tests/heif_jxl_scan_tests.cpp
+        tests/heif_write_tests.cpp
         tests/icc_corpus.h
         tests/icc_tests.cpp
         tests/iptc_tests.cpp

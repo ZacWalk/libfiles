@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The DNG SDK's XMP backend, dng_xmp_sdk (the SDK's dng_xmp_sdk.h), over libfiles' XMP data model
 // rather than the XMP Toolkit. cmake/dng.cmake builds it into the SDK in place of the SDK's own
@@ -168,8 +168,7 @@ namespace
 
 	// Runs an XMP operation as the SDK's CATCH_XMP blocks did: a fault is reported and, when the caller
 	// cannot go on, becomes dng_error_unknown. Running out of memory is always dng_error_memory.
-	template <typename F>
-	void guard(const char* routine, const bool fatal, F&& operation, const bool silent = false)
+	template <typename F> void guard(const char* routine, const bool fatal, F&& operation, const bool silent = false)
 	{
 		try
 		{
@@ -219,8 +218,9 @@ namespace
 
 	// A field or qualifier: the parent's path, checked, then the name, which must be a single step, with
 	// its namespace's prefix.
-	std::string compose_child_path(const std::string_view schema, const std::string_view parent, const std::string_view child_schema,
-	                               const std::string_view child, const std::string_view separator, const char* not_simple)
+	std::string compose_child_path(const std::string_view schema, const std::string_view parent,
+	                               const std::string_view child_schema, const std::string_view child,
+	                               const std::string_view separator, const char* not_simple)
 	{
 		check_path(schema, parent);
 		check_path(child_schema, child);
@@ -257,12 +257,13 @@ namespace
 		require(property, "Empty property name");
 		require(qualifier_schema, "Empty qualifier namespace URI");
 		require(qualifier_name, "Empty qualifier name");
-		return compose_child_path(schema, property, qualifier_schema, qualifier_name, "/?", "The qualifier name must be simple");
+		return compose_child_path(schema, property, qualifier_schema, qualifier_name, "/?",
+		                          "The qualifier name must be simple");
 	}
 
 	// The toolkit's GetArrayItem, which also takes -1 for the last item.
-	bool get_array_item(const libxmp::meta& m, const std::string_view schema, const std::string_view array, const int32 index,
-	                    std::string* value, option_bits* options = nullptr)
+	bool get_array_item(const libxmp::meta& m, const std::string_view schema, const std::string_view array,
+	                    const int32 index, std::string* value, option_bits* options = nullptr)
 	{
 		require(schema, "Empty schema namespace URI");
 		require(array, "Empty array name");
@@ -280,7 +281,8 @@ namespace
 	}
 
 	void set_qualifier(libxmp::meta& m, const std::string_view schema, const std::string_view property,
-	                   const std::string_view qualifier_schema, const std::string_view qualifier_name, const char* value)
+	                   const std::string_view qualifier_schema, const std::string_view qualifier_name,
+	                   const char* value)
 	{
 		require(schema, "Empty schema namespace URI");
 		require(property, "Empty property name");
@@ -324,7 +326,7 @@ namespace
 	std::string serialize(const libxmp::meta& m, const libxmp::serialize_options& options)
 	{
 		if (!options.exact_packet_length && !options.read_only_packet && !options.omit_packet_wrapper &&
-			(options.padding >> 28) != 0)
+		    (options.padding >> 28) != 0)
 		{
 			throw libxmp::error("Outrageously large padding size");
 		}
@@ -354,7 +356,7 @@ namespace
 		if (step.starts_with('['))
 		{
 			return step.size() > 2 && step.back() == ']' &&
-				std::all_of(step.begin() + 1, step.end() - 1, [](const char c) { return c >= '0' && c <= '9'; });
+			       std::all_of(step.begin() + 1, step.end() - 1, [](const char c) { return c >= '0' && c <= '9'; });
 		}
 
 		if (step.starts_with("/?")) step.remove_prefix(2);
@@ -416,7 +418,8 @@ namespace
 				}
 
 				_index.emplace(key(p.schema, p.path), id);
-				_nodes.push_back({std::move(p.schema), std::move(p.path), std::move(name), std::move(p.value), p.options});
+				_nodes.push_back(
+					{std::move(p.schema), std::move(p.path), std::move(name), std::move(p.value), p.options});
 			}
 		}
 
@@ -552,8 +555,8 @@ namespace
 
 	// The schema and path by which properties() lists the node that path finds, which an alias, a selector
 	// or [last()] names otherwise. A copy of the tree marks the node with a qualifier no packet carries.
-	bool find_listed(const libxmp::meta& m, const std::string_view schema, const std::string_view path, std::string& listed_schema,
-	                 std::string& listed_path)
+	bool find_listed(const libxmp::meta& m, const std::string_view schema, const std::string_view path,
+	                 std::string& listed_schema, std::string& listed_path)
 	{
 		if (!m.exists(schema, path)) return false;
 
@@ -919,8 +922,9 @@ namespace
 		if (!find_listed(probe, dest_schema, dest_root, dest_listed_schema, dest_listed_path)) return false;
 
 		return dest_listed_schema == source_listed_schema && dest_listed_path.size() > source_listed_path.size() &&
-			dest_listed_path.starts_with(source_listed_path) &&
-			(dest_listed_path[source_listed_path.size()] == '/' || dest_listed_path[source_listed_path.size()] == '[');
+		       dest_listed_path.starts_with(source_listed_path) &&
+		       (dest_listed_path[source_listed_path.size()] == '/' ||
+		        dest_listed_path[source_listed_path.size()] == '[');
 	}
 
 	// The toolkit's DuplicateSubtree. A schema of "*" stands for the whole tree: every top-level property
@@ -961,7 +965,8 @@ namespace
 			{
 				for (const auto id : tree[schema].children)
 				{
-					write_subtree(dest, dest_schema, std::string(dest_root) + '/' + tree[id].name, copy_subtree(tree, tree[id], false));
+					write_subtree(dest, dest_schema, std::string(dest_root) + '/' + tree[id].name,
+					              copy_subtree(tree, tree[id], false));
 				}
 			}
 		}
@@ -981,7 +986,8 @@ namespace
 				if (colon == std::string::npos) continue;
 
 				std::string uri;
-				if (!libxmp::namespace_uri(field.name.substr(0, colon), &uri)) throw libxmp::error("Source field namespace is not global");
+				if (!libxmp::namespace_uri(field.name.substr(0, colon), &uri))
+					throw libxmp::error("Source field namespace is not global");
 				write_subtree(dest, uri, field.name, copy_subtree(tree, field, false));
 			}
 		}
@@ -991,7 +997,8 @@ namespace
 			check_path(dest_schema, dest_root);
 
 			std::string listed_schema, listed_path;
-			if (!find_listed(source, source_schema, source_root, listed_schema, listed_path)) throw libxmp::error("Can't find source subtree");
+			if (!find_listed(source, source_schema, source_root, listed_schema, listed_path))
+				throw libxmp::error("Can't find source subtree");
 			if (dest.exists(dest_schema, dest_root)) throw libxmp::error("Destination subtree must not exist");
 
 			const tree_snapshot tree(source);
@@ -1024,7 +1031,8 @@ namespace
 			for (const auto id : tree[schema].children)
 			{
 				const auto& property = tree[id];
-				const auto value_is_empty = libxmp::is_simple(property.options) ? property.value.empty() : property.children.empty();
+				const auto value_is_empty = libxmp::is_simple(property.options) ? property.value.empty()
+				                                                                : property.children.empty();
 				if (value_is_empty) continue;
 
 				const auto copy = copy_subtree(tree, property, true);
@@ -1088,7 +1096,8 @@ namespace
 
 	// The toolkit's PackageForJPEG: the standard packet, which must fit in a JPEG APP1 segment, and, when not
 	// everything fits, the extended XMP and its MD5 digest, which the standard packet then names.
-	void package_for_jpeg(const libxmp::meta& original, std::string& standard, std::string& extended, std::string& digest)
+	void package_for_jpeg(const libxmp::meta& original, std::string& standard, std::string& extended,
+	                      std::string& digest)
 	{
 		constexpr size_t limit = 65000;
 		constexpr std::string_view trailer = "<?xpacket end=\"w\"?>";
@@ -1136,14 +1145,16 @@ namespace
 					write_subtree(ext_xmp, libxmp::ns::camera_raw, tree[id].name, copy_subtree(tree, tree[id], false));
 				}
 
-				for (const auto id : camera_raw->children) std_xmp.delete_property(libxmp::ns::camera_raw, tree[id].name);
+				for (const auto id : camera_raw->children)
+					std_xmp.delete_property(libxmp::ns::camera_raw, tree[id].name);
 				text = small(std_xmp, true);
 			}
 		}
 
 		if (text.size() > limit)
 		{
-			if (move_property(std_xmp, ext_xmp, libxmp::ns::photoshop, "photoshop:History")) text = small(std_xmp, true);
+			if (move_property(std_xmp, ext_xmp, libxmp::ns::photoshop, "photoshop:History"))
+				text = small(std_xmp, true);
 		}
 
 		if (text.size() > limit)
@@ -1395,7 +1406,8 @@ void dng_xmp_sdk::Parse(dng_host& host, const char* buffer, uint32 count)
 	}
 }
 
-void dng_xmp_sdk::AppendArrayItem(const char* ns, const char* arrayName, const char* itemValue, bool isBag, bool propIsStruct)
+void dng_xmp_sdk::AppendArrayItem(const char* ns, const char* arrayName, const char* itemValue, bool isBag,
+                                  bool propIsStruct)
 {
 	NeedMeta();
 
@@ -1496,7 +1508,8 @@ bool dng_xmp_sdk::IsEmptyString(const char* ns, const char* path)
 			std::string value;
 			option_bits options = 0;
 
-			if (fPrivate->meta->get_property(view_of(ns), view_of(path), &value, &options) && libxmp::is_simple(options))
+			if (fPrivate->meta->get_property(view_of(ns), view_of(path), &value, &options) &&
+			    libxmp::is_simple(options))
 			{
 				result = value.empty();
 			}
@@ -1537,15 +1550,16 @@ bool dng_xmp_sdk::IsEmptyArray(const char* ns, const char* path)
 
 void dng_xmp_sdk::ComposeArrayItemPath(const char* ns, const char* arrayName, int32 index, dng_string& s) const
 {
-	guard("ComposeArrayItemPath", true, [&] { s.Set(compose_array_item_path(view_of(ns), view_of(arrayName), index).c_str()); });
+	guard("ComposeArrayItemPath", true,
+	      [&] { s.Set(compose_array_item_path(view_of(ns), view_of(arrayName), index).c_str()); });
 }
 
-void dng_xmp_sdk::ComposeStructFieldPath(const char* ns, const char* structName, const char* fieldNS, const char* fieldName,
-                                         dng_string& s) const
+void dng_xmp_sdk::ComposeStructFieldPath(const char* ns, const char* structName, const char* fieldNS,
+                                         const char* fieldName, dng_string& s) const
 {
-	guard("ComposeStructFieldPath", true, [&]
-	{
-		s.Set(compose_struct_field_path(view_of(ns), view_of(structName), view_of(fieldNS), view_of(fieldName)).c_str());
+	guard("ComposeStructFieldPath", true, [&] {
+		s.Set(
+			compose_struct_field_path(view_of(ns), view_of(structName), view_of(fieldNS), view_of(fieldName)).c_str());
 	});
 }
 
@@ -1615,7 +1629,8 @@ void dng_xmp_sdk::ValidateStringList(const char* ns, const char* path)
 	}
 }
 
-bool dng_xmp_sdk::GetStringList(const char* ns, const char* path, dng_string_list& list, dng_abort_sniffer* sniffer) const
+bool dng_xmp_sdk::GetStringList(const char* ns, const char* path, dng_string_list& list,
+                                dng_abort_sniffer* sniffer) const
 {
 	auto result = false;
 
@@ -1708,7 +1723,8 @@ bool dng_xmp_sdk::GetLocalString(const char* ns, const char* path, dng_local_str
 	return true;
 }
 
-bool dng_xmp_sdk::GetStructField(const char* ns, const char* path, const char* fieldNS, const char* fieldName, dng_string& s) const
+bool dng_xmp_sdk::GetStructField(const char* ns, const char* path, const char* fieldNS, const char* fieldName,
+                                 dng_string& s) const
 {
 	auto result = false;
 
@@ -1716,7 +1732,8 @@ bool dng_xmp_sdk::GetStructField(const char* ns, const char* path, const char* f
 	{
 		guard("GetStructField", false, [&]
 		{
-			const auto field = compose_struct_field_path(view_of(ns), view_of(path), view_of(fieldNS), view_of(fieldName));
+			const auto field = compose_struct_field_path(view_of(ns), view_of(path), view_of(fieldNS),
+			                                             view_of(fieldName));
 			std::string value;
 
 			if (fPrivate->meta->get_property(view_of(ns), field, &value))
@@ -1791,10 +1808,8 @@ void dng_xmp_sdk::SetAltLangDefault(const char* ns, const char* path, const dng_
 	ss.SetLineEndings('\n');
 	ss.StripLowASCII();
 
-	guard("SetLocalizedText", true, [&]
-	{
-		fPrivate->edit().set_localized_text(view_of(ns), view_of(path), "x-default", "x-default", ss.Get());
-	});
+	guard("SetLocalizedText", true,
+	      [&] { fPrivate->edit().set_localized_text(view_of(ns), view_of(path), "x-default", "x-default", ss.Get()); });
 }
 
 void dng_xmp_sdk::SetLocalString(const char* ns, const char* path, const dng_local_string& s)
@@ -1815,7 +1830,8 @@ void dng_xmp_sdk::SetLocalString(const char* ns, const char* path, const dng_loc
 	});
 }
 
-void dng_xmp_sdk::SetStructField(const char* ns, const char* path, const char* fieldNS, const char* fieldName, const char* text)
+void dng_xmp_sdk::SetStructField(const char* ns, const char* path, const char* fieldNS, const char* fieldName,
+                                 const char* text)
 {
 	NeedMeta();
 
@@ -1832,7 +1848,8 @@ void dng_xmp_sdk::DeleteStructField(const char* ns, const char* structName, cons
 	{
 		try
 		{
-			const auto field = compose_struct_field_path(view_of(ns), view_of(structName), view_of(fieldNS), view_of(fieldName));
+			const auto field = compose_struct_field_path(view_of(ns), view_of(structName), view_of(fieldNS),
+			                                             view_of(fieldName));
 			fPrivate->edit().delete_property(view_of(ns), field);
 		}
 		catch (...)
@@ -1842,8 +1859,8 @@ void dng_xmp_sdk::DeleteStructField(const char* ns, const char* structName, cons
 	}
 }
 
-dng_memory_block* dng_xmp_sdk::Serialize(dng_memory_allocator& allocator, bool asPacket, uint32 targetBytes, uint32 padBytes,
-                                         bool forJPEG, bool compact) const
+dng_memory_block* dng_xmp_sdk::Serialize(dng_memory_allocator& allocator, bool asPacket, uint32 targetBytes,
+                                         uint32 padBytes, bool forJPEG, bool compact) const
 {
 	// The largest XMP packet that can be embedded in a JPEG by the normal methods.
 	constexpr uint32 kJPEG_XMP_Limit = 65504;
@@ -1983,8 +2000,8 @@ bool dng_xmp_sdk::IteratePaths(IteratePathsCallback* callback, void* callbackDat
 	return !stopped;
 }
 
-void dng_xmp_sdk::DuplicateSubtree(const dng_xmp_sdk& source, const char* sourceNS, const char* sourceRoot, const char* destNS,
-                                   const char* destRoot)
+void dng_xmp_sdk::DuplicateSubtree(const dng_xmp_sdk& source, const char* sourceNS, const char* sourceRoot,
+                                   const char* destNS, const char* destRoot)
 {
 	if (source.HasMeta())
 	{
@@ -1993,7 +2010,8 @@ void dng_xmp_sdk::DuplicateSubtree(const dng_xmp_sdk& source, const char* source
 		guard("DuplicateSubtree", true, [&]
 		{
 			duplicate_subtree(*source.fPrivate->meta, fPrivate->edit(), view_of(sourceNS), view_of(sourceRoot),
-			                  destNS ? view_of(destNS) : view_of(sourceNS), destRoot ? view_of(destRoot) : view_of(sourceRoot));
+			                  destNS ? view_of(destNS) : view_of(sourceNS),
+			                  destRoot ? view_of(destRoot) : view_of(sourceRoot));
 		});
 	}
 }

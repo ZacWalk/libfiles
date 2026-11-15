@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning MPEG audio files - MP3, MP2 and MP1 - with their tags: ID3v2 at the start, and at the
 // end an APE tag, Lyrics3 lyrics, an appended ID3v2 tag and ID3v1. The stream is known by its first frame,
@@ -43,7 +43,8 @@ namespace libfiles::detail
 			f.header = header;
 			f.audio = {};
 			f.codec.clear();
-			return parse_mpeg_audio_header(header, f.audio, f.codec) && f.audio.frame_bytes >= 4 && f.audio.sample_rate != 0;
+			return parse_mpeg_audio_header(header, f.audio, f.codec) && f.audio.frame_bytes >= 4 &&
+			       f.audio.sample_rate != 0;
 		}
 
 		bool same_stream(const std::uint32_t a, const std::uint32_t b)
@@ -74,11 +75,14 @@ namespace libfiles::detail
 				{
 					// The frame and what follows it in one view, which keeps a frame that straddles two of the
 					// reader's blocks from costing a read each way.
-					const auto through = r.view(at, static_cast<std::size_t>(std::min<std::uint64_t>(size - at, f.audio.frame_bytes + 11)));
+					const auto through = r.view(at, static_cast<std::size_t>(
+														std::min<std::uint64_t>(size - at, f.audio.frame_bytes + 11)));
 					const auto after = through.subspan(f.audio.frame_bytes);
 					frame following;
-					confirmed = starts_with(after, "TAG") || starts_with(after, "APETAGEX") || starts_with(after, "LYRICSBEGIN") ||
-						starts_with(after, "ID3") || (same_stream(load_be32(after.data()), f.header) && parse_frame(load_be32(after.data()), following));
+					confirmed = starts_with(after, "TAG") || starts_with(after, "APETAGEX") ||
+					            starts_with(after, "LYRICSBEGIN") || starts_with(after, "ID3") ||
+					            (same_stream(load_be32(after.data()), f.header) &&
+					             parse_frame(load_be32(after.data()), following));
 				}
 
 				if (confirmed)
@@ -151,7 +155,8 @@ namespace libfiles::detail
 					{
 						const auto lame = b.subspan(at);
 						v.encoder = trim_text(text_from_windows_1252(lame.first(9)));
-						const auto both = static_cast<std::uint32_t>(lame[21]) << 16 | static_cast<std::uint32_t>(lame[22]) << 8 | lame[23];
+						const auto both = static_cast<std::uint32_t>(lame[21]) << 16 |
+						                  static_cast<std::uint32_t>(lame[22]) << 8 | lame[23];
 						v.delay = both >> 12;
 						v.padding = both & 0xFFF;
 						v.trims = starts_with(lame, "LAME") || starts_with(lame, "Lavf") || starts_with(lame, "Lavc");
@@ -210,7 +215,8 @@ namespace libfiles::detail
 				const auto length = std::min<std::uint64_t>(end - start, 5100 + begin.size() + 9);
 				const auto bytes = r.view(end - length, static_cast<std::size_t>(length));
 				const auto found = std::search(bytes.begin(), bytes.end(), begin.begin(), begin.end(),
-				                               [](const std::uint8_t a, const char b) { return a == static_cast<std::uint8_t>(b); });
+				                               [](const std::uint8_t a, const char b)
+				{ return a == static_cast<std::uint8_t>(b); });
 				if (found != bytes.end()) return length - static_cast<std::uint64_t>(found - bytes.begin());
 			}
 
@@ -233,7 +239,8 @@ namespace libfiles::detail
 
 		// An ID3v2 tag other than the one at the start of the file adds its frames, but its XMP packet is not
 		// the one read_packet finds, so it does not replace the first tag's.
-		std::uint64_t read_other_id3v2(reader& r, const std::uint64_t offset, media_budget& budget, media_scan_result& out)
+		std::uint64_t read_other_id3v2(reader& r, const std::uint64_t offset, media_budget& budget,
+		                               media_scan_result& out)
 		{
 			auto xmp = std::move(out.xmp);
 			out.xmp.clear();
@@ -254,8 +261,14 @@ namespace libfiles::detail
 		// As Diffractor's FFmpeg reads them: four fields of at most sixteen digits, each a count it can add.
 		std::optional<itunes_gapless> parse_itunes_gapless(std::string_view text)
 		{
-			const auto digit = [](const char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); };
-			const auto space = [](const char c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
+			const auto digit = [](const char c)
+			{
+				return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+			};
+			const auto space = [](const char c)
+			{
+				return c == ' ' || (c >= '\t' && c <= '\r');
+			};
 			std::uint64_t fields[4] = {};
 
 			for (auto& field : fields)
@@ -289,13 +302,18 @@ namespace libfiles::detail
 			const auto named = [&out](const std::string_view id, const std::string_view short_id) -> const media_tag*
 			{
 				constexpr std::string_view name = "iTunSMPB";
-				const auto same = [](const char a, const char b) { return (a | 0x20) == (b | 0x20); };
+				const auto same = [](const char a, const char b)
+				{
+					return (a | 0x20) == (b | 0x20);
+				};
 
 				for (const auto& tag : out.tags)
 				{
 					const std::string_view key = tag.key;
 					const auto colon = key.find(':');
-					if (colon == std::string_view::npos || (key.substr(0, colon) != id && key.substr(0, colon) != short_id)) continue;
+					if (colon == std::string_view::npos ||
+					    (key.substr(0, colon) != id && key.substr(0, colon) != short_id))
+						continue;
 					if (std::ranges::equal(key.substr(colon + 1), name, same)) return &tag;
 				}
 
@@ -314,7 +332,8 @@ namespace libfiles::detail
 		}
 	}
 
-	void scan_mpeg_audio_media(reader& r, const scan_intent intent, const std::uint64_t tag_size, media_budget& budget, media_scan_result& out)
+	void scan_mpeg_audio_media(reader& r, const scan_intent intent, const std::uint64_t tag_size, media_budget& budget,
+	                           media_scan_result& out)
 	{
 		const auto size = r.size();
 		const auto inspect = intent == scan_intent::inspect;
@@ -331,7 +350,7 @@ namespace libfiles::detail
 			tag_rows.emplace_back(offset, std::move(row));
 		};
 
-		const auto audio_row = [&](std::string key, std::string value)
+		const auto audio_row = [&](const std::string_view key, std::string value)
 		{
 			if (inspect) add_structure_row(audio_rows, key, std::move(value));
 		};
@@ -357,10 +376,12 @@ namespace libfiles::detail
 		if (!first) throw format_error("no MPEG audio frame was found where the audio should begin");
 
 		const auto& audio = first->audio;
-		if (first->offset > start) audio_row("Junk", std::format("{} bytes before the first frame", first->offset - start));
+		if (first->offset > start)
+			audio_row("Junk", std::format("{} bytes before the first frame", first->offset - start));
 
-		audio_row("First frame", std::format("offset {}, {}, {} kbit/s, {} Hz, {}, {} bytes", first->offset, audio.profile,
-		                                     audio.bit_rate / 1000, audio.sample_rate, channel_text(audio.channels), audio.frame_bytes));
+		audio_row("First frame", std::format("offset {}, {}, {} kbit/s, {} Hz, {}, {} bytes", first->offset,
+		                                     audio.profile, audio.bit_rate / 1000, audio.sample_rate,
+		                                     channel_text(audio.channels), audio.frame_bytes));
 
 		// FFmpeg reads these headers only in Layer III streams.
 		const auto vbr = first->codec == "mp3" ? read_vbr_header(r, *first) : vbr_header{};
@@ -370,7 +391,9 @@ namespace libfiles::detail
 		{
 			audio_row(std::format("{} header", vbr.kind), std::format("{} frames, {} bytes", vbr.frames, vbr.bytes));
 
-			if (!vbr.encoder.empty()) audio_row("LAME tag", std::format("{}, encoder delay {}, padding {}", vbr.encoder, vbr.delay, vbr.padding));
+			if (!vbr.encoder.empty())
+				audio_row("LAME tag",
+				          std::format("{}, encoder delay {}, padding {}", vbr.encoder, vbr.delay, vbr.padding));
 		}
 
 		// Diffractor's FFmpeg takes iTunes' gapless figures from the tags at the start when no LAME tag gave a
@@ -381,7 +404,8 @@ namespace libfiles::detail
 
 		if (first->codec == "mp3" && !vbr.trims)
 		{
-			if (const auto g = find_itunes_gapless(out); g && g->delay <= 16384 && g->samples != 0 && (total == 0 || g->delay + g->samples + g->padding == total))
+			if (const auto g = find_itunes_gapless(out); g && g->delay <= 16384 && g->samples != 0 &&
+			                                             (total == 0 || g->delay + g->samples + g->padding == total))
 			{
 				itunes_samples = g->samples;
 			}
@@ -395,7 +419,8 @@ namespace libfiles::detail
 		if (has_vbr && r.contains(audio_start, 4))
 		{
 			frame next;
-			if (parse_frame(r.be32(audio_start), next) && same_stream(next.header, first->header)) frame_bit_rate = next.audio.bit_rate;
+			if (parse_frame(r.be32(audio_start), next) && same_stream(next.header, first->header))
+				frame_bit_rate = next.audio.bit_rate;
 		}
 
 		// The tags after the audio, found from the end: ID3v1 in the last 128 bytes, an extended ID3v1 tag
@@ -450,7 +475,8 @@ namespace libfiles::detail
 		apply_audio_header(audio, stream.audio);
 
 		// A counted stream's bit rate is its bytes over its frames' samples, unless Info marks it constant.
-		if (total != 0 && vbr.bytes != 0 && !vbr.constant) stream.bit_rate = (std::uint64_t{vbr.bytes} * 8 * audio.sample_rate + total / 2) / total;
+		if (total != 0 && vbr.bytes != 0 && !vbr.constant)
+			stream.bit_rate = (std::uint64_t{vbr.bytes} * 8 * audio.sample_rate + total / 2) / total;
 
 		const auto trimmed = vbr.trims ? std::uint64_t{vbr.delay} + vbr.padding : 0;
 

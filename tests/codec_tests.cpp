@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests that the codecs libfiles builds work as their own APIs promise: libjpeg-turbo at 8
 // bits through its SIMD paths, and at 12 and 16 bits through the separately compiled libraries; zlib-ng
@@ -154,7 +154,10 @@ namespace
 
 TEST("libjpeg-turbo round-trips 8-bit colour close to its input")
 {
-	const auto sample = [](const int x, const int y, const int c) { return c == 0 ? x * 4 : c == 1 ? y * 5 : 128; };
+	const auto sample = [](const int x, const int y, const int c)
+	{
+		return c == 0 ? x * 4 : c == 1 ? y * 5 : 128;
+	};
 	const auto file = encode(8, 64, 48, 3, 0, sample);
 	CHECK(file.size() > 100);
 
@@ -167,7 +170,8 @@ TEST("libjpeg-turbo round-trips 8-bit colour close to its input")
 	for (std::size_t i = 0; i < samples.size(); ++i)
 	{
 		const auto pixel = i / 3;
-		const auto expected = sample(static_cast<int>(pixel % 64), static_cast<int>(pixel / 64), static_cast<int>(i % 3));
+		const auto expected = sample(static_cast<int>(pixel % 64), static_cast<int>(pixel / 64),
+		                             static_cast<int>(i % 3));
 		worst = std::max(worst, std::abs(samples[i] - expected));
 	}
 	CHECK(worst <= 8);
@@ -178,7 +182,10 @@ TEST("libjpeg-turbo's 12- and 16-bit libraries round-trip lossless jpeg exactly"
 	for (const auto precision : {12, 16})
 	{
 		const auto top = (1 << precision) - 1;
-		const auto sample = [top](const int x, const int y, const int c) { return (x * 977 + y * 131 + c * 4099) % (top + 1); };
+		const auto sample = [top](const int x, const int y, const int c)
+		{
+			return (x * 977 + y * 131 + c * 4099) % (top + 1);
+		};
 		const auto file = encode(precision, 33, 17, 3, 1, sample);
 
 		int decoded_precision = 0;
@@ -190,18 +197,23 @@ TEST("libjpeg-turbo's 12- and 16-bit libraries round-trip lossless jpeg exactly"
 		for (std::size_t i = 0; i < samples.size(); ++i)
 		{
 			const auto pixel = i / 3;
-			exact = exact && samples[i] == sample(static_cast<int>(pixel % 33), static_cast<int>(pixel / 33), static_cast<int>(i % 3));
+			exact = exact && samples[i] == sample(static_cast<int>(pixel % 33), static_cast<int>(pixel / 33),
+			                                      static_cast<int>(i % 3));
 		}
 		CHECK(exact);
 	}
 
 	// 12-bit DCT, which the 12-bit library's IDCT decodes close to its input.
-	const auto smooth = [](const int x, const int y, const int) { return 1000 + x * 20 + y * 10; };
+	const auto smooth = [](const int x, const int y, const int)
+	{
+		return 1000 + x * 20 + y * 10;
+	};
 	int precision = 0;
 	const auto samples = decode(encode(12, 32, 32, 1, 0, smooth), precision);
 	CHECK_EQ(precision, 12);
 	auto worst = 0;
-	for (std::size_t i = 0; i < samples.size(); ++i) worst = std::max(worst, std::abs(samples[i] - smooth(static_cast<int>(i % 32), static_cast<int>(i / 32), 0)));
+	for (std::size_t i = 0; i < samples.size(); ++i)
+		worst = std::max(worst, std::abs(samples[i] - smooth(static_cast<int>(i % 32), static_cast<int>(i / 32), 0)));
 	CHECK(worst <= 16);
 }
 
@@ -230,7 +242,9 @@ namespace
 		for (std::size_t i = 0; i < size; ++i)
 		{
 			seed = seed * 1664525u + 1013904223u;
-			data[i] = (i / 64) % 3 == 0 ? static_cast<std::uint8_t>(i) : (i / 64) % 3 == 1 ? std::uint8_t{0x55} : static_cast<std::uint8_t>(seed >> 24);
+			data[i] = (i / 64) % 3 == 0   ? static_cast<std::uint8_t>(i)
+			          : (i / 64) % 3 == 1 ? std::uint8_t{0x55}
+			                              : static_cast<std::uint8_t>(seed >> 24);
 		}
 
 		return data;
@@ -449,8 +463,9 @@ namespace
 		heif_image* image = nullptr;
 
 		if (heif_context_read_from_memory_without_copy(ctx, file.data(), file.size(), nullptr).code == heif_error_Ok &&
-			heif_context_get_primary_image_handle(ctx, &handle).code == heif_error_Ok &&
-			heif_decode_image(handle, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, nullptr).code == heif_error_Ok)
+		    heif_context_get_primary_image_handle(ctx, &handle).code == heif_error_Ok &&
+		    heif_decode_image(handle, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, nullptr).code ==
+		        heif_error_Ok)
 		{
 			int stride = 0;
 			const auto* const plane = heif_image_get_plane_readonly(image, heif_channel_interleaved, &stride);
@@ -513,7 +528,8 @@ TEST("libheif round-trips an image through its uncompressed codec exactly")
 	constexpr int width = 19;
 	constexpr int height = 11;
 	heif_image* image = nullptr;
-	CHECK(heif_image_create(width, height, heif_colorspace_RGB, heif_chroma_interleaved_RGB, &image).code == heif_error_Ok);
+	CHECK(heif_image_create(width, height, heif_colorspace_RGB, heif_chroma_interleaved_RGB, &image).code ==
+	      heif_error_Ok);
 	CHECK(heif_image_add_plane(image, heif_channel_interleaved, width, height, 8).code == heif_error_Ok);
 
 	int stride = 0;

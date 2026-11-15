@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Format detection, the scan entry point that dispatches to each format's scanner, and the
 // structure-row helpers they share.
@@ -25,22 +25,20 @@ namespace libfiles
 			return detail::load_le16(h.data());
 		}
 
-		constexpr std::array<std::array<std::uint8_t, 4>, 12> heif_brands = {
-			{
-				{'h', 'e', 'i', 'c'},
-				{'h', 'e', 'i', 'x'},
-				{'h', 'e', 'v', 'c'},
-				{'h', 'e', 'v', 'x'},
-				{'h', 'e', 'i', 'm'},
-				{'h', 'e', 'i', 's'},
-				{'h', 'e', 'v', 'm'},
-				{'h', 'e', 'v', 's'},
-				{'m', 'i', 'f', '1'},
-				{'m', 's', 'f', '1'},
-				{'a', 'v', 'i', 'f'},
-				{'a', 'v', 'i', 's'},
-			}
-		};
+		constexpr std::array<std::array<std::uint8_t, 4>, 12> heif_brands = {{
+			{'h', 'e', 'i', 'c'},
+			{'h', 'e', 'i', 'x'},
+			{'h', 'e', 'v', 'c'},
+			{'h', 'e', 'v', 'x'},
+			{'h', 'e', 'i', 'm'},
+			{'h', 'e', 'i', 's'},
+			{'h', 'e', 'v', 'm'},
+			{'h', 'e', 'v', 's'},
+			{'m', 'i', 'f', '1'},
+			{'m', 's', 'f', '1'},
+			{'a', 'v', 'i', 'f'},
+			{'a', 'v', 'i', 's'},
+		}};
 
 		bool has_heif_brand(const std::span<const std::uint8_t> h)
 		{
@@ -48,9 +46,7 @@ namespace libfiles
 			if (!detail::starts_with(h.subspan(4), "ftyp")) return false;
 
 			return std::ranges::any_of(heif_brands, [h](const auto& brand)
-			{
-				return std::equal(brand.begin(), brand.end(), h.begin() + 8);
-			});
+			{ return std::equal(brand.begin(), brand.end(), h.begin() + 8); });
 		}
 	}
 
@@ -98,10 +94,8 @@ namespace libfiles
 		case image_format::bmp:
 		case image_format::tiff:
 		case image_format::heif:
-		case image_format::jxl:
-			return true;
-		default:
-			return false;
+		case image_format::jxl: return true;
+		default: return false;
 		}
 	}
 
@@ -121,26 +115,16 @@ namespace libfiles
 
 			switch (format)
 			{
-			case image_format::jpeg: result = detail::scan_jpeg(r, intent, limits);
-				break;
-			case image_format::png: result = detail::scan_png(r);
-				break;
-			case image_format::webp: result = detail::scan_webp(r, intent);
-				break;
-			case image_format::gif: result = detail::scan_gif(r);
-				break;
-			case image_format::psd: result = detail::scan_psd(r);
-				break;
-			case image_format::bmp: result = detail::scan_bmp(r);
-				break;
-			case image_format::tiff: result = detail::scan_tiff(r);
-				break;
-			case image_format::heif: result = detail::scan_heif(r, intent);
-				break;
-			case image_format::jxl: result = detail::scan_jxl(r, intent, limits);
-				break;
-			default:
-				break;
+			case image_format::jpeg: result = detail::scan_jpeg(r, intent, limits); break;
+			case image_format::png: result = detail::scan_png(r, nullptr, intent); break;
+			case image_format::webp: result = detail::scan_webp(r, intent); break;
+			case image_format::gif: result = detail::scan_gif(r); break;
+			case image_format::psd: result = detail::scan_psd(r); break;
+			case image_format::bmp: result = detail::scan_bmp(r); break;
+			case image_format::tiff: result = detail::scan_tiff(r); break;
+			case image_format::heif: result = detail::scan_heif(r, intent); break;
+			case image_format::jxl: result = detail::scan_jxl(r, intent, limits); break;
+			default: break;
 			}
 
 			result.format = format;

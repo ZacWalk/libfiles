@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing EXIF. make_exif lays out a fresh block as libexif lays one out, so that the block an
 // application wrote through libexif comes out byte for byte the same. set_exif_numbers overwrites the
@@ -56,7 +56,9 @@ namespace libfiles
 
 		new_entry short_entry(const std::uint16_t tag, const std::uint16_t value)
 		{
-			return {tag, static_cast<std::uint16_t>(type_short), 1,
+			return {tag,
+			        static_cast<std::uint16_t>(type_short),
+			        1,
 			        {static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(value >> 8)}};
 		}
 
@@ -67,7 +69,8 @@ namespace libfiles
 			return {tag, static_cast<std::uint16_t>(type_long), 1, std::move(bytes)};
 		}
 
-		new_entry rational_entry(const std::uint16_t tag, const std::uint32_t numerator, const std::uint32_t denominator)
+		new_entry rational_entry(const std::uint16_t tag, const std::uint32_t numerator,
+		                         const std::uint32_t denominator)
 		{
 			std::vector<std::uint8_t> bytes(8);
 			put32(bytes, 0, numerator);
@@ -77,7 +80,9 @@ namespace libfiles
 
 		new_entry undefined_entry(const std::uint16_t tag, const std::string_view bytes)
 		{
-			return {tag, static_cast<std::uint16_t>(type_undefined), static_cast<std::uint32_t>(bytes.size()),
+			return {tag,
+			        static_cast<std::uint16_t>(type_undefined),
+			        static_cast<std::uint32_t>(bytes.size()),
 			        {bytes.begin(), bytes.end()}};
 		}
 
@@ -85,7 +90,9 @@ namespace libfiles
 		{
 			if (text.empty() || text.size() + 1 > max_entry_count) return;
 
-			new_entry e{tag, static_cast<std::uint16_t>(type_ascii), static_cast<std::uint32_t>(text.size() + 1),
+			new_entry e{tag,
+			            static_cast<std::uint16_t>(type_ascii),
+			            static_cast<std::uint32_t>(text.size() + 1),
 			            {text.begin(), text.end()}};
 			e.value.push_back(0);
 			d.push_back(std::move(e));
@@ -135,7 +142,8 @@ namespace libfiles
 		// the entries, and the next-directory link, which is always 0 here; each value longer than four
 		// bytes after them in the order the entries were made, padded to an even length; then the Exif
 		// directory, where its pointer is; and last the entries sorted by tag.
-		void write_directory(std::vector<std::uint8_t>& out, const new_directory& entries, const new_directory* const exif)
+		void write_directory(std::vector<std::uint8_t>& out, const new_directory& entries,
+		                     const new_directory* const exif)
 		{
 			const auto pointers = exif && !exif->empty() ? 1u : 0u;
 			const auto count = entries.size() + pointers;
@@ -183,10 +191,8 @@ namespace libfiles
 				std::memcpy(sorted[i].data(), out.data() + start + 2 + 12 * i, 12);
 			}
 
-			std::ranges::sort(sorted, [](const auto& a, const auto& b)
-			{
-				return (a[0] | a[1] << 8) < (b[0] | b[1] << 8);
-			});
+			std::ranges::sort(sorted,
+			                  [](const auto& a, const auto& b) { return (a[0] | a[1] << 8) < (b[0] | b[1] << 8); });
 
 			for (std::size_t i = 0; i < count; ++i)
 			{
@@ -215,14 +221,10 @@ namespace libfiles
 
 				switch (e.tag)
 				{
-				case tag_exif_ifd: role = exif_directory::exif;
-					break;
-				case tag_gps_ifd: role = exif_directory::gps;
-					break;
-				case tag_interop_ifd: role = exif_directory::interoperability;
-					break;
-				default:
-					return;
+				case tag_exif_ifd: role = exif_directory::exif; break;
+				case tag_gps_ifd: role = exif_directory::gps; break;
+				case tag_interop_ifd: role = exif_directory::interoperability; break;
+				default: return;
 				}
 
 				const auto target = e.field_u32();
@@ -244,17 +246,17 @@ namespace libfiles
 		new_directory ifd0 = {
 			rational_entry(0x011a, 72, 1), // XResolution
 			rational_entry(0x011b, 72, 1), // YResolution
-			short_entry(0x0128, 2), // ResolutionUnit: inches
-			short_entry(0x0213, 1), // YCbCrPositioning: centred
+			short_entry(0x0128, 2),        // ResolutionUnit: inches
+			short_entry(0x0213, 1),        // YCbCrPositioning: centred
 		};
 
 		new_directory exif = {
-			undefined_entry(0x9000, "0210"), // ExifVersion
+			undefined_entry(0x9000, "0210"),                                  // ExifVersion
 			undefined_entry(0x9101, std::string_view("\x01\x02\x03\x00", 4)), // ComponentsConfiguration
-			undefined_entry(0xa000, "0100"), // FlashpixVersion
-			short_entry(0xa001, 0xffff), // ColorSpace: uncalibrated
-			long_entry(0xa002, 0), // PixelXDimension
-			long_entry(0xa003, 0), // PixelYDimension
+			undefined_entry(0xa000, "0100"),                                  // FlashpixVersion
+			short_entry(0xa001, 0xffff),                                      // ColorSpace: uncalibrated
+			long_entry(0xa002, 0),                                            // PixelXDimension
+			long_entry(0xa003, 0),                                            // PixelYDimension
 		};
 
 		// The order Diffractor's writer made them in, which decides where each long value lies.

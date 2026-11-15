@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the media scan's front: container detection, the pixel format names, the text
 // rules, star scales and dates every scanner shares, and how a scan is finished.
@@ -134,7 +134,10 @@ TEST("media text decodes as tags store it")
 	CHECK_STR(text_from_windows_1252(lit("caf\xE9\0rest")), "caf\xC3\xA9");
 	CHECK_STR(text_from_windows_1252(lit("\x80")), "\xE2\x82\xAC");
 	CHECK_STR(text_from_utf8(lit("caf\xC3\xA9")), "caf\xC3\xA9");
-	CHECK_STR(text_from_utf8(lit("a\xFF" "b")), "a\xEF\xBF\xBD" "b");
+	CHECK_STR(text_from_utf8(lit("a\xFF"
+	                             "b")),
+	          "a\xEF\xBF\xBD"
+	          "b");
 	CHECK_STR(text_from_utf16(lit("\xFF\xFEh\0i\0\0\0x\0"), true), "hi");
 	CHECK_STR(text_from_utf16(lit("\0h\0i"), true), "hi");
 	CHECK_STR(text_from_utf16(lit("h\0i\0"), false), "hi");

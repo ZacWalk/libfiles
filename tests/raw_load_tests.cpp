@@ -1,11 +1,11 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Purpose: Tests for raw output conversion and loading: the DNG SDK's own sample DNGs developed into the sink to the
-// pixels LibRaw's own dcraw_make_mem_image makes of them, their embedded previews taken as they are and
-// turned as the raw data says, and what load_raw reports for a size refused, a file LibRaw cannot open,
-// and a file cut short.
+// Purpose: Tests for raw output conversion and loading: the DNG SDK's own sample DNGs developed into the sink as
+// LibRaw's own dcraw_make_mem_image makes them below the highlights, which are rolled off rather than clipped,
+// and at sixteen bits when asked; their embedded previews taken as they are and turned as the raw data says,
+// and what load_raw reports for a size refused, a file LibRaw cannot open, and a file cut short.
 
 #include "test.h"
 
@@ -29,6 +29,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -69,7 +71,8 @@ namespace
 		{
 			++calls;
 			told = frame;
-			stride = std::size_t{4} * frame.width + 8;
+			stride = (frame.format == libfiles::pixel_format::rgbx16 ? std::size_t{8} : std::size_t{4}) * frame.width +
+			         8;
 			memory.assign(stride * frame.height, 0xAB);
 			return {memory.data(), stride};
 		}
@@ -89,9 +92,7 @@ namespace
 	class failing_stream final : public libfiles::stream
 	{
 	public:
-		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from)
-		{
-		}
+		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from) {}
 
 		std::uint64_t size() override { return _data.size(); }
 
@@ -115,9 +116,11 @@ namespace
 		const auto processor = std::make_unique<LibRaw>();
 		processor->set_dng_host(&host);
 		processor->imgdata.params.use_camera_wb = 1;
+		// libfiles blends clipped channels towards white, which changes the development before any curve.
+		processor->imgdata.params.highlight = 2;
 
 		if (processor->open_file(path.c_str()) != LIBRAW_SUCCESS || processor->unpack() != LIBRAW_SUCCESS ||
-			processor->dcraw_process() != LIBRAW_SUCCESS)
+		    processor->dcraw_process() != LIBRAW_SUCCESS)
 			return result;
 
 		result.flip = processor->imgdata.sizes.flip;
@@ -151,26 +154,23 @@ TEST("Raw output integers truncate as LibRaw does at fractional brightness bound
 	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::infinity()), 0);
 	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::quiet_NaN()), 0);
 	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::max()), std::numeric_limits<int>::max());
-	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::lowest()), std::numeric_limits<int>::min());
+	CHECK_EQ(libfiles::detail::raw_output_integer(std::numeric_limits<float>::lowest()),
+	         std::numeric_limits<int>::min());
 }
 
-TEST("Should develop a raw file into the sink to the pixels LibRaw's own developer makes")
+// LibRaw's own developer clips its top percent of pixels to white; libfiles' development is the same below a
+// shoulder at four fifths of that white, and above it rolls what lies past white off into it - never brighter
+// than LibRaw shows it, and white only at the brightest the image holds.
+TEST("Should develop a raw file as LibRaw's own developer does below its highlights")
 {
-	// An 8-bit DNG, which LibRaw hands the DNG SDK, and one with colour in it. Most of the SDK's samples
-	// develop to white, or grey, in which red and blue could be swapped unseen.
+	// An 8-bit DNG, which LibRaw hands the DNG SDK and which develops to white, and one that develops below
+	// the shoulder almost throughout. Blended towards white, the SDK's samples develop neutral: the colour
+	// 12_ImageStats showed clipped was the clipping's.
 	for (const auto* const name : {"05_PGTM2_unsigned8.dng", "12_ImageStats_WeightedAverage.dng"})
 	{
 		const auto expected = develop_with_libraw(sample(name));
 		CHECK(expected.width > 0 && expected.colors == 3);
 		CHECK_EQ(expected.flip, 0);
-
-		if (std::string_view(name).starts_with("12_"))
-		{
-			auto coloured = false;
-			for (std::size_t i = 0; !coloured && i + 2 < expected.rgb.size(); i += 3)
-				coloured = expected.rgb[i] != expected.rgb[i + 2];
-			CHECK(coloured);
-		}
 
 		raw_sink sink;
 		const auto result = libfiles::load_raw(sample(name), sink, false);
@@ -183,22 +183,98 @@ TEST("Should develop a raw file into the sink to the pixels LibRaw's own develop
 		CHECK_EQ(static_cast<int>(sink.told.height), expected.height);
 		CHECK_EQ(result.orientation, 1u);
 
-		auto same = expected.rgb.size() == std::size_t{3} * sink.told.width * sink.told.height;
+		auto shaped = expected.rgb.size() == std::size_t{3} * sink.told.width * sink.told.height;
+		auto same_below = true;
+		auto never_brighter = true;
+		auto compared = 0;
 
-		for (std::size_t y = 0; same && y < sink.told.height; ++y)
+		for (std::size_t y = 0; shaped && y < sink.told.height; ++y)
 		{
-			for (std::size_t x = 0; same && x < sink.told.width; ++x)
+			for (std::size_t x = 0; x < sink.told.width; ++x)
 			{
 				const auto* const got = sink.memory.data() + y * sink.stride + x * 4;
 				const auto* const want = expected.rgb.data() + (y * sink.told.width + x) * 3;
-				same = got[0] == want[2] && got[1] == want[1] && got[2] == want[0] && got[3] == 0;
+				const std::array<std::uint8_t, 3> developed{got[2], got[1], got[0]};
+
+				// The shoulder starts at 0.8 of white, which LibRaw's gamma shows at 228 of 255.
+				if (std::max({want[0], want[1], want[2]}) <= 225)
+				{
+					same_below = same_below && developed[0] == want[0] && developed[1] == want[1] &&
+					             developed[2] == want[2] && got[3] == 0;
+					++compared;
+				}
+
+				for (auto c = 0; c < 3; ++c) never_brighter = never_brighter && developed[c] <= want[c];
 			}
 		}
 
-		CHECK(same);
+		CHECK(shaped);
+		CHECK(compared > 0 || std::string_view(name).starts_with("05_"));
+		CHECK(same_below);
+		CHECK(never_brighter);
 		// Nothing past each row's pixels is written.
 		CHECK(sink.memory[sink.stride - 1] == 0xAB);
 	}
+}
+
+// Sixteen bits a channel are the same development, with the precision a byte drops.
+TEST("Should develop a raw file at sixteen bits for a caller that takes them")
+{
+	const auto path = sample("12_ImageStats_WeightedAverage.dng");
+	raw_sink bytes_sink;
+	raw_sink wide_sink;
+	CHECK(libfiles::load_raw(path, bytes_sink, false).success);
+	CHECK(libfiles::load_raw(path, wide_sink, false, true).success);
+	CHECK(wide_sink.declared.format == libfiles::pixel_format::rgbx16);
+	CHECK(wide_sink.told.format == libfiles::pixel_format::rgbx16);
+	CHECK(wide_sink.told.width == bytes_sink.told.width && wide_sink.told.height == bytes_sink.told.height);
+
+	auto matches = true;
+	auto opaque = true;
+
+	for (std::size_t y = 0; y < wide_sink.told.height; ++y)
+	{
+		for (std::size_t x = 0; x < wide_sink.told.width; ++x)
+		{
+			std::array<std::uint16_t, 4> wide{};
+			std::memcpy(wide.data(), wide_sink.memory.data() + y * wide_sink.stride + x * 8, 8);
+			const auto* const byte = bytes_sink.memory.data() + y * bytes_sink.stride + x * 4;
+			matches = matches && wide[0] >> 8 == byte[2] && wide[1] >> 8 == byte[1] && wide[2] >> 8 == byte[0];
+			opaque = opaque && wide[3] == 0xFFFF;
+		}
+	}
+
+	CHECK(matches);
+	CHECK(opaque);
+}
+
+TEST("Raw highlights roll off from four fifths of white into white at the brightest")
+{
+	using libfiles::detail::raw_highlight_rolloff;
+
+	// Nothing past white is shown as LibRaw shows it, clipped at white.
+	CHECK(raw_highlight_rolloff(0.5, 1.0) == 0.5);
+	CHECK(raw_highlight_rolloff(0.95, 1.0) == 0.95);
+	CHECK(raw_highlight_rolloff(1.2, 1.0) == 1.0);
+
+	// Below the shoulder nothing moves; above it, the light rises strictly into white at the brightest.
+	CHECK(raw_highlight_rolloff(0.8, 3.0) == 0.8);
+	CHECK(raw_highlight_rolloff(3.0, 3.0) == 1.0);
+	CHECK(raw_highlight_rolloff(4.0, 3.0) == 1.0);
+
+	auto rising = true;
+	auto previous = 0.0;
+	for (auto step = 0; step <= 300; ++step)
+	{
+		const auto shown = raw_highlight_rolloff(step / 100.0, 3.0);
+		rising = rising && shown >= previous && shown <= 1.0;
+		previous = shown;
+	}
+	CHECK(rising);
+
+	// It leaves the shoulder with the slope it arrives with, so no tone bands at the join.
+	const auto slope = (raw_highlight_rolloff(0.8 + 1e-6, 3.0) - 0.8) / 1e-6;
+	CHECK(std::abs(slope - 1.0) < 1e-3);
 }
 
 TEST("Should take a raw file's JPEG preview as it is, rather than develop it")
@@ -267,7 +343,8 @@ TEST("Should write a raw file's bitmap preview to the sink as BGRX")
 		for (std::size_t x = 0; same && x < sink.told.width; ++x)
 		{
 			const auto* const got = sink.memory.data() + y * sink.stride + x * 4;
-			const auto* const want = reinterpret_cast<const std::uint8_t*>(thumbnail.thumb) + (y * sink.told.width + x) * 3;
+			const auto* const want = reinterpret_cast<const std::uint8_t*>(thumbnail.thumb) +
+			                         (y * sink.told.width + x) * 3;
 			same = got[0] == want[2] && got[1] == want[1] && got[2] == want[0] && got[3] == 0;
 		}
 	}
@@ -300,8 +377,8 @@ TEST("Should not load what LibRaw cannot open, nor a raw file cut short")
 	std::ifstream in(sample("05_PGTM2_unsigned8.dng"), std::ios::binary);
 	const bytes whole{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 	const auto cut = folder / "cut.dng";
-	std::ofstream(cut, std::ios::binary).write(reinterpret_cast<const char*>(whole.data()),
-	                                           static_cast<std::streamsize>(whole.size() / 3));
+	std::ofstream(cut, std::ios::binary)
+		.write(reinterpret_cast<const char*>(whole.data()), static_cast<std::streamsize>(whole.size() / 3));
 	raw_sink cut_sink;
 	const auto cut_result = libfiles::load_raw(cut, cut_sink, false);
 	CHECK(!cut_result.success);
@@ -311,13 +388,16 @@ TEST("Should not load what LibRaw cannot open, nor a raw file cut short")
 
 TEST("Should not load a raw file whose stream fails part-way, as it does not load the file cut short there")
 {
-	for (const auto* const name : {"05_PGTM2_unsigned8.dng", "06_PGTM2_unsigned16.dng", "12_ImageStats_WeightedAverage.dng",
-	                               "01_jxl_linear_raw_integer.dng"})
+	for (const auto* const name : {"05_PGTM2_unsigned8.dng", "06_PGTM2_unsigned16.dng",
+	                               "12_ImageStats_WeightedAverage.dng", "01_jxl_linear_raw_integer.dng"})
 	{
 		std::ifstream in(sample(name), std::ios::binary);
 		const bytes whole{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 		const auto fails_from = whole.size() * 3 / 5;
-		const auto loaded = [name](const bool success) { return success ? std::string(name) + " loaded" : std::string(); };
+		const auto loaded = [name](const bool success)
+		{
+			return success ? std::string(name) + " loaded" : std::string();
+		};
 
 		const bytes cut(whole.begin(), whole.begin() + static_cast<std::ptrdiff_t>(fails_from));
 		libfiles::reader short_file(cut);

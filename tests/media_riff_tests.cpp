@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the AVI, WAV and AIFF media scans. Each file is built chunk by chunk here, then read
 // whole, cut short at every byte near its ends and the edges of its chunks, and with each chunk's size
@@ -71,32 +71,67 @@ namespace
 		return chunk("RIFF", with_type(type, children));
 	}
 
-	bytes avih(const std::uint32_t frame_period, const std::uint32_t frames, const std::uint32_t streams, const std::uint32_t width,
-	           const std::uint32_t height)
+	bytes avih(const std::uint32_t frame_period, const std::uint32_t frames, const std::uint32_t streams,
+	           const std::uint32_t width, const std::uint32_t height)
 	{
-		return builder().le32(frame_period).le32(0).le32(0).le32(0x910).le32(frames).le32(0).le32(streams).le32(0x100000).le32(width)
-		                .le32(height).zeros(16).b;
+		return builder()
+		    .le32(frame_period)
+		    .le32(0)
+		    .le32(0)
+		    .le32(0x910)
+		    .le32(frames)
+		    .le32(0)
+		    .le32(streams)
+		    .le32(0x100000)
+		    .le32(width)
+		    .le32(height)
+		    .zeros(16)
+		    .b;
 	}
 
-	bytes strh(const std::string_view type, const std::string_view handler, const std::uint32_t scale, const std::uint32_t rate,
-	           const std::uint32_t length, const std::uint32_t sample_size = 0, const std::array<int, 4> frame = {})
+	bytes strh(const std::string_view type, const std::string_view handler, const std::uint32_t scale,
+	           const std::uint32_t rate, const std::uint32_t length, const std::uint32_t sample_size = 0,
+	           const std::array<int, 4> frame = {})
 	{
 		builder b;
-		b.raw(type).raw(handler).zeros(4 - handler.size()).le32(0).le16(0).le16(0).le32(0).le32(scale).le32(rate).le32(0).le32(length)
-		 .le32(0x100000).le32(0xFFFFFFFF).le32(sample_size);
+		b.raw(type)
+			.raw(handler)
+			.zeros(4 - handler.size())
+			.le32(0)
+			.le16(0)
+			.le16(0)
+			.le32(0)
+			.le32(scale)
+			.le32(rate)
+			.le32(0)
+			.le32(length)
+			.le32(0x100000)
+			.le32(0xFFFFFFFF)
+			.le32(sample_size);
 		for (const auto v : frame) b.le16(static_cast<unsigned>(v));
 		return b.b;
 	}
 
 	// A BITMAPINFOHEADER, whose size counts what its codec keeps after it, as FFmpeg writes it.
-	bytes bitmap_info(const std::uint32_t width, const std::uint32_t height, const std::string_view compression, const bytes& extra = {})
+	bytes bitmap_info(const std::uint32_t width, const std::uint32_t height, const std::string_view compression,
+	                  const bytes& extra = {})
 	{
-		return builder().le32(static_cast<std::uint32_t>(40 + extra.size())).le32(width).le32(height).le16(1).le16(24).raw(compression)
-		                .le32(width * height * 3).zeros(16).raw(extra).b;
+		return builder()
+		    .le32(static_cast<std::uint32_t>(40 + extra.size()))
+		    .le32(width)
+		    .le32(height)
+		    .le16(1)
+		    .le16(24)
+		    .raw(compression)
+		    .le32(width * height * 3)
+		    .zeros(16)
+		    .raw(extra)
+		    .b;
 	}
 
-	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate, const unsigned align, const std::uint32_t average,
-	                  const unsigned bits, const bytes& extra = {}, const bool extended = true)
+	bytes wave_format(const unsigned tag, const unsigned channels, const std::uint32_t rate, const unsigned align,
+	                  const std::uint32_t average, const unsigned bits, const bytes& extra = {},
+	                  const bool extended = true)
 	{
 		builder b;
 		b.le16(tag).le16(channels).le32(rate).le32(average).le16(align).le16(bits);
@@ -112,27 +147,78 @@ namespace
 	}
 
 	// WAVEFORMATEXTENSIBLE: samples of container bits holding valid bits, of a KSDATAFORMAT subtype.
-	bytes extensible_format(const unsigned channels, const std::uint32_t rate, const unsigned container, const unsigned valid,
-	                        const unsigned subtype)
+	bytes extensible_format(const unsigned channels, const std::uint32_t rate, const unsigned container,
+	                        const unsigned valid, const unsigned subtype)
 	{
 		const auto align = channels * container / 8;
-		const auto extra = builder().le16(valid).le32(channels == 2 ? 3u : 4u).le16(subtype).le16(0).le16(0).le16(0x10).u8(0x80).u8(0)
-		                            .u8(0).u8(0xAA).u8(0).u8(0x38).u8(0x9B).u8(0x71).b;
+		const auto extra = builder()
+		                       .le16(valid)
+		                       .le32(channels == 2 ? 3u : 4u)
+		                       .le16(subtype)
+		                       .le16(0)
+		                       .le16(0)
+		                       .le16(0x10)
+		                       .u8(0x80)
+		                       .u8(0)
+		                       .u8(0)
+		                       .u8(0xAA)
+		                       .u8(0)
+		                       .u8(0x38)
+		                       .u8(0x9B)
+		                       .u8(0x71)
+		                       .b;
 		return wave_format(0xFFFE, channels, rate, align, rate * align, container, extra);
 	}
 
-	bytes vprp(const unsigned aspect_x, const unsigned aspect_y, const std::uint32_t width, const std::uint32_t height, const std::uint32_t fields)
+	bytes vprp(const unsigned aspect_x, const unsigned aspect_y, const std::uint32_t width, const std::uint32_t height,
+	           const std::uint32_t fields)
 	{
-		return builder().le32(0).le32(0).le32(50).le32(0).le32(0).le16(aspect_y).le16(aspect_x).le32(width).le32(height).le32(fields)
-		                .zeros(32 * fields).b;
+		return builder()
+		    .le32(0)
+		    .le32(0)
+		    .le32(50)
+		    .le32(0)
+		    .le32(0)
+		    .le16(aspect_y)
+		    .le16(aspect_x)
+		    .le32(width)
+		    .le32(height)
+		    .le32(fields)
+		    .zeros(32 * fields)
+		    .b;
 	}
 
 	// A frame of Motion JPEG: start of image, a baseline SOF with Y sampled hy x vy and both chroma once,
 	// and end of image.
 	bytes jpeg_frame(const unsigned width, const unsigned height, const unsigned hy, const unsigned vy)
 	{
-		return builder().u8(0xFF).u8(0xD8).u8(0xFF).u8(0xE0).be16(16).raw("AVI1").zeros(10).u8(0xFF).u8(0xC0).be16(17).u8(8).be16(height)
-		                .be16(width).u8(3).u8(1).u8(hy << 4 | vy).u8(0).u8(2).u8(0x11).u8(1).u8(3).u8(0x11).u8(1).u8(0xFF).u8(0xD9).b;
+		return builder()
+		    .u8(0xFF)
+		    .u8(0xD8)
+		    .u8(0xFF)
+		    .u8(0xE0)
+		    .be16(16)
+		    .raw("AVI1")
+		    .zeros(10)
+		    .u8(0xFF)
+		    .u8(0xC0)
+		    .be16(17)
+		    .u8(8)
+		    .be16(height)
+		    .be16(width)
+		    .u8(3)
+		    .u8(1)
+		    .u8(hy << 4 | vy)
+		    .u8(0)
+		    .u8(2)
+		    .u8(0x11)
+		    .u8(1)
+		    .u8(3)
+		    .u8(0x11)
+		    .u8(1)
+		    .u8(0xFF)
+		    .u8(0xD9)
+		    .b;
 	}
 
 	// x264's sequence and picture parameter sets for 320 x 240, High profile, 4:2:0, 8 bits.
@@ -149,15 +235,26 @@ namespace
 
 	bytes avc_config()
 	{
-		return builder().u8(1).u8(0x64).u8(0).u8(0x0D).u8(0xFF).u8(0xE1).be16(static_cast<unsigned>(h264_sps.size())).raw(h264_sps).u8(1)
-		                .be16(static_cast<unsigned>(h264_pps.size())).raw(h264_pps).b;
+		return builder()
+		    .u8(1)
+		    .u8(0x64)
+		    .u8(0)
+		    .u8(0x0D)
+		    .u8(0xFF)
+		    .u8(0xE1)
+		    .be16(static_cast<unsigned>(h264_sps.size()))
+		    .raw(h264_sps)
+		    .u8(1)
+		    .be16(static_cast<unsigned>(h264_pps.size()))
+		    .raw(h264_pps)
+		    .b;
 	}
 
 	// FFmpeg's MPEG-4 Part 2 headers for 352 x 288, Simple Profile: the visual object sequence, visual
 	// object and video object layer.
-	const bytes mpeg4_headers = {0x00, 0x00, 0x01, 0xB0, 0x01, 0x00, 0x00, 0x01, 0xB5, 0x89, 0x13, 0x00, 0x00, 0x01,
-	                             0x00, 0x00, 0x00, 0x01, 0x20, 0x00, 0xC4, 0x8D, 0x88, 0x00, 0xCD, 0x0B, 0x04, 0x24,
-	                             0x14, 0x43, 0x00, 0x00, 0x01, 0xB6};
+	const bytes mpeg4_headers = {0x00, 0x00, 0x01, 0xB0, 0x01, 0x00, 0x00, 0x01, 0xB5, 0x89, 0x13, 0x00,
+	                             0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x20, 0x00, 0xC4, 0x8D, 0x88, 0x00,
+	                             0xCD, 0x0B, 0x04, 0x24, 0x14, 0x43, 0x00, 0x00, 0x01, 0xB6};
 
 	// The header DIF block that starts a 625/50 DV frame.
 	bytes dv_frame()
@@ -191,12 +288,15 @@ namespace
 	{
 		auto exponent = 0;
 		const auto significand = static_cast<std::uint64_t>(std::ldexp(std::frexp(value, &exponent), 64));
-		return builder().be16(static_cast<unsigned>(exponent - 1 + 16383)).be32(static_cast<std::uint32_t>(significand >> 32))
-		                .be32(static_cast<std::uint32_t>(significand)).b;
+		return builder()
+		    .be16(static_cast<unsigned>(exponent - 1 + 16383))
+		    .be32(static_cast<std::uint32_t>(significand >> 32))
+		    .be32(static_cast<std::uint32_t>(significand))
+		    .b;
 	}
 
-	bytes comm(const unsigned channels, const std::uint32_t frames, const unsigned bits, const double rate, const std::string_view compression = {},
-	           const std::string_view name = {})
+	bytes comm(const unsigned channels, const std::uint32_t frames, const unsigned bits, const double rate,
+	           const std::string_view compression = {}, const std::string_view name = {})
 	{
 		builder b;
 		b.be16(channels).be32(frames).be16(bits).raw(extended(rate));
@@ -216,8 +316,17 @@ namespace
 		builder f;
 		f.raw(frame).be32(static_cast<std::uint32_t>(value.size() + 1)).be16(0).u8(0).raw(value);
 		const auto size = static_cast<std::uint32_t>(f.size());
-		return builder().raw("ID3").u8(3).u8(0).u8(0).u8(size >> 21 & 0x7F).u8(size >> 14 & 0x7F).u8(size >> 7 & 0x7F).u8(size & 0x7F)
-		                .raw(f.b).b;
+		return builder()
+		    .raw("ID3")
+		    .u8(3)
+		    .u8(0)
+		    .u8(0)
+		    .u8(size >> 21 & 0x7F)
+		    .u8(size >> 14 & 0x7F)
+		    .u8(size >> 7 & 0x7F)
+		    .u8(size & 0x7F)
+		    .raw(f.b)
+		    .b;
 	}
 
 	const std::string_view packet_a = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF/></x:xmpmeta>";
@@ -274,21 +383,25 @@ namespace
 
 	std::string tag_value(const std::vector<libfiles::media_tag>& tags, const std::string_view key)
 	{
-		for (const auto& t : tags) if (t.key == key) return t.value;
+		for (const auto& t : tags)
+			if (t.key == key) return t.value;
 		return {};
 	}
 
 	// Where every chunk header starts, at any depth of lists.
-	void chunk_offsets(const bytes& file, std::size_t pos, const std::size_t end, const bool big_endian, std::set<std::size_t>& out, const int depth)
+	void chunk_offsets(const bytes& file, std::size_t pos, const std::size_t end, const bool big_endian,
+	                   std::set<std::size_t>& out, const int depth)
 	{
 		while (end > pos && end - pos >= 8)
 		{
 			out.insert(pos);
-			const auto size = big_endian ? libfiles::detail::load_be32(file.data() + pos + 4) : libfiles::detail::load_le32(file.data() + pos + 4);
+			const auto size = big_endian ? libfiles::detail::load_be32(file.data() + pos + 4)
+			                             : libfiles::detail::load_le32(file.data() + pos + 4);
 			const std::string id(reinterpret_cast<const char*>(file.data() + pos), 4);
 			const auto nested = id == "LIST" || id == "RIFF" || id == "RF64" || id == "FORM";
 			if (size > end - pos - 8) return;
-			if (nested && size >= 4 && depth < 4) chunk_offsets(file, pos + 12, pos + 8 + size, big_endian, out, depth + 1);
+			if (nested && size >= 4 && depth < 4)
+				chunk_offsets(file, pos + 12, pos + 8 + size, big_endian, out, depth + 1);
 			pos += 8 + size + (size & 1);
 		}
 	}
@@ -345,23 +458,32 @@ namespace
 		for (const auto cut : cuts)
 		{
 			const bytes part(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(cut));
-			if (const auto fault = fault_in(part, riff_packet); !fault.empty()) return std::format("cut at {}: {}", cut, fault);
+			if (const auto fault = fault_in(part, riff_packet); !fault.empty())
+				return std::format("cut at {}: {}", cut, fault);
 		}
 
 		for (const auto o : offsets)
 		{
-			const auto size = big_endian ? libfiles::detail::load_be32(file.data() + o + 4) : libfiles::detail::load_le32(file.data() + o + 4);
-			const std::uint32_t sizes[] = {0, 1, 3, 4, 7, size - 1, size + 1, size + 2, static_cast<std::uint32_t>(file.size()), 0x7FFFFFFF, 0xFFFFFFFE, 0xFFFFFFFF};
+			const auto size = big_endian ? libfiles::detail::load_be32(file.data() + o + 4)
+			                             : libfiles::detail::load_le32(file.data() + o + 4);
+			const std::uint32_t sizes[] = {0,          1,          3,
+			                               4,          7,          size - 1,
+			                               size + 1,   size + 2,   static_cast<std::uint32_t>(file.size()),
+			                               0x7FFFFFFF, 0xFFFFFFFE, 0xFFFFFFFF};
 
 			for (const auto v : sizes)
 			{
 				auto copy = file;
-				for (auto i = 0; i < 4; ++i) copy[o + 4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(big_endian ? v >> (24 - 8 * i) : v >> (8 * i));
+				for (auto i = 0; i < 4; ++i)
+					copy[o + 4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(big_endian ? v >> (24 - 8 * i)
+					                                                                                 : v >> (8 * i));
 
 				// Data that gives no size runs to the end of the file, as FFmpeg reads it, where read_packet walks
 				// the audio after its header as chunks.
-				const auto unsized = v == 0 && std::string_view(reinterpret_cast<const char*>(file.data() + o), 4) == "data";
-				if (const auto fault = fault_in(copy, riff_packet && !unsized); !fault.empty()) return std::format("size {} at {}: {}", v, o, fault);
+				const auto unsized = v == 0 &&
+				                     std::string_view(reinterpret_cast<const char*>(file.data() + o), 4) == "data";
+				if (const auto fault = fault_in(copy, riff_packet && !unsized); !fault.empty())
+					return std::format("size {} at {}: {}", v, o, fault);
 			}
 		}
 
@@ -371,10 +493,11 @@ namespace
 
 namespace
 {
-	bytes video_strl(const std::string_view fourcc, const std::uint32_t width, const std::uint32_t height, const std::uint32_t frames,
-	                 const std::vector<bytes>& more = {}, const bytes& extra = {})
+	bytes video_strl(const std::string_view fourcc, const std::uint32_t width, const std::uint32_t height,
+	                 const std::uint32_t frames, const std::vector<bytes>& more = {}, const bytes& extra = {})
 	{
-		std::vector<bytes> c = {chunk("strh", strh("vids", fourcc, 1, 25, frames)), chunk("strf", bitmap_info(width, height, fourcc, extra))};
+		std::vector<bytes> c = {chunk("strh", strh("vids", fourcc, 1, 25, frames)),
+		                        chunk("strf", bitmap_info(width, height, fourcc, extra))};
 		c.insert(c.end(), more.begin(), more.end());
 		return list("strl", c);
 	}
@@ -382,7 +505,8 @@ namespace
 	// PCM in AVI, timed as a writer times it: a block a sample, the bytes' rate the stream's.
 	bytes pcm_strl(const std::uint32_t seconds, const std::vector<bytes>& more = {})
 	{
-		std::vector<bytes> c = {chunk("strh", strh("auds", "", 4, 192000, 48000 * seconds, 4)), chunk("strf", wave_format(1, 2, 48000, 4, 192000, 16))};
+		std::vector<bytes> c = {chunk("strh", strh("auds", "", 4, 192000, 48000 * seconds, 4)),
+		                        chunk("strf", wave_format(1, 2, 48000, 4, 192000, 16))};
 		c.insert(c.end(), more.begin(), more.end());
 		return list("strl", c);
 	}
@@ -391,16 +515,20 @@ namespace
 	bytes full_avi()
 	{
 		const auto hdrl = list("hdrl", {
-			chunk("avih", avih(40000, 250, 2, 352, 288)),
-			video_strl("XVID", 352, 288, 250, {chunk("strn", text("Main video")), chunk("vprp", vprp(16, 9, 352, 288, 2))}),
-			pcm_strl(10, {chunk("strn", text("Commentary"))}),
-			chunk("IDIT", text("Sun Mar 13 15:13:49 2011\n")),
-		});
+										   chunk("avih", avih(40000, 250, 2, 352, 288)),
+										   video_strl("XVID", 352, 288, 250,
+		                                              {chunk("strn", text("Main video")),
+		                                               chunk("vprp", vprp(16, 9, 352, 288, 2))}),
+										   pcm_strl(10, {chunk("strn", text("Commentary"))}),
+										   chunk("IDIT", text("Sun Mar 13 15:13:49 2011\n")),
+									   });
 
-		const auto info = list("INFO", {chunk("INAM", text("A title")), chunk("IART", text("An artist")), chunk("ICMT", text("Caf\xE9"))});
+		const auto info = list("INFO", {chunk("INAM", text("A title")), chunk("IART", text("An artist")),
+		                                chunk("ICMT", text("Caf\xE9"))});
 		const auto late = list("INFO", {chunk("INAM", text("A later title")), chunk("IGNR", text("Documentary"))});
 		const auto movi = list("movi", {chunk("00dc", mpeg4_headers), chunk("01wb", bytes(1920, 0))});
-		return riff("AVI ", {hdrl, info, chunk("JUNK", bytes(64, 0)), movi, chunk("idx1", bytes(32, 0)), chunk("_PMX", to_bytes(packet_a)), late});
+		return riff("AVI ", {hdrl, info, chunk("JUNK", bytes(64, 0)), movi, chunk("idx1", bytes(32, 0)),
+		                     chunk("_PMX", to_bytes(packet_a)), late});
 	}
 }
 
@@ -465,10 +593,13 @@ TEST("media riff avi reads its header, streams and tags")
 TEST("media riff avi reads the first chunk of a stream whose bitstream describes it")
 {
 	// H.264 with its parameter sets in the stream, after an audio chunk and a dropped frame.
-	const auto h264 = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 2, 320, 240)), video_strl("H264", 320, 240, 25), pcm_strl(1)}),
-		list("movi", {chunk("01wb", bytes(400, 0)), chunk("00dc", {}), chunk("00dc", cat({annexb({h264_sps, h264_pps}), bytes(64, 0x55)}))}),
-	});
+	const auto h264 = riff("AVI ",
+	                       {
+							   list("hdrl", {chunk("avih", avih(40000, 25, 2, 320, 240)),
+	                                         video_strl("H264", 320, 240, 25), pcm_strl(1)}),
+							   list("movi", {chunk("01wb", bytes(400, 0)), chunk("00dc", {}),
+	                                         chunk("00dc", cat({annexb({h264_sps, h264_pps}), bytes(64, 0x55)}))}),
+						   });
 
 	auto s = scan(h264);
 	CHECK(s.success);
@@ -481,9 +612,10 @@ TEST("media riff avi reads the first chunk of a stream whose bitstream describes
 
 	// avc1 keeps its configuration after the BITMAPINFOHEADER, so its chunks need not be read.
 	const auto avc1 = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 320, 240)), video_strl("avc1", 320, 240, 25, {}, avc_config())}),
-		list("movi", {chunk("00dc", bytes(64, 0))}),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 25, 1, 320, 240)),
+	                                                 video_strl("avc1", 320, 240, 25, {}, avc_config())}),
+									   list("movi", {chunk("00dc", bytes(64, 0))}),
+								   });
 
 	s = scan(avc1);
 	CHECK(s.success);
@@ -492,9 +624,10 @@ TEST("media riff avi reads the first chunk of a stream whose bitstream describes
 
 	// Motion JPEG, inside a 'rec ' list: the frame's sampling, 4:2:2.
 	const auto mjpeg = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 640, 480)), video_strl("MJPG", 640, 480, 25)}),
-		list("movi", {list("rec ", {chunk("00dc", jpeg_frame(640, 480, 2, 1))})}),
-	});
+										list("hdrl", {chunk("avih", avih(40000, 25, 1, 640, 480)),
+	                                                  video_strl("MJPG", 640, 480, 25)}),
+										list("movi", {list("rec ", {chunk("00dc", jpeg_frame(640, 480, 2, 1))})}),
+									});
 
 	s = scan(mjpeg);
 	CHECK(s.success);
@@ -504,10 +637,11 @@ TEST("media riff avi reads the first chunk of a stream whose bitstream describes
 	CHECK(!first_stream(s).video.interlaced);
 
 	// Interlaced Motion JPEG: each field a picture half the frame's height.
-	const auto fields = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 720, 576)), video_strl("MJPG", 720, 576, 25)}),
-		list("movi", {chunk("00dc", cat({jpeg_frame(720, 288, 2, 1), jpeg_frame(720, 288, 2, 1)}))}),
-	});
+	const auto fields =
+		riff("AVI ", {
+						 list("hdrl", {chunk("avih", avih(40000, 25, 1, 720, 576)), video_strl("MJPG", 720, 576, 25)}),
+						 list("movi", {chunk("00dc", cat({jpeg_frame(720, 288, 2, 1), jpeg_frame(720, 288, 2, 1)}))}),
+					 });
 
 	s = scan(fields);
 	CHECK(s.success);
@@ -517,10 +651,11 @@ TEST("media riff avi reads the first chunk of a stream whose bitstream describes
 
 	// Type-1 DV: one stream of interleaved DV, its picture from the frame's header.
 	const auto dv = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 720, 576)),
-		              list("strl", {chunk("strh", strh("iavs", "dvsd", 1, 25, 25)), chunk("strf", bytes(32, 0))})}),
-		list("movi", {chunk("00dc", dv_frame())}),
-	});
+									 list("hdrl", {chunk("avih", avih(40000, 25, 1, 720, 576)),
+	                                               list("strl", {chunk("strh", strh("iavs", "dvsd", 1, 25, 25)),
+	                                                             chunk("strf", bytes(32, 0))})}),
+									 list("movi", {chunk("00dc", dv_frame())}),
+								 });
 
 	s = scan(dv);
 	CHECK(s.success);
@@ -534,11 +669,12 @@ TEST("media riff avi reads the first chunk of a stream whose bitstream describes
 TEST("media riff avi without a format keeps the stream header's frame or the main header's size")
 {
 	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 50, 2, 640, 360)),
-		              list("strl", {chunk("strh", strh("vids", "XVID", 1, 25, 50, 0, {0, 0, 320, 180}))}),
-		              list("strl", {chunk("strh", strh("vids", "XVID", 0, 0, 50))})}),
-		list("movi", {}),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 50, 2, 640, 360)),
+	                                                 list("strl", {chunk("strh", strh("vids", "XVID", 1, 25, 50, 0,
+	                                                                                  {0, 0, 320, 180}))}),
+	                                                 list("strl", {chunk("strh", strh("vids", "XVID", 0, 0, 50))})}),
+									   list("movi", {}),
+								   });
 
 	const auto s = scan(file);
 	CHECK(s.success);
@@ -559,7 +695,9 @@ TEST("media riff avi reads OpenDML's frame count and further forms")
 	                                list("odml", {chunk("dmlh", builder().le32(500).zeros(244).b)})});
 	const auto avix = riff("AVIX", {list("movi", {chunk("00dc", bytes(16, 1))})});
 
-	auto file = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)}), chunk("idx1", bytes(16, 0)), chunk("_PMX", to_bytes(packet_a))}), avix});
+	auto file = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)}), chunk("idx1", bytes(16, 0)),
+	                               chunk("_PMX", to_bytes(packet_a))}),
+	                 avix});
 	auto s = scan(file);
 	CHECK(s.success);
 	CHECK_STR(s.brand, "AVI OpenDML");
@@ -570,14 +708,16 @@ TEST("media riff avi reads OpenDML's frame count and further forms")
 	CHECK_STR(xmp_of(s), packet_of(file));
 
 	// A packet in a further form is read only when the first has none after its movie data.
-	file = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)})}), riff("AVIX", {list("movi", {chunk("00dc", bytes(16, 1))}), chunk("_PMX", to_bytes(packet_b))})});
+	file = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)})}),
+	            riff("AVIX", {list("movi", {chunk("00dc", bytes(16, 1))}), chunk("_PMX", to_bytes(packet_b))})});
 	s = scan(file);
 	CHECK(s.success);
 	CHECK_STR(xmp_of(s), packet_b);
 	CHECK_STR(xmp_of(s), packet_of(file));
 
 	// A further form cut short leaves the packet unread, as read_packet leaves it.
-	file = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)}), chunk("_PMX", to_bytes(packet_a))}), avix});
+	file = cat(
+		{riff("AVI ", {hdrl, list("movi", {chunk("00dc", mpeg4_headers)}), chunk("_PMX", to_bytes(packet_a))}), avix});
 	file.resize(file.size() - 6);
 	s = scan(file);
 	CHECK(s.success);
@@ -610,10 +750,12 @@ TEST("media riff avi reads Nikon's tags and a camera's EXIF")
 	const auto avif = cat({to_bytes("AVIF"), bytes(4, 0), ifd.b});
 
 	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25, {chunk("strd", avif)})}),
-		list("ncdt", {chunk("ncvr", bytes(10, 0)), chunk("nctg", nikon.b), chunk("ncth", bytes(33, 0xFF))}),
-		list("movi", {chunk("00dc", mpeg4_headers)}),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)),
+	                                                 video_strl("XVID", 352, 288, 25, {chunk("strd", avif)})}),
+									   list("ncdt", {chunk("ncvr", bytes(10, 0)), chunk("nctg", nikon.b),
+	                                                 chunk("ncth", bytes(33, 0xFF))}),
+									   list("movi", {chunk("00dc", mpeg4_headers)}),
+								   });
 
 	const auto s = scan(file);
 	CHECK(s.success);
@@ -657,13 +799,14 @@ TEST("media riff avi costs a read for its header and one for its end")
 	for (auto i = 1; i < 400; ++i) movi.raw(chunk(i % 2 ? "01wb" : "00dc", bytes(i % 2 ? 7680 : 20000, 0x22)));
 
 	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 200, 2, 352, 288)), video_strl("XVID", 352, 288, 200), pcm_strl(8)}),
-		list("INFO", {chunk("ISFT", text("Lavf"))}),
-		chunk("LIST", cat({to_bytes("movi"), movi.b})),
-		chunk("idx1", bytes(6400, 0)),
-		chunk("_PMX", to_bytes(packet_a)),
-		list("INFO", {chunk("IART", text("Read on the way to the end"))}),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 200, 2, 352, 288)),
+	                                                 video_strl("XVID", 352, 288, 200), pcm_strl(8)}),
+									   list("INFO", {chunk("ISFT", text("Lavf"))}),
+									   chunk("LIST", cat({to_bytes("movi"), movi.b})),
+									   chunk("idx1", bytes(6400, 0)),
+									   chunk("_PMX", to_bytes(packet_a)),
+									   list("INFO", {chunk("IART", text("Read on the way to the end"))}),
+								   });
 
 	CHECK(file.size() > 5u << 20);
 	CHECK(reads_of(file) <= 2);
@@ -675,13 +818,15 @@ TEST("media riff avi costs a read for its header and one for its end")
 TEST("media riff avi numbers its streams as FFmpeg does, past a padding stream")
 {
 	// A 'pads' stream is no stream to FFmpeg, but movi still names the streams after it by their place.
-	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 3, 640, 480)),
-		              video_strl("MJPG", 640, 480, 25, {chunk("inam", text("Lower-case name"))}),
-		              list("strl", {chunk("strh", strh("pads", "", 1, 25, 0)), chunk("strf", bytes(8, 0))}),
-		              pcm_strl(1, {chunk("isft", text("A writer"))})}),
-		list("movi", {chunk("02wb", bytes(16, 0)), chunk("00dc", jpeg_frame(640, 480, 2, 2))}),
-	});
+	const auto file = riff("AVI ",
+	                       {
+							   list("hdrl", {chunk("avih", avih(40000, 25, 3, 640, 480)),
+	                                         video_strl("MJPG", 640, 480, 25, {chunk("inam", text("Lower-case name"))}),
+	                                         list("strl", {chunk("strh", strh("pads", "", 1, 25, 0)),
+	                                                       chunk("strf", bytes(8, 0))}),
+	                                         pcm_strl(1, {chunk("isft", text("A writer"))})}),
+							   list("movi", {chunk("02wb", bytes(16, 0)), chunk("00dc", jpeg_frame(640, 480, 2, 2))}),
+						   });
 
 	const auto s = scan(file);
 	CHECK(s.success);
@@ -700,15 +845,16 @@ TEST("media riff avi reads INFO on both sides of its movie data, the side before
 	// An INFO item of odd size without its pad puts the next a byte early.
 	builder info;
 	info.raw("INFO").raw("INAM").le32(5).raw("Title").raw("IART").le32(6).raw("Artist");
-	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)}),
-		chunk("LIST", info.b),
-		list("movi", {chunk("00dc", mpeg4_headers)}),
-		chunk("idx1", bytes(16, 0)),
-		chunk("_PMX", to_bytes(packet_a)),
-		// A field of its own, and one the list before the movie data gives too, which wins.
-		list("INFO", {chunk("ICMT", text("After the movie")), chunk("INAM", text("Late title"))}),
-	});
+	const auto file =
+		riff("AVI ", {
+						 list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)}),
+						 chunk("LIST", info.b),
+						 list("movi", {chunk("00dc", mpeg4_headers)}),
+						 chunk("idx1", bytes(16, 0)),
+						 chunk("_PMX", to_bytes(packet_a)),
+						 // A field of its own, and one the list before the movie data gives too, which wins.
+						 list("INFO", {chunk("ICMT", text("After the movie")), chunk("INAM", text("Late title"))}),
+					 });
 
 	auto s = scan(file);
 	CHECK(s.success);
@@ -723,12 +869,13 @@ TEST("media riff avi reads INFO on both sides of its movie data, the side before
 
 	// Without a list before the movie data, the one after it gives every field, as in Byzantium.avi.
 	const auto late = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)}),
-		list("movi", {chunk("00dc", mpeg4_headers)}),
-		chunk("idx1", bytes(16, 0)),
-		chunk("_PMX", to_bytes(packet_a)),
-		list("INFO", {chunk("INAM", text("Byzantium"))}),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)),
+	                                                 video_strl("XVID", 352, 288, 25)}),
+									   list("movi", {chunk("00dc", mpeg4_headers)}),
+									   chunk("idx1", bytes(16, 0)),
+									   chunk("_PMX", to_bytes(packet_a)),
+									   list("INFO", {chunk("INAM", text("Byzantium"))}),
+								   });
 
 	s = scan(late);
 	CHECK(s.success);
@@ -753,12 +900,13 @@ TEST("media riff avi reads at most 4096 INFO items")
 	};
 
 	const auto file = riff("AVI ", {
-		list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)), video_strl("XVID", 352, 288, 25)}),
-		list("INFO", items(0, 5000)),
-		list("movi", {chunk("00dc", mpeg4_headers)}),
-		chunk("idx1", bytes(16, 0)),
-		list("INFO", items(5000, 5000)),
-	});
+									   list("hdrl", {chunk("avih", avih(40000, 25, 1, 352, 288)),
+	                                                 video_strl("XVID", 352, 288, 25)}),
+									   list("INFO", items(0, 5000)),
+									   list("movi", {chunk("00dc", mpeg4_headers)}),
+									   chunk("idx1", bytes(16, 0)),
+									   list("INFO", items(5000, 5000)),
+								   });
 
 	const auto s = scan(file);
 	CHECK(s.success);
@@ -776,14 +924,18 @@ TEST("media riff avi shows an edit to its INFO wherever its lists lie")
 	u.legacy.title = "A new title, longer than the old one";
 
 	// The list before the movie data is edited, in the JUNK after it, and is read over the one after.
-	auto s = scan(edited(riff("AVI ", {hdrl, list("INFO", {chunk("INAM", text("Old"))}), chunk("JUNK", bytes(200, 0)), movi, chunk("idx1", bytes(16, 0)), late}), u));
+	auto s = scan(edited(riff("AVI ", {hdrl, list("INFO", {chunk("INAM", text("Old"))}), chunk("JUNK", bytes(200, 0)),
+	                                   movi, chunk("idx1", bytes(16, 0)), late}),
+	                     u));
 	CHECK(s.success);
 	CHECK_STR(s.properties.title, "A new title, longer than the old one");
 	CHECK_STR(tag_value(s.tags, "INAM"), "A new title, longer than the old one");
 	CHECK_STR(s.properties.artist, "Someone");
 
 	// With no room before the movie data the edited list goes to the end of the form, after the other.
-	s = scan(edited(riff("AVI ", {hdrl, list("INFO", {chunk("INAM", text("Old"))}), movi, chunk("idx1", bytes(16, 0)), late}), u));
+	s = scan(edited(riff("AVI ",
+	                     {hdrl, list("INFO", {chunk("INAM", text("Old"))}), movi, chunk("idx1", bytes(16, 0)), late}),
+	                u));
 	CHECK(s.success);
 	CHECK_STR(s.properties.title, "A new title, longer than the old one");
 	CHECK_STR(s.properties.artist, "Someone");
@@ -800,7 +952,8 @@ TEST("media riff avi walks further forms by their headers alone")
 	const auto hdrl = list("hdrl", {chunk("avih", avih(40000, 100, 1, 352, 288)), video_strl("XVID", 352, 288, 100),
 	                                list("odml", {chunk("dmlh", builder().le32(800).zeros(244).b)})});
 
-	auto file = riff("AVI ", {hdrl, list("movi", {chunk("00dc", cat({mpeg4_headers, bytes(300000, 1)}))}), chunk("idx1", bytes(16, 0))});
+	auto file = riff("AVI ", {hdrl, list("movi", {chunk("00dc", cat({mpeg4_headers, bytes(300000, 1)}))}),
+	                          chunk("idx1", bytes(16, 0))});
 	for (auto i = 0; i < 7; ++i)
 	{
 		const auto avix = riff("AVIX", {list("movi", {chunk("00dc", bytes(300000, 2)), chunk("ix00", bytes(32, 0))})});
@@ -847,8 +1000,10 @@ TEST("media riff avi survives being cut short and having its sizes corrupted")
 
 	const auto hdrl = list("hdrl", {chunk("avih", avih(40000, 300, 1, 352, 288)), video_strl("MJPG", 352, 288, 300),
 	                                list("odml", {chunk("dmlh", builder().le32(500).zeros(4).b)})});
-	const auto open_dml = cat({riff("AVI ", {hdrl, list("movi", {chunk("00dc", jpeg_frame(352, 288, 2, 2))}), chunk("_PMX", to_bytes(packet_a))}),
-	                           riff("AVIX", {list("movi", {chunk("00dc", bytes(16, 1))}), chunk("_PMX", to_bytes(packet_b))})});
+	const auto open_dml = cat(
+		{riff("AVI ",
+	          {hdrl, list("movi", {chunk("00dc", jpeg_frame(352, 288, 2, 2))}), chunk("_PMX", to_bytes(packet_a))}),
+	     riff("AVIX", {list("movi", {chunk("00dc", bytes(16, 1))}), chunk("_PMX", to_bytes(packet_b))})});
 	CHECK_STR(damage(open_dml, false), "");
 }
 
@@ -865,10 +1020,18 @@ namespace
 	}
 
 	// An RF64 or BW64 file that leaves the form's and the data's sizes to its ds64 chunk.
-	bytes wav64(const std::string_view id, const bytes& format, const bytes& data, const std::uint64_t samples, const std::vector<bytes>& after = {})
+	bytes wav64(const std::string_view id, const bytes& format, const bytes& data, const std::uint64_t samples,
+	            const std::vector<bytes>& after = {})
 	{
 		builder body;
-		body.raw("WAVE").raw("ds64").le32(28).zeros(28).raw(chunk("fmt ", format)).raw("data").le32(0xFFFFFFFF).raw(data);
+		body.raw("WAVE")
+			.raw("ds64")
+			.le32(28)
+			.zeros(28)
+			.raw(chunk("fmt ", format))
+			.raw("data")
+			.le32(0xFFFFFFFF)
+			.raw(data);
 		if (data.size() & 1) body.u8(0);
 		for (const auto& a : after) body.raw(a);
 
@@ -886,8 +1049,21 @@ namespace
 
 	bytes bext()
 	{
-		return builder().raw("A description").zeros(256 - 13).raw("Originator").zeros(32 - 10).raw("REF-1").zeros(32 - 5).raw("2011-03-13")
-		                .raw("15:13:49").le32(0).le32(0).le16(1).zeros(64 + 10 + 180).raw("A=PCM,F=48000,W=16\r\n").b;
+		return builder()
+		    .raw("A description")
+		    .zeros(256 - 13)
+		    .raw("Originator")
+		    .zeros(32 - 10)
+		    .raw("REF-1")
+		    .zeros(32 - 5)
+		    .raw("2011-03-13")
+		    .raw("15:13:49")
+		    .le32(0)
+		    .le32(0)
+		    .le16(1)
+		    .zeros(64 + 10 + 180)
+		    .raw("A=PCM,F=48000,W=16\r\n")
+		    .b;
 	}
 
 	bytes tagged_wav()
@@ -915,11 +1091,13 @@ TEST("media riff wav reads pcm at every depth")
 		bool float_samples;
 	};
 
-	for (const auto d : {depth{8, 1, false}, depth{16, 1, false}, depth{24, 1, false}, depth{32, 1, false}, depth{32, 3, true}, depth{64, 3, true}})
+	for (const auto d : {depth{8, 1, false}, depth{16, 1, false}, depth{24, 1, false}, depth{32, 1, false},
+	                     depth{32, 3, true}, depth{64, 3, true}})
 	{
 		const auto align = 2 * ((d.bits + 7) / 8);
 		// Half a second at 8 kHz. Samples of one size are timed by the data, so a wrong fact count is no matter.
-		const auto file = wav({chunk("fmt ", pcm_format(2, 8000, d.bits, d.tag)), chunk("fact", builder().le32(1).b), chunk("data", bytes(4000 * align, 0))});
+		const auto file = wav({chunk("fmt ", pcm_format(2, 8000, d.bits, d.tag)), chunk("fact", builder().le32(1).b),
+		                       chunk("data", bytes(4000 * align, 0))});
 		const auto s = scan(file);
 		CHECK(s.success);
 		CHECK_STR(s.brand, "WAVE");
@@ -962,15 +1140,16 @@ TEST("media riff wav reads an extensible format by its subtype")
 TEST("media riff wav times a compressed format by its fact chunk")
 {
 	// IMA ADPCM, four bits a sample in blocks of 1017: a second of mono at 22050 Hz.
-	auto s = scan(wav({chunk("fmt ", wave_format(0x11, 1, 22050, 512, 11100, 4, builder().le16(1017).b)), chunk("fact", builder().le32(22050).b),
-	                   chunk("data", bytes(11264, 0))}));
+	auto s = scan(wav({chunk("fmt ", wave_format(0x11, 1, 22050, 512, 11100, 4, builder().le16(1017).b)),
+	                   chunk("fact", builder().le32(22050).b), chunk("data", bytes(11264, 0))}));
 	CHECK(s.success);
 	CHECK(!first_stream(s).codec.empty());
 	CHECK(near(s.duration, 1.0));
 	CHECK_EQ(first_stream(s).bit_rate, std::uint64_t{88800});
 
 	// MP3 whose fact counts two seconds, where its average rate would make its data 1.6.
-	s = scan(wav({chunk("fmt ", mp3_format(20000)), chunk("fact", builder().le32(88200).b), chunk("data", bytes(32000, 0))}));
+	s = scan(wav(
+		{chunk("fmt ", mp3_format(20000)), chunk("fact", builder().le32(88200).b), chunk("data", bytes(32000, 0))}));
 	CHECK(s.success);
 	CHECK_STR(first_stream(s).codec, "mp3");
 	CHECK_EQ(first_stream(s).audio.bits_per_sample, 0);
@@ -983,7 +1162,8 @@ TEST("media riff wav times a compressed format by its fact chunk")
 
 TEST("media riff wav reads RF64 and BW64 sizes from ds64")
 {
-	auto file = wav64("RF64", pcm_format(2, 44100, 16), bytes(44100 * 2, 0), 22050, {list("INFO", {chunk("INAM", text("Long"))}), chunk("_PMX", to_bytes(packet_a))});
+	auto file = wav64("RF64", pcm_format(2, 44100, 16), bytes(44100 * 2, 0), 22050,
+	                  {list("INFO", {chunk("INAM", text("Long"))}), chunk("_PMX", to_bytes(packet_a))});
 	auto s = scan(file);
 	CHECK(s.success);
 	CHECK_STR(s.brand, "RF64");
@@ -1035,7 +1215,8 @@ TEST("media riff wav reads bext, DISP, iXML and an ID3 chunk")
 
 TEST("media riff wav takes its last packet")
 {
-	const auto file = wav({chunk("fmt ", pcm_format(1, 8000, 8)), chunk("_PMX", to_bytes(packet_a)), chunk("data", bytes(800, 0)), chunk("_PMX", to_bytes(packet_b))});
+	const auto file = wav({chunk("fmt ", pcm_format(1, 8000, 8)), chunk("_PMX", to_bytes(packet_a)),
+	                       chunk("data", bytes(800, 0)), chunk("_PMX", to_bytes(packet_b))});
 	const auto s = scan(file);
 	CHECK_STR(xmp_of(s), packet_b);
 	CHECK_STR(xmp_of(s), packet_of(file));
@@ -1043,7 +1224,8 @@ TEST("media riff wav takes its last packet")
 
 TEST("media riff wav reads an INFO list named in lower case, as FFmpeg does")
 {
-	const auto s = scan(wav({chunk("fmt ", pcm_format(1, 8000, 8)), chunk("data", bytes(800, 0)), chunk("list", with_type("INFO", {chunk("IART", text("Someone"))}))}));
+	const auto s = scan(wav({chunk("fmt ", pcm_format(1, 8000, 8)), chunk("data", bytes(800, 0)),
+	                         chunk("list", with_type("INFO", {chunk("IART", text("Someone"))}))}));
 	CHECK(s.success);
 	CHECK_STR(tag_value(s.tags, "IART"), "Someone");
 }
@@ -1052,14 +1234,21 @@ TEST("media riff wav reads data that gives no size, or more than the file holds,
 {
 	// A stream that was never finished: RIFF and data sizes unwritten, a second of audio after.
 	builder streamed;
-	streamed.raw("RIFF").le32(0xFFFFFFFF).raw("WAVE").raw(chunk("fmt ", pcm_format(1, 8000, 16))).raw("data").le32(0).raw(bytes(16000, 0x41));
+	streamed.raw("RIFF")
+		.le32(0xFFFFFFFF)
+		.raw("WAVE")
+		.raw(chunk("fmt ", pcm_format(1, 8000, 16)))
+		.raw("data")
+		.le32(0)
+		.raw(bytes(16000, 0x41));
 	auto s = scan(streamed.b);
 	CHECK(s.success);
 	CHECK(near(s.duration, 1.0));
 	CHECK(s.xmp.empty());
 
 	// A capture cut short: its data says two seconds, the file holds one.
-	auto cut = wav({chunk("fmt ", pcm_format(1, 8000, 16)), chunk("data", bytes(32000, 0)), chunk("_PMX", to_bytes(packet_a))});
+	auto cut = wav(
+		{chunk("fmt ", pcm_format(1, 8000, 16)), chunk("data", bytes(32000, 0)), chunk("_PMX", to_bytes(packet_a))});
 	cut.resize(44 + 16000);
 	s = scan(cut);
 	CHECK(s.success);
@@ -1069,8 +1258,8 @@ TEST("media riff wav reads data that gives no size, or more than the file holds,
 
 TEST("media riff wav costs a read for its header and one for what follows its data")
 {
-	const auto file = wav({chunk("fmt ", pcm_format(2, 48000, 16)), chunk("data", bytes(8u << 20, 0)), list("INFO", {chunk("INAM", text("Title"))}),
-	                       chunk("_PMX", to_bytes(packet_a))});
+	const auto file = wav({chunk("fmt ", pcm_format(2, 48000, 16)), chunk("data", bytes(8u << 20, 0)),
+	                       list("INFO", {chunk("INAM", text("Title"))}), chunk("_PMX", to_bytes(packet_a))});
 	CHECK(reads_of(file) <= 2);
 	CHECK_STR(xmp_of(scan(file)), packet_a);
 }
@@ -1102,8 +1291,14 @@ TEST("media riff wav lists its chunks to inspect")
 TEST("media riff wav survives being cut short and having its sizes corrupted")
 {
 	CHECK_STR(damage(tagged_wav(), false), "");
-	CHECK_STR(damage(wav({chunk("fmt ", mp3_format(20000)), chunk("fact", builder().le32(88200).b), chunk("data", bytes(3001, 0)), chunk("_PMX", to_bytes(packet_b))}), false), "");
-	CHECK_STR(damage(wav64("RF64", pcm_format(2, 44100, 16), bytes(4410, 0), 1102, {list("INFO", {chunk("INAM", text("Long"))}), chunk("_PMX", to_bytes(packet_a))}), false), "");
+	CHECK_STR(damage(wav({chunk("fmt ", mp3_format(20000)), chunk("fact", builder().le32(88200).b),
+	                      chunk("data", bytes(3001, 0)), chunk("_PMX", to_bytes(packet_b))}),
+	                 false),
+	          "");
+	CHECK_STR(damage(wav64("RF64", pcm_format(2, 44100, 16), bytes(4410, 0), 1102,
+	                       {list("INFO", {chunk("INAM", text("Long"))}), chunk("_PMX", to_bytes(packet_a))}),
+	                 false),
+	          "");
 }
 
 // AIFF
@@ -1111,17 +1306,17 @@ TEST("media riff wav survives being cut short and having its sizes corrupted")
 TEST("media riff aiff reads its COMM chunk, text and packet")
 {
 	const auto file = aiff("AIFF", {
-		iff_chunk("COMM", comm(2, 22050, 16, 44100)),
-		iff_chunk("NAME", to_bytes("A name")),
-		iff_chunk("AUTH", to_bytes("An author")),
-		iff_chunk("(c) ", to_bytes("2011 Someone")),
-		iff_chunk("ANNO", to_bytes("A note")),
-		iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_a)})),
-		iff_chunk("APPL", cat({to_bytes("stoc"), bytes(12, 0)})),
-		iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(22050 * 4, 0)})),
-		iff_chunk("ID3 ", id3_tag("TIT2", "ID3 title")),
-		iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_b), bytes(3, 0)})),
-	});
+									   iff_chunk("COMM", comm(2, 22050, 16, 44100)),
+									   iff_chunk("NAME", to_bytes("A name")),
+									   iff_chunk("AUTH", to_bytes("An author")),
+									   iff_chunk("(c) ", to_bytes("2011 Someone")),
+									   iff_chunk("ANNO", to_bytes("A note")),
+									   iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_a)})),
+									   iff_chunk("APPL", cat({to_bytes("stoc"), bytes(12, 0)})),
+									   iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(22050 * 4, 0)})),
+									   iff_chunk("ID3 ", id3_tag("TIT2", "ID3 title")),
+									   iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_b), bytes(3, 0)})),
+								   });
 
 	const auto s = scan(file);
 	CHECK(s.success);
@@ -1192,10 +1387,10 @@ TEST("media riff aifc names its compression")
 	for (const auto& v : variants)
 	{
 		const auto file = aiff("AIFC", {
-			iff_chunk("FVER", builder().be32(0xA2805140).b),
-			iff_chunk("COMM", comm(1, 8000, v.sample_size, 8000, v.type, "a codec")),
-			iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(64, 0)})),
-		});
+										   iff_chunk("FVER", builder().be32(0xA2805140).b),
+										   iff_chunk("COMM", comm(1, 8000, v.sample_size, 8000, v.type, "a codec")),
+										   iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(64, 0)})),
+									   });
 
 		const auto s = scan(file);
 		CHECK(s.success);
@@ -1215,7 +1410,8 @@ TEST("media riff aifc names its compression")
 
 TEST("media riff aiff reads every common sample rate")
 {
-	for (const auto rate : {8000.0, 11025.0, 16000.0, 22050.0, 32000.0, 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0, 384000.0})
+	for (const auto rate :
+	     {8000.0, 11025.0, 16000.0, 22050.0, 32000.0, 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0, 384000.0})
 	{
 		const auto s = scan(aiff("AIFF", {iff_chunk("COMM", comm(2, 1000, 16, rate)), iff_chunk("SSND", bytes(8, 0))}));
 		CHECK(s.success);
@@ -1248,7 +1444,8 @@ TEST("media riff aiff refuses a file without a whole COMM chunk")
 
 TEST("media riff aiff lists its chunks to inspect")
 {
-	const auto s = scan(aiff("AIFC", {iff_chunk("COMM", comm(2, 100, 16, 48000, "sowt", "little endian")), iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(400, 0)}))}),
+	const auto s = scan(aiff("AIFC", {iff_chunk("COMM", comm(2, 100, 16, 48000, "sowt", "little endian")),
+	                                  iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(400, 0)}))}),
 	                    libfiles::scan_intent::inspect);
 	CHECK(s.success);
 
@@ -1270,13 +1467,13 @@ TEST("media riff aiff lists its chunks to inspect")
 TEST("media riff aiff survives being cut short and having its sizes corrupted")
 {
 	const auto file = aiff("AIFC", {
-		iff_chunk("FVER", builder().be32(0xA2805140).b),
-		iff_chunk("COMM", comm(2, 100, 16, 44100, "NONE", "not compressed")),
-		iff_chunk("NAME", to_bytes("odd")),
-		iff_chunk("ID3 ", id3_tag("TIT2", "ID3 title")),
-		iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(400, 0)})),
-		iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_a)})),
-	});
+									   iff_chunk("FVER", builder().be32(0xA2805140).b),
+									   iff_chunk("COMM", comm(2, 100, 16, 44100, "NONE", "not compressed")),
+									   iff_chunk("NAME", to_bytes("odd")),
+									   iff_chunk("ID3 ", id3_tag("TIT2", "ID3 title")),
+									   iff_chunk("SSND", cat({builder().be32(0).be32(0).b, bytes(400, 0)})),
+									   iff_chunk("APPL", cat({to_bytes("XMP "), to_bytes(packet_a)})),
+								   });
 
 	CHECK_STR(damage(file, true, false), "");
 }

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the Commodore 64 listings - D64, D71 and D81 directories, T64 tapes, CRT
 // cartridges, P00 and PRG programs - and for drawing one in the C64's character set.
@@ -33,7 +33,8 @@ namespace
 	{
 		const auto at = sector + slot * 32;
 		image[at + 2] = type;
-		for (std::size_t i = 0; i < 16; ++i) image[at + 5 + i] = i < name.size() ? static_cast<std::uint8_t>(name[i]) : 0xA0;
+		for (std::size_t i = 0; i < 16; ++i)
+			image[at + 5 + i] = i < name.size() ? static_cast<std::uint8_t>(name[i]) : 0xA0;
 		image[at + 30] = static_cast<std::uint8_t>(blocks);
 		image[at + 31] = static_cast<std::uint8_t>(blocks >> 8);
 	}
@@ -48,6 +49,7 @@ namespace
 	std::vector<std::string> texts(const libfiles::c64_listing& listing)
 	{
 		std::vector<std::string> result;
+		result.reserve(listing.rows.size());
 		for (const auto& row : listing.rows) result.push_back(row.text);
 		return result;
 	}
@@ -101,11 +103,37 @@ TEST("Should list a D64's directory as the C64 lists it")
 	CHECK_EQ(listing.width(), 208u);
 	CHECK_EQ(listing.height(), 16u);
 
-	const std::vector<std::uint8_t> codes = {
-		0x31, 0x32, 0x20, 0x20, 0x22, 0x08, 0x05, 0x0C, 0x0C, 0x0F, 0x20, 0x20, 0x20, 0x20, 0x20,
-		0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x22, 0x20, 0x10, 0x12, 0x07
-	};
+	const std::vector<std::uint8_t> codes = {0x31, 0x32, 0x20, 0x20, 0x22, 0x08, 0x05, 0x0C, 0x0C,
+	                                         0x0F, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+	                                         0x20, 0x20, 0x20, 0x22, 0x20, 0x10, 0x12, 0x07};
 	CHECK(listing.rows.size() == 2 && listing.rows[0].screen_codes == codes);
+}
+
+TEST("Should give each row the stored name and type a loader asks for")
+{
+	bytes image(d64_size, 0);
+	link(image, d64_directory, 0, 0xFF);
+	put_entry(image, d64_directory, 0, 0x82, "GAME", 40);
+	put_entry(image, d64_directory, 1, 0x80, "\x60\x60\x60", 0); // directory art: graphics characters
+	// A shifted space ends the name a drive compares, whatever follows it.
+	put_entry(image, d64_directory, 2, 0x82, "TRICK\xA0,8,1", 2);
+
+	const auto listing = libfiles::list_c64_media(image);
+
+	CHECK_EQ(listing.rows.size(), 3u);
+	CHECK(listing.rows[0].name == std::vector<std::uint8_t>({'G', 'A', 'M', 'E'}));
+	CHECK_EQ(listing.rows[0].file_type, 0x82);
+	CHECK(listing.rows[1].name == std::vector<std::uint8_t>({0x60, 0x60, 0x60}));
+	CHECK_EQ(listing.rows[1].file_type, 0x80);
+	CHECK(listing.rows[2].name == std::vector<std::uint8_t>({'T', 'R', 'I', 'C', 'K'}));
+
+	// A tape pads with spaces, which are not part of the name; a PRG has no name at all.
+	const auto tape = libfiles::list_c64_media(
+		make_t64("C64S tape image file", 1, 1, {{1, 0x82, 0x0801, 0x0900, "SHOOT"}}));
+	CHECK(tape.rows.size() == 1 && tape.rows[0].name == std::vector<std::uint8_t>({'S', 'H', 'O', 'O', 'T'}));
+	const bytes prg = {0x01, 0x08, 0x60};
+	const auto program = libfiles::list_c64_media(prg);
+	CHECK(program.rows.size() == 1 && program.rows[0].name.empty() && program.rows[0].file_type == 0x82);
 }
 
 TEST("Should name each file type as the C64 names it")
@@ -120,10 +148,9 @@ TEST("Should name each file type as the C64 names it")
 
 	const auto listing = libfiles::list_c64_media(image);
 
-	CHECK(same(texts(listing), {
-		"1   \"A               \" DEL", "1   \"B               \" SEQ", "1   \"C               \" PRG",
-		"1   \"D               \" USR", "1   \"E               \" REL", "1   \"F               \" "
-	}));
+	CHECK(same(texts(listing),
+	           {"1   \"A               \" DEL", "1   \"B               \" SEQ", "1   \"C               \" PRG",
+	            "1   \"D               \" USR", "1   \"E               \" REL", "1   \"F               \" "}));
 	CHECK_EQ(listing.columns, 26u);
 }
 
@@ -161,8 +188,7 @@ TEST("Should list D71 and D81 directories where their drives keep them")
 	put_entry(d71, d64_directory, 0, 0x82, "SIDE ONE", 1);
 	put_entry(d71, 0x41000, 0, 0x82, "SIDE TWO", 2);
 
-	CHECK(same(texts(libfiles::list_c64_media(d71)),
-	           {"1   \"SIDE ONE        \" PRG", "2   \"SIDE TWO        \" PRG"}));
+	CHECK(same(texts(libfiles::list_c64_media(d71)), {"1   \"SIDE ONE        \" PRG", "2   \"SIDE TWO        \" PRG"}));
 
 	// A 1581 keeps its directory on track 40, and its block counts can run to four digits.
 	bytes d81(d81_size, 0);
@@ -190,7 +216,8 @@ TEST("Should list at most 512 rows, however long the directory")
 	{
 		const auto sector = d81_directory + s * 256;
 		const auto next = s + 4; // the sector after this one, counted from track 40 sector 0
-		if (s + 1 < 70) link(d81, sector, static_cast<std::uint8_t>(40 + next / 40), static_cast<std::uint8_t>(next % 40));
+		if (s + 1 < 70)
+			link(d81, sector, static_cast<std::uint8_t>(40 + next / 40), static_cast<std::uint8_t>(next % 40));
 		for (std::size_t slot = 0; slot < 8; ++slot) put_entry(d81, sector, slot, 0x82, "ENTRY", 1);
 	}
 
@@ -201,14 +228,13 @@ TEST("Should list a T64 tape's directory")
 {
 	const std::vector<t64_entry> entries = {
 		{1, 0x82, 0x0801, 0x0801 + 1000, "GAME"},
-		{0, 0x82, 0x0801, 0x0900, "FREE"}, // a free entry, skipped
+		{0, 0x82, 0x0801, 0x0900, "FREE"},      // a free entry, skipped
 		{1, 0x00, 0xC000, 0xC000 + 10, "TOOL"}, // no 1541 type: a PRG
-		{1, 0x81, 0x1000, 0x0800, "NOTES"}, // ends before it starts: no data
+		{1, 0x81, 0x1000, 0x0800, "NOTES"},     // ends before it starts: no data
 	};
 
-	const std::vector<std::string> all = {
-		"4   \"GAME            \" PRG", "1   \"TOOL            \" PRG", "1   \"NOTES           \" SEQ"
-	};
+	const std::vector<std::string> all = {"4   \"GAME            \" PRG", "1   \"TOOL            \" PRG",
+	                                      "1   \"NOTES           \" SEQ"};
 
 	// The descriptions writers use differ, but all say "tape".
 	for (const auto description : {"C64S tape image file", "C64 tape image file", "C64S tape file"})
@@ -266,6 +292,56 @@ TEST("Should list a P00 or a PRG as one program")
 	CHECK(texts(libfiles::list_c64_media(bytes(d64_size, 0))).empty());
 }
 
+TEST("Should give a disk, tape, cartridge and P00 the name its header gives it")
+{
+	// A 1541 keeps its name at 0x90 of track 18 sector 0, padded with shifted spaces, and the C64 lists it above the
+	// directory; a 1581 keeps it at 4 of track 40 sector 0.
+	const auto named = [](const std::size_t size, const std::size_t at, const std::string_view name)
+	{
+		bytes image(size, 0);
+		for (std::size_t i = 0; i < 16; ++i)
+			image[at + i] = i < name.size() ? static_cast<std::uint8_t>(name[i]) : 0xA0;
+		return image;
+	};
+
+	auto d64 = named(d64_size, d64_directory - 256 + 0x90, "GAMES DISK");
+	put_entry(d64, d64_directory, 0, 0x82, "HELLO", 12);
+	const auto disk = libfiles::list_c64_media(d64);
+	CHECK_STR(disk.title, "GAMES DISK");
+	CHECK(same(texts(disk), {"12  \"HELLO           \" PRG"}));
+
+	CHECK_STR(libfiles::list_c64_media(named(d71_size, d64_directory - 256 + 0x90, "SIDES")).title, "SIDES");
+	CHECK_STR(libfiles::list_c64_media(named(d81_size, d81_directory - 3 * 256 + 4, "TOOLS")).title, "TOOLS");
+
+	// Shifted letters are letters, as in the rows; graphics characters and the padding are not.
+	CHECK_STR(libfiles::list_c64_media(named(d64_size, d64_directory - 256 + 0x90, "\x60\xC4\xC5\xCD\xCF\x60")).title,
+	          "DEMO");
+	CHECK(libfiles::list_c64_media(bytes(d64_size, 0)).title.empty());
+
+	// A tape's name follows its counts, to the end of its header.
+	CHECK_STR(libfiles::list_c64_media(make_t64("C64S tape image file", 1, 1, {{1, 0x82, 0x0801, 0x0900, "SHOOT"}}))
+	              .title,
+	          "TAPE");
+
+	builder crt;
+	crt.raw("C64 CARTRIDGE   ").be32(0x40).be16(0x0100).be16(0).u8(0).u8(1).zeros(6);
+	crt.raw("SUPER GAME").zeros(22);
+	CHECK_STR(libfiles::list_c64_media(crt.b).title, "SUPER GAME");
+
+	// A cartridge's header holds its name as ASCII, where a lower-case letter is a letter rather than a graphic.
+	builder mixed;
+	mixed.raw("C64 CARTRIDGE   ").be32(0x40).be16(0x0100).be16(0).u8(0).u8(1).zeros(6);
+	mixed.raw("Super Game").zeros(22);
+	CHECK_STR(libfiles::list_c64_media(mixed.b).title, "Super Game");
+
+	builder p00;
+	p00.raw(lit("C64File\0")).raw("HELLO").zeros(11).u8(0).u8(0).zeros(600);
+	CHECK_STR(libfiles::list_c64_media(p00.b).title, "HELLO");
+
+	// A PRG has no name.
+	CHECK(libfiles::list_c64_media(bytes(1002, 0x11)).title.empty());
+}
+
 TEST("Should write PETSCII names as text and as screen codes")
 {
 	const bytes name = {0x41, 0xC1, 0x61, 0xFF, 0x5B, 0x0D, 0xA0, 0x40, 0x85, 0xB0, 0x31, 0x20, 0x5A, 0xDA, 0xDB, 0x1F};
@@ -283,7 +359,7 @@ TEST("Should write PETSCII names as text and as screen codes")
 	// Shifted letters are letters as text, but graphics characters - blank - when drawn.
 	const std::vector<std::uint8_t> name_codes(row.screen_codes.begin() + 5, row.screen_codes.begin() + 21);
 	CHECK(name_codes == std::vector<std::uint8_t>({0x01, 0x41, 0x41, 0x5E, 0x1B, 0x20, 0x20, 0x00, 0x20, 0x70, 0x31,
-		0x20, 0x1A, 0x5A, 0x5B, 0x20}));
+	                                               0x20, 0x1A, 0x5A, 0x5B, 0x20}));
 }
 
 TEST("Should draw a listing in the C64's character set")

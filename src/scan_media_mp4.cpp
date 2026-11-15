@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning ISO base media and QuickTime files: MP4, MOV, M4A, M4V, 3GP and 3G2. A scan walks the
 // top-level boxes by their headers and reads the movie box: each track's header, media header, handler
@@ -136,9 +136,7 @@ namespace libfiles::detail
 		class cursor
 		{
 		public:
-			explicit cursor(const std::span<const std::uint8_t> data) : _data(data)
-			{
-			}
+			explicit cursor(const std::span<const std::uint8_t> data) : _data(data) {}
 
 			bool failed() const { return _failed; }
 			std::size_t remaining() const { return _data.size() - _pos; }
@@ -189,14 +187,16 @@ namespace libfiles::detail
 
 		// Mac OS Roman from 0x80 up, as QuickTime's oldest text is written.
 		constexpr char16_t mac_roman[128] = {
-			0x00C4, 0x00C5, 0x00C7, 0x00C9, 0x00D1, 0x00D6, 0x00DC, 0x00E1, 0x00E0, 0x00E2, 0x00E4, 0x00E3, 0x00E5, 0x00E7, 0x00E9, 0x00E8,
-			0x00EA, 0x00EB, 0x00ED, 0x00EC, 0x00EE, 0x00EF, 0x00F1, 0x00F3, 0x00F2, 0x00F4, 0x00F6, 0x00F5, 0x00FA, 0x00F9, 0x00FB, 0x00FC,
-			0x2020, 0x00B0, 0x00A2, 0x00A3, 0x00A7, 0x2022, 0x00B6, 0x00DF, 0x00AE, 0x00A9, 0x2122, 0x00B4, 0x00A8, 0x2260, 0x00C6, 0x00D8,
-			0x221E, 0x00B1, 0x2264, 0x2265, 0x00A5, 0x00B5, 0x2202, 0x2211, 0x220F, 0x03C0, 0x222B, 0x00AA, 0x00BA, 0x03A9, 0x00E6, 0x00F8,
-			0x00BF, 0x00A1, 0x00AC, 0x221A, 0x0192, 0x2248, 0x2206, 0x00AB, 0x00BB, 0x2026, 0x00A0, 0x00C0, 0x00C3, 0x00D5, 0x0152, 0x0153,
-			0x2013, 0x2014, 0x201C, 0x201D, 0x2018, 0x2019, 0x00F7, 0x25CA, 0x00FF, 0x0178, 0x2044, 0x20AC, 0x2039, 0x203A, 0xFB01, 0xFB02,
-			0x2021, 0x00B7, 0x201A, 0x201E, 0x2030, 0x00C2, 0x00CA, 0x00C1, 0x00CB, 0x00C8, 0x00CD, 0x00CE, 0x00CF, 0x00CC, 0x00D3, 0x00D4,
-			0xF8FF, 0x00D2, 0x00DA, 0x00DB, 0x00D9, 0x0131, 0x02C6, 0x02DC, 0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7,
+			0x00C4, 0x00C5, 0x00C7, 0x00C9, 0x00D1, 0x00D6, 0x00DC, 0x00E1, 0x00E0, 0x00E2, 0x00E4, 0x00E3, 0x00E5,
+			0x00E7, 0x00E9, 0x00E8, 0x00EA, 0x00EB, 0x00ED, 0x00EC, 0x00EE, 0x00EF, 0x00F1, 0x00F3, 0x00F2, 0x00F4,
+			0x00F6, 0x00F5, 0x00FA, 0x00F9, 0x00FB, 0x00FC, 0x2020, 0x00B0, 0x00A2, 0x00A3, 0x00A7, 0x2022, 0x00B6,
+			0x00DF, 0x00AE, 0x00A9, 0x2122, 0x00B4, 0x00A8, 0x2260, 0x00C6, 0x00D8, 0x221E, 0x00B1, 0x2264, 0x2265,
+			0x00A5, 0x00B5, 0x2202, 0x2211, 0x220F, 0x03C0, 0x222B, 0x00AA, 0x00BA, 0x03A9, 0x00E6, 0x00F8, 0x00BF,
+			0x00A1, 0x00AC, 0x221A, 0x0192, 0x2248, 0x2206, 0x00AB, 0x00BB, 0x2026, 0x00A0, 0x00C0, 0x00C3, 0x00D5,
+			0x0152, 0x0153, 0x2013, 0x2014, 0x201C, 0x201D, 0x2018, 0x2019, 0x00F7, 0x25CA, 0x00FF, 0x0178, 0x2044,
+			0x20AC, 0x2039, 0x203A, 0xFB01, 0xFB02, 0x2021, 0x00B7, 0x201A, 0x201E, 0x2030, 0x00C2, 0x00CA, 0x00C1,
+			0x00CB, 0x00C8, 0x00CD, 0x00CE, 0x00CF, 0x00CC, 0x00D3, 0x00D4, 0xF8FF, 0x00D2, 0x00DA, 0x00DB, 0x00D9,
+			0x0131, 0x02C6, 0x02DC, 0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7,
 		};
 
 		// Text in Mac OS Roman, to the first NUL.
@@ -216,22 +216,17 @@ namespace libfiles::detail
 		// The Macintosh language codes QuickTime's oldest files name languages by, in ISO 639-2/T, as the
 		// packed codes are. Codes 95 to 127 are unassigned.
 		constexpr std::string_view mac_languages[] = {
-			"eng", "fra", "deu", "ita", "nld", "swe", "spa", "dan", "por", "nor",
-			"heb", "jpn", "ara", "fin", "ell", "isl", "mlt", "tur", "hrv", "zho",
-			"urd", "hin", "tha", "kor", "lit", "pol", "hun", "est", "lav", "smi",
-			"fao", "fas", "rus", "zho", "nld", "gle", "sqi", "ron", "ces", "slk",
-			"slv", "yid", "srp", "mkd", "bul", "ukr", "bel", "uzb", "kaz", "aze",
-			"aze", "hye", "kat", "ron", "kir", "tgk", "tuk", "mon", "mon", "pus",
-			"kur", "kas", "snd", "bod", "nep", "san", "mar", "ben", "asm", "guj",
-			"pan", "ori", "mal", "kan", "tam", "tel", "sin", "mya", "khm", "lao",
-			"vie", "ind", "tgl", "msa", "msa", "amh", "tir", "orm", "som", "swa",
-			"kin", "run", "nya", "mlg", "epo", "", "", "", "", "",
-			"", "", "", "", "", "", "", "", "", "",
-			"", "", "", "", "", "", "", "", "", "",
-			"", "", "", "", "", "", "", "",
-			"cym", "eus", "cat", "lat", "que", "grn", "aym", "tat", "uig", "dzo",
-			"jav", "sun", "glg", "afr", "bre", "iku", "gla", "glv", "gle", "ton",
-			"grc", "kal", "aze", "nno",
+			"eng", "fra", "deu", "ita", "nld", "swe", "spa", "dan", "por", "nor", "heb", "jpn", "ara", "fin",
+			"ell", "isl", "mlt", "tur", "hrv", "zho", "urd", "hin", "tha", "kor", "lit", "pol", "hun", "est",
+			"lav", "smi", "fao", "fas", "rus", "zho", "nld", "gle", "sqi", "ron", "ces", "slk", "slv", "yid",
+			"srp", "mkd", "bul", "ukr", "bel", "uzb", "kaz", "aze", "aze", "hye", "kat", "ron", "kir", "tgk",
+			"tuk", "mon", "mon", "pus", "kur", "kas", "snd", "bod", "nep", "san", "mar", "ben", "asm", "guj",
+			"pan", "ori", "mal", "kan", "tam", "tel", "sin", "mya", "khm", "lao", "vie", "ind", "tgl", "msa",
+			"msa", "amh", "tir", "orm", "som", "swa", "kin", "run", "nya", "mlg", "epo", "",    "",    "",
+			"",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",
+			"",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",    "",
+			"",    "",    "cym", "eus", "cat", "lat", "que", "grn", "aym", "tat", "uig", "dzo", "jav", "sun",
+			"glg", "afr", "bre", "iku", "gla", "glv", "gle", "ton", "grc", "kal", "aze", "nno",
 		};
 
 		// The ISO 639-2 code a 16-bit language field names: three letters of five bits each, or below
@@ -242,9 +237,9 @@ namespace libfiles::detail
 			if (code == 0x7FFF) return {};
 			if (code < 0x400) return code < std::size(mac_languages) ? std::string(mac_languages[code]) : std::string();
 
-			const char letters[3] = {
-				static_cast<char>(0x60 + (code >> 10 & 0x1F)), static_cast<char>(0x60 + (code >> 5 & 0x1F)), static_cast<char>(0x60 + (code & 0x1F))
-			};
+			const char letters[3] = {static_cast<char>(0x60 + (code >> 10 & 0x1F)),
+			                         static_cast<char>(0x60 + (code >> 5 & 0x1F)),
+			                         static_cast<char>(0x60 + (code & 0x1F))};
 
 			if (!std::ranges::all_of(letters, [](const char c) { return c >= 'a' && c <= 'z'; })) return {};
 
@@ -296,8 +291,7 @@ namespace libfiles::detail
 			return as_signed(le_unsigned(bytes), bytes.size());
 		}
 
-		template <typename T>
-		std::string number_text(const std::optional<T> v)
+		template <typename T> std::string number_text(const std::optional<T> v)
 		{
 			return v ? std::to_string(*v) : std::string();
 		}
@@ -310,56 +304,65 @@ namespace libfiles::detail
 
 		// The video sample descriptions of ISO base media, QuickTime and the registries beside them.
 		constexpr named_type video_types[] = {
-			{fourcc("avc1"), "h264"}, {fourcc("avc2"), "h264"}, {fourcc("avc3"), "h264"}, {fourcc("avc4"), "h264"},
-			{fourcc("dva1"), "h264"}, {fourcc("dvav"), "h264"}, {fourcc("ai5p"), "h264"}, {fourcc("ai5q"), "h264"},
-			{fourcc("ai52"), "h264"}, {fourcc("ai53"), "h264"}, {fourcc("ai55"), "h264"}, {fourcc("ai56"), "h264"},
-			{fourcc("ai1p"), "h264"}, {fourcc("ai1q"), "h264"}, {fourcc("ai12"), "h264"}, {fourcc("ai13"), "h264"},
-			{fourcc("ai15"), "h264"}, {fourcc("ai16"), "h264"}, {fourcc("AVin"), "h264"}, {fourcc("aivx"), "h264"},
-			{fourcc("xalg"), "h264"}, {fourcc("avlg"), "h264"},
-			{fourcc("hvc1"), "hevc"}, {fourcc("hev1"), "hevc"}, {fourcc("dvh1"), "hevc"}, {fourcc("dvhe"), "hevc"},
-			{fourcc("vvc1"), "vvc"}, {fourcc("vvi1"), "vvc"},
-			{fourcc("av01"), "av1"}, {fourcc("dav1"), "av1"},
-			{fourcc("vp08"), "vp8"}, {fourcc("vp09"), "vp9"},
-			{fourcc("mp4v"), "mpeg4"}, {fourcc("DIVX"), "mpeg4"}, {fourcc("XVID"), "mpeg4"}, {fourcc("3IV2"), "mpeg4"},
-			{fourcc("apco"), "prores"}, {fourcc("apcs"), "prores"}, {fourcc("apcn"), "prores"}, {fourcc("apch"), "prores"},
-			{fourcc("ap4h"), "prores"}, {fourcc("ap4x"), "prores"},
-			{fourcc("jpeg"), "mjpeg"}, {fourcc("mjpa"), "mjpeg"}, {fourcc("AVDJ"), "mjpeg"}, {fourcc("AVRn"), "mjpeg"},
-			{fourcc("dmb1"), "mjpeg"}, {fourcc("mjpb"), "mjpegb"},
-			{fourcc("mjp2"), "jpeg2000"}, {fourcc("png "), "png"}, {fourcc("tiff"), "tiff"}, {fourcc("gif "), "gif"},
-			{fourcc("h263"), "h263"}, {fourcc("s263"), "h263"}, {fourcc("H263"), "h263"},
-			{fourcc("SVQ1"), "svq1"}, {fourcc("svq1"), "svq1"}, {fourcc("svqi"), "svq1"}, {fourcc("SVQ3"), "svq3"},
-			{fourcc("cvid"), "cinepak"}, {fourcc("rle "), "qtrle"}, {fourcc("rpza"), "rpza"}, {fourcc("smc "), "smc"},
-			{fourcc("8BPS"), "8bps"},
-			{fourcc("dvc "), "dv"}, {fourcc("dvcp"), "dv"}, {fourcc("dvl "), "dv"}, {fourcc("dvlp"), "dv"},
-			{fourcc("dvpp"), "dv"}, {fourcc("dv5n"), "dv"}, {fourcc("dv5p"), "dv"}, {fourcc("AVdv"), "dv"},
-			{fourcc("AVd1"), "dv"}, {fourcc("dvhq"), "dv"}, {fourcc("dvhp"), "dv"}, {fourcc("dvh2"), "dv"},
-			{fourcc("dvh3"), "dv"}, {fourcc("dvh4"), "dv"}, {fourcc("dvh5"), "dv"}, {fourcc("dvh6"), "dv"},
-			{fourcc("m1v "), "mpeg1"}, {fourcc("m1v1"), "mpeg1"}, {fourcc("mpeg"), "mpeg1"}, {fourcc("mp1v"), "mpeg1"},
-			{fourcc("m2v1"), "mpeg2"}, {fourcc("mp2v"), "mpeg2"}, {fourcc("hdv1"), "mpeg2"}, {fourcc("hdv2"), "mpeg2"},
-			{fourcc("hdv3"), "mpeg2"}, {fourcc("hdv4"), "mpeg2"}, {fourcc("hdv5"), "mpeg2"}, {fourcc("hdv6"), "mpeg2"},
-			{fourcc("hdv7"), "mpeg2"}, {fourcc("hdv8"), "mpeg2"}, {fourcc("hdv9"), "mpeg2"}, {fourcc("hdva"), "mpeg2"},
-			{fourcc("mx3n"), "mpeg2"}, {fourcc("mx3p"), "mpeg2"}, {fourcc("mx4n"), "mpeg2"}, {fourcc("mx4p"), "mpeg2"},
-			{fourcc("mx5n"), "mpeg2"}, {fourcc("mx5p"), "mpeg2"}, {fourcc("xd51"), "mpeg2"}, {fourcc("xd54"), "mpeg2"},
-			{fourcc("xd55"), "mpeg2"}, {fourcc("xd59"), "mpeg2"}, {fourcc("xd5a"), "mpeg2"}, {fourcc("xd5b"), "mpeg2"},
-			{fourcc("xd5c"), "mpeg2"}, {fourcc("xd5d"), "mpeg2"}, {fourcc("xd5e"), "mpeg2"}, {fourcc("xd5f"), "mpeg2"},
-			{fourcc("xdv1"), "mpeg2"}, {fourcc("xdv2"), "mpeg2"}, {fourcc("xdv3"), "mpeg2"}, {fourcc("xdv4"), "mpeg2"},
-			{fourcc("xdv5"), "mpeg2"}, {fourcc("xdv6"), "mpeg2"}, {fourcc("xdv7"), "mpeg2"}, {fourcc("xdv8"), "mpeg2"},
-			{fourcc("xdv9"), "mpeg2"}, {fourcc("xdva"), "mpeg2"}, {fourcc("xdvb"), "mpeg2"}, {fourcc("xdvc"), "mpeg2"},
-			{fourcc("xdvd"), "mpeg2"}, {fourcc("xdve"), "mpeg2"}, {fourcc("xdvf"), "mpeg2"}, {fourcc("xdhd"), "mpeg2"},
-			{fourcc("xdh2"), "mpeg2"}, {fourcc("AVmp"), "mpeg2"},
-			{fourcc("AVdn"), "dnxhd"}, {fourcc("AVdh"), "dnxhd"}, {fourcc("icod"), "aic"}, {fourcc("drac"), "dirac"},
-			{fourcc("vc-1"), "vc1"}, {fourcc("ovc1"), "vc1"}, {fourcc("cfhd"), "cfhd"},
-			{fourcc("Hap1"), "hap"}, {fourcc("Hap5"), "hap"}, {fourcc("HapY"), "hap"}, {fourcc("HapA"), "hap"},
-			{fourcc("HapM"), "hap"},
-			{fourcc("raw "), "rawvideo"}, {fourcc("2vuy"), "rawvideo"}, {fourcc("yuv2"), "rawvideo"}, {fourcc("yuvs"), "rawvideo"},
-			{fourcc("v308"), "rawvideo"}, {fourcc("v408"), "rawvideo"}, {fourcc("v410"), "rawvideo"}, {fourcc("b16g"), "rawvideo"},
-			{fourcc("b48r"), "rawvideo"}, {fourcc("b64a"), "rawvideo"}, {fourcc("BGRA"), "rawvideo"}, {fourcc("RGBA"), "rawvideo"},
-			{fourcc("ABGR"), "rawvideo"}, {fourcc("24BG"), "rawvideo"}, {fourcc("L555"), "rawvideo"}, {fourcc("L565"), "rawvideo"},
-			{fourcc("v210"), "v210"}, {fourcc("r210"), "r210"}, {fourcc("R10k"), "r10k"}, {fourcc("R10g"), "r10k"},
-			{fourcc("AVrp"), "avrp"}, {fourcc("AVUI"), "avui"},
+			{fourcc("avc1"), "h264"},     {fourcc("avc2"), "h264"},     {fourcc("avc3"), "h264"},
+			{fourcc("avc4"), "h264"},     {fourcc("dva1"), "h264"},     {fourcc("dvav"), "h264"},
+			{fourcc("ai5p"), "h264"},     {fourcc("ai5q"), "h264"},     {fourcc("ai52"), "h264"},
+			{fourcc("ai53"), "h264"},     {fourcc("ai55"), "h264"},     {fourcc("ai56"), "h264"},
+			{fourcc("ai1p"), "h264"},     {fourcc("ai1q"), "h264"},     {fourcc("ai12"), "h264"},
+			{fourcc("ai13"), "h264"},     {fourcc("ai15"), "h264"},     {fourcc("ai16"), "h264"},
+			{fourcc("AVin"), "h264"},     {fourcc("aivx"), "h264"},     {fourcc("xalg"), "h264"},
+			{fourcc("avlg"), "h264"},     {fourcc("hvc1"), "hevc"},     {fourcc("hev1"), "hevc"},
+			{fourcc("dvh1"), "hevc"},     {fourcc("dvhe"), "hevc"},     {fourcc("vvc1"), "vvc"},
+			{fourcc("vvi1"), "vvc"},      {fourcc("av01"), "av1"},      {fourcc("dav1"), "av1"},
+			{fourcc("vp08"), "vp8"},      {fourcc("vp09"), "vp9"},      {fourcc("mp4v"), "mpeg4"},
+			{fourcc("DIVX"), "mpeg4"},    {fourcc("XVID"), "mpeg4"},    {fourcc("3IV2"), "mpeg4"},
+			{fourcc("apco"), "prores"},   {fourcc("apcs"), "prores"},   {fourcc("apcn"), "prores"},
+			{fourcc("apch"), "prores"},   {fourcc("ap4h"), "prores"},   {fourcc("ap4x"), "prores"},
+			{fourcc("jpeg"), "mjpeg"},    {fourcc("mjpa"), "mjpeg"},    {fourcc("AVDJ"), "mjpeg"},
+			{fourcc("AVRn"), "mjpeg"},    {fourcc("dmb1"), "mjpeg"},    {fourcc("mjpb"), "mjpegb"},
+			{fourcc("mjp2"), "jpeg2000"}, {fourcc("png "), "png"},      {fourcc("tiff"), "tiff"},
+			{fourcc("gif "), "gif"},      {fourcc("h263"), "h263"},     {fourcc("s263"), "h263"},
+			{fourcc("H263"), "h263"},     {fourcc("SVQ1"), "svq1"},     {fourcc("svq1"), "svq1"},
+			{fourcc("svqi"), "svq1"},     {fourcc("SVQ3"), "svq3"},     {fourcc("cvid"), "cinepak"},
+			{fourcc("rle "), "qtrle"},    {fourcc("rpza"), "rpza"},     {fourcc("smc "), "smc"},
+			{fourcc("8BPS"), "8bps"},     {fourcc("dvc "), "dv"},       {fourcc("dvcp"), "dv"},
+			{fourcc("dvl "), "dv"},       {fourcc("dvlp"), "dv"},       {fourcc("dvpp"), "dv"},
+			{fourcc("dv5n"), "dv"},       {fourcc("dv5p"), "dv"},       {fourcc("AVdv"), "dv"},
+			{fourcc("AVd1"), "dv"},       {fourcc("dvhq"), "dv"},       {fourcc("dvhp"), "dv"},
+			{fourcc("dvh2"), "dv"},       {fourcc("dvh3"), "dv"},       {fourcc("dvh4"), "dv"},
+			{fourcc("dvh5"), "dv"},       {fourcc("dvh6"), "dv"},       {fourcc("m1v "), "mpeg1"},
+			{fourcc("m1v1"), "mpeg1"},    {fourcc("mpeg"), "mpeg1"},    {fourcc("mp1v"), "mpeg1"},
+			{fourcc("m2v1"), "mpeg2"},    {fourcc("mp2v"), "mpeg2"},    {fourcc("hdv1"), "mpeg2"},
+			{fourcc("hdv2"), "mpeg2"},    {fourcc("hdv3"), "mpeg2"},    {fourcc("hdv4"), "mpeg2"},
+			{fourcc("hdv5"), "mpeg2"},    {fourcc("hdv6"), "mpeg2"},    {fourcc("hdv7"), "mpeg2"},
+			{fourcc("hdv8"), "mpeg2"},    {fourcc("hdv9"), "mpeg2"},    {fourcc("hdva"), "mpeg2"},
+			{fourcc("mx3n"), "mpeg2"},    {fourcc("mx3p"), "mpeg2"},    {fourcc("mx4n"), "mpeg2"},
+			{fourcc("mx4p"), "mpeg2"},    {fourcc("mx5n"), "mpeg2"},    {fourcc("mx5p"), "mpeg2"},
+			{fourcc("xd51"), "mpeg2"},    {fourcc("xd54"), "mpeg2"},    {fourcc("xd55"), "mpeg2"},
+			{fourcc("xd59"), "mpeg2"},    {fourcc("xd5a"), "mpeg2"},    {fourcc("xd5b"), "mpeg2"},
+			{fourcc("xd5c"), "mpeg2"},    {fourcc("xd5d"), "mpeg2"},    {fourcc("xd5e"), "mpeg2"},
+			{fourcc("xd5f"), "mpeg2"},    {fourcc("xdv1"), "mpeg2"},    {fourcc("xdv2"), "mpeg2"},
+			{fourcc("xdv3"), "mpeg2"},    {fourcc("xdv4"), "mpeg2"},    {fourcc("xdv5"), "mpeg2"},
+			{fourcc("xdv6"), "mpeg2"},    {fourcc("xdv7"), "mpeg2"},    {fourcc("xdv8"), "mpeg2"},
+			{fourcc("xdv9"), "mpeg2"},    {fourcc("xdva"), "mpeg2"},    {fourcc("xdvb"), "mpeg2"},
+			{fourcc("xdvc"), "mpeg2"},    {fourcc("xdvd"), "mpeg2"},    {fourcc("xdve"), "mpeg2"},
+			{fourcc("xdvf"), "mpeg2"},    {fourcc("xdhd"), "mpeg2"},    {fourcc("xdh2"), "mpeg2"},
+			{fourcc("AVmp"), "mpeg2"},    {fourcc("AVdn"), "dnxhd"},    {fourcc("AVdh"), "dnxhd"},
+			{fourcc("icod"), "aic"},      {fourcc("drac"), "dirac"},    {fourcc("vc-1"), "vc1"},
+			{fourcc("ovc1"), "vc1"},      {fourcc("cfhd"), "cfhd"},     {fourcc("Hap1"), "hap"},
+			{fourcc("Hap5"), "hap"},      {fourcc("HapY"), "hap"},      {fourcc("HapA"), "hap"},
+			{fourcc("HapM"), "hap"},      {fourcc("raw "), "rawvideo"}, {fourcc("2vuy"), "rawvideo"},
+			{fourcc("yuv2"), "rawvideo"}, {fourcc("yuvs"), "rawvideo"}, {fourcc("v308"), "rawvideo"},
+			{fourcc("v408"), "rawvideo"}, {fourcc("v410"), "rawvideo"}, {fourcc("b16g"), "rawvideo"},
+			{fourcc("b48r"), "rawvideo"}, {fourcc("b64a"), "rawvideo"}, {fourcc("BGRA"), "rawvideo"},
+			{fourcc("RGBA"), "rawvideo"}, {fourcc("ABGR"), "rawvideo"}, {fourcc("24BG"), "rawvideo"},
+			{fourcc("L555"), "rawvideo"}, {fourcc("L565"), "rawvideo"}, {fourcc("v210"), "v210"},
+			{fourcc("r210"), "r210"},     {fourcc("R10k"), "r10k"},     {fourcc("R10g"), "r10k"},
+			{fourcc("AVrp"), "avrp"},     {fourcc("AVUI"), "avui"},
 		};
 
 		constexpr named_type audio_types[] = {
+			// clang-format off
 			{fourcc("mp4a"), "aac"},
 			{fourcc("ac-3"), "ac3"}, {fourcc("sac3"), "ac3"}, {fourcc("ec-3"), "eac3"}, {fourcc("ac-4"), "ac4"},
 			{fourcc("Opus"), "opus"}, {fourcc("fLaC"), "flac"}, {fourcc("alac"), "alac"},
@@ -374,11 +377,12 @@ namespace libfiles::detail
 			{fourcc("ima4"), "adpcm_ima_qt"}, {fourcc("MAC3"), "mace3"}, {fourcc("MAC6"), "mace6"},
 			{fourcc("QDM2"), "qdm2"}, {fourcc("QDMC"), "qdmc"}, {fourcc("agsm"), "gsm"}, {fourcc("spex"), "speex"},
 			{fourcc("nmos"), "nellymoser"}, {fourcc("mha1"), "mpegh_3d_audio"}, {fourcc("mhm1"), "mpegh_3d_audio"},
+			// clang-format on
 		};
 
 		constexpr named_type subtitle_types[] = {
 			{fourcc("tx3g"), "mov_text"}, {fourcc("text"), "mov_text"}, {fourcc("wvtt"), "webvtt"},
-			{fourcc("stpp"), "ttml"}, {fourcc("c608"), "eia_608"}, {fourcc("mp4s"), "dvd_subtitle"},
+			{fourcc("stpp"), "ttml"},     {fourcc("c608"), "eia_608"},  {fourcc("mp4s"), "dvd_subtitle"},
 		};
 
 		std::string_view codec_of(const std::span<const named_type> table, const std::uint32_t type)
@@ -415,11 +419,12 @@ namespace libfiles::detail
 		// sample description.
 		media_stream_kind kind_of(const std::uint32_t handler, const std::uint32_t type)
 		{
-			if (handler == fourcc("vide") || handler == fourcc("auxv") || handler == fourcc("pict")) return media_stream_kind::video;
+			if (handler == fourcc("vide") || handler == fourcc("auxv") || handler == fourcc("pict"))
+				return media_stream_kind::video;
 			if (handler == fourcc("soun")) return media_stream_kind::audio;
 
-			if (handler == fourcc("sbtl") || handler == fourcc("subt") || handler == fourcc("text") || handler == fourcc("subp") ||
-			    handler == fourcc("clcp"))
+			if (handler == fourcc("sbtl") || handler == fourcc("subt") || handler == fourcc("text") ||
+			    handler == fourcc("subp") || handler == fourcc("clcp"))
 			{
 				return media_stream_kind::subtitle;
 			}
@@ -443,28 +448,28 @@ namespace libfiles::detail
 		constexpr entry_format entry_formats[] = {
 			{fourcc("apco"), chroma_format::yuv422, 10, false}, {fourcc("apcs"), chroma_format::yuv422, 10, false},
 			{fourcc("apcn"), chroma_format::yuv422, 10, false}, {fourcc("apch"), chroma_format::yuv422, 10, false},
-			{fourcc("2vuy"), chroma_format::yuv422, 8, false}, {fourcc("yuv2"), chroma_format::yuv422, 8, false},
-			{fourcc("yuvs"), chroma_format::yuv422, 8, false}, {fourcc("v210"), chroma_format::yuv422, 10, false},
-			{fourcc("v308"), chroma_format::yuv444, 8, false}, {fourcc("v408"), chroma_format::yuv444, 8, true},
+			{fourcc("2vuy"), chroma_format::yuv422, 8, false},  {fourcc("yuv2"), chroma_format::yuv422, 8, false},
+			{fourcc("yuvs"), chroma_format::yuv422, 8, false},  {fourcc("v210"), chroma_format::yuv422, 10, false},
+			{fourcc("v308"), chroma_format::yuv444, 8, false},  {fourcc("v408"), chroma_format::yuv444, 8, true},
 			{fourcc("v410"), chroma_format::yuv444, 10, false}, {fourcc("r210"), chroma_format::rgb, 10, false},
-			{fourcc("R10k"), chroma_format::rgb, 10, false}, {fourcc("R10g"), chroma_format::rgb, 10, false},
-			{fourcc("AVrp"), chroma_format::rgb, 10, false}, {fourcc("b48r"), chroma_format::rgb, 16, false},
-			{fourcc("b64a"), chroma_format::rgb, 16, true}, {fourcc("BGRA"), chroma_format::rgb, 8, true},
-			{fourcc("RGBA"), chroma_format::rgb, 8, true}, {fourcc("ABGR"), chroma_format::rgb, 8, true},
-			{fourcc("24BG"), chroma_format::rgb, 8, false}, {fourcc("b16g"), chroma_format::gray, 16, false},
-			{fourcc("dvc "), chroma_format::yuv411, 8, false}, {fourcc("dvl "), chroma_format::yuv411, 8, false},
-			{fourcc("dvpp"), chroma_format::yuv411, 8, false}, {fourcc("dvcp"), chroma_format::yuv420, 8, false},
-			{fourcc("dvlp"), chroma_format::yuv420, 8, false}, {fourcc("dv5n"), chroma_format::yuv422, 8, false},
-			{fourcc("dv5p"), chroma_format::yuv422, 8, false}, {fourcc("AVd1"), chroma_format::yuv422, 8, false},
-			{fourcc("dvhq"), chroma_format::yuv422, 8, false}, {fourcc("dvhp"), chroma_format::yuv422, 8, false},
-			{fourcc("dvh2"), chroma_format::yuv422, 8, false}, {fourcc("dvh3"), chroma_format::yuv422, 8, false},
-			{fourcc("dvh4"), chroma_format::yuv422, 8, false}, {fourcc("dvh5"), chroma_format::yuv422, 8, false},
-			{fourcc("dvh6"), chroma_format::yuv422, 8, false}, {fourcc("dvh1"), chroma_format::yuv422, 8, false},
+			{fourcc("R10k"), chroma_format::rgb, 10, false},    {fourcc("R10g"), chroma_format::rgb, 10, false},
+			{fourcc("AVrp"), chroma_format::rgb, 10, false},    {fourcc("b48r"), chroma_format::rgb, 16, false},
+			{fourcc("b64a"), chroma_format::rgb, 16, true},     {fourcc("BGRA"), chroma_format::rgb, 8, true},
+			{fourcc("RGBA"), chroma_format::rgb, 8, true},      {fourcc("ABGR"), chroma_format::rgb, 8, true},
+			{fourcc("24BG"), chroma_format::rgb, 8, false},     {fourcc("b16g"), chroma_format::gray, 16, false},
+			{fourcc("dvc "), chroma_format::yuv411, 8, false},  {fourcc("dvl "), chroma_format::yuv411, 8, false},
+			{fourcc("dvpp"), chroma_format::yuv411, 8, false},  {fourcc("dvcp"), chroma_format::yuv420, 8, false},
+			{fourcc("dvlp"), chroma_format::yuv420, 8, false},  {fourcc("dv5n"), chroma_format::yuv422, 8, false},
+			{fourcc("dv5p"), chroma_format::yuv422, 8, false},  {fourcc("AVd1"), chroma_format::yuv422, 8, false},
+			{fourcc("dvhq"), chroma_format::yuv422, 8, false},  {fourcc("dvhp"), chroma_format::yuv422, 8, false},
+			{fourcc("dvh2"), chroma_format::yuv422, 8, false},  {fourcc("dvh3"), chroma_format::yuv422, 8, false},
+			{fourcc("dvh4"), chroma_format::yuv422, 8, false},  {fourcc("dvh5"), chroma_format::yuv422, 8, false},
+			{fourcc("dvh6"), chroma_format::yuv422, 8, false},  {fourcc("dvh1"), chroma_format::yuv422, 8, false},
 		};
 
 		constexpr named_type prores_profiles[] = {
 			{fourcc("apco"), "422 Proxy"}, {fourcc("apcs"), "422 LT"}, {fourcc("apcn"), "422"},
-			{fourcc("apch"), "422 HQ"}, {fourcc("ap4h"), "4444"}, {fourcc("ap4x"), "4444 XQ"},
+			{fourcc("apch"), "422 HQ"},    {fourcc("ap4h"), "4444"},   {fourcc("ap4x"), "4444 XQ"},
 		};
 
 		// What a video sample description's type, the codec it names and its depth field say of its picture.
@@ -472,7 +477,8 @@ namespace libfiles::detail
 		{
 			video_header h;
 
-			if (const auto it = std::ranges::find(entry_formats, type, &entry_format::type); it != std::end(entry_formats))
+			if (const auto it = std::ranges::find(entry_formats, type, &entry_format::type);
+			    it != std::end(entry_formats))
 			{
 				h.chroma = it->chroma;
 				h.bit_depth = it->bit_depth;
@@ -625,9 +631,11 @@ namespace libfiles::detail
 			}
 
 			// The genre is iTunes' number for it, one more than ID3v1's.
-			if (item == item_gnre) return v.size() >= 2 ? std::to_string(load_be16(v.data())) : number_text(be_unsigned(v));
+			if (item == item_gnre)
+				return v.size() >= 2 ? std::to_string(load_be16(v.data())) : number_text(be_unsigned(v));
 			if (std::ranges::find(numeric_items, item) != std::end(numeric_items)) return number_text(be_unsigned(v));
-			if (copyright_named(item) || std::ranges::find(text_items, item) != std::end(text_items)) return text_from_mac_roman(v);
+			if (copyright_named(item) || std::ranges::find(text_items, item) != std::end(text_items))
+				return text_from_mac_roman(v);
 			return binary_text(v.size());
 		}
 
@@ -659,7 +667,8 @@ namespace libfiles::detail
 		// reads them.
 		std::string data_text(const std::uint32_t type, const std::span<const std::uint8_t> v, const std::uint32_t item)
 		{
-			if (item != 0 && !text_type(type) && (type == 0 || item == item_trkn || item == item_disk || item == item_gnre))
+			if (item != 0 && !text_type(type) &&
+			    (type == 0 || item == item_trkn || item == item_disk || item == item_gnre))
 			{
 				return implicit_value(item, v);
 			}
@@ -673,8 +682,12 @@ namespace libfiles::detail
 			case 3: return text_from_unknown(v);
 			case 21: return v.size() <= 4 || v.size() == 8 ? number_text(be_signed(v)) : binary_text(v.size());
 			case 22: return v.size() <= 4 || v.size() == 8 ? number_text(be_unsigned(v)) : binary_text(v.size());
-			case 23: return v.size() == 4 ? std::format("{}", std::bit_cast<float>(load_be32(v.data()))) : binary_text(v.size());
-			case 24: return v.size() == 8 ? std::format("{}", std::bit_cast<double>(*be_unsigned(v))) : binary_text(v.size());
+			case 23:
+				return v.size() == 4 ? std::format("{}", std::bit_cast<float>(load_be32(v.data())))
+				                     : binary_text(v.size());
+			case 24:
+				return v.size() == 8 ? std::format("{}", std::bit_cast<double>(*be_unsigned(v)))
+				                     : binary_text(v.size());
 			default: break;
 			}
 
@@ -694,7 +707,10 @@ namespace libfiles::detail
 			case 8: // VT_BSTR, as Windows writes the box's text
 			case 31: return text_from_utf16(value.data, false);
 			case 30: return text_from_unknown(value.data);
-			case 11: return value.data.empty() ? std::string() : std::ranges::all_of(value.data, [](const std::uint8_t b) { return b == 0; }) ? "0" : "1";
+			case 11:
+				return value.data.empty()                                                             ? std::string()
+				       : std::ranges::all_of(value.data, [](const std::uint8_t b) { return b == 0; }) ? "0"
+				                                                                                      : "1";
 			case 2:
 			case 3:
 			case 16:
@@ -716,10 +732,9 @@ namespace libfiles::detail
 		{
 			if (dops.size() < 11) return {};
 
-			std::vector<std::uint8_t> head = {
-				'O', 'p', 'u', 's', 'H', 'e', 'a', 'd', 1, dops[1], dops[3], dops[2], dops[7], dops[6], dops[5], dops[4], dops[9],
-				dops[8], dops[10]
-			};
+			std::vector<std::uint8_t> head = {'O',     'p',     'u',     's',     'H',     'e',     'a',
+			                                  'd',     1,       dops[1], dops[3], dops[2], dops[7], dops[6],
+			                                  dops[5], dops[4], dops[9], dops[8], dops[10]};
 
 			head.insert(head.end(), dops.begin() + 11, dops.end());
 			return head;
@@ -743,7 +758,8 @@ namespace libfiles::detail
 		}
 
 		// A place as FFmpeg gives a 3GPP location: ISO 6709 coordinates, then its name after the slash.
-		std::string location_text(const double latitude, const double longitude, const double altitude, const std::string_view place)
+		std::string location_text(const double latitude, const double longitude, const double altitude,
+		                          const std::string_view place)
 		{
 			auto text = std::format("{:+08.4f}{:+09.4f}", latitude, longitude);
 			if (altitude != 0) text += std::format("{:+08.3f}", altitude);
@@ -806,15 +822,12 @@ namespace libfiles::detail
 		class tag_target
 		{
 		public:
-			explicit tag_target(media_scan_result& file) : _file(&file)
-			{
-			}
+			explicit tag_target(media_scan_result& file) : _file(&file) {}
 
-			explicit tag_target(media_stream& stream) : _stream(&stream)
-			{
-			}
+			explicit tag_target(media_stream& stream) : _stream(&stream) {}
 
-			void add(const tag_family family, const std::string_view key, const std::string_view value, const std::string_view language) const
+			void add(const tag_family family, const std::string_view key, const std::string_view value,
+			         const std::string_view language) const
 			{
 				if (_file)
 				{
@@ -823,7 +836,8 @@ namespace libfiles::detail
 				}
 
 				const auto text = trim_text(value);
-				if (!text.empty()) _stream->tags.push_back({std::string(key), std::string(text), std::string(language)});
+				if (!text.empty())
+					_stream->tags.push_back({std::string(key), std::string(text), std::string(language)});
 			}
 
 			// Cover art is the file's alone.
@@ -913,8 +927,7 @@ namespace libfiles::detail
 
 			// Passes the boxes a box holds, from skip bytes into its payload, to visit as each is read: the
 			// first max_list of them.
-			template <typename Visit>
-			void each_child(const box& b, Visit&& visit, const std::uint64_t skip = 0) const
+			template <typename Visit> void each_child(const box& b, Visit&& visit, const std::uint64_t skip = 0) const
 			{
 				if (b.payload_size() < skip) return;
 
@@ -939,7 +952,8 @@ namespace libfiles::detail
 				if (c.failed()) return;
 
 				_m.timescale = timescale;
-				if (duration != (version == 1 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFu)) _m.duration = duration;
+				if (duration != (version == 1 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFu))
+					_m.duration = duration;
 
 				c.skip(4 + 2 + 10); // rate, volume and reserved
 				read_matrix(c, _m.matrix);
@@ -948,7 +962,8 @@ namespace libfiles::detail
 
 				if (version == 1)
 				{
-					if (created <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) seconds = static_cast<std::int64_t>(created);
+					if (created <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+						seconds = static_cast<std::int64_t>(created);
 				}
 				else
 				{
@@ -1067,7 +1082,8 @@ namespace libfiles::detail
 				if (c.failed()) return;
 
 				t.timescale = timescale;
-				if (duration != (version == 1 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFu)) t.media_duration = duration;
+				if (duration != (version == 1 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFu))
+					t.media_duration = duration;
 
 				const auto language = c.u16();
 				if (!c.failed()) t.stream.language = language_name(language);
@@ -1132,7 +1148,9 @@ namespace libfiles::detail
 					const auto n = load_be32(entries.data() + 8 * i);
 					const auto span = std::uint64_t{n} * load_be32(entries.data() + 8 * i + 4);
 					samples += n;
-					duration = span > std::numeric_limits<std::uint64_t>::max() - duration ? std::numeric_limits<std::uint64_t>::max() : duration + span;
+					duration = span > std::numeric_limits<std::uint64_t>::max() - duration
+					               ? std::numeric_limits<std::uint64_t>::max()
+					               : duration + span;
 				}
 
 				t.timed = true;
@@ -1148,19 +1166,18 @@ namespace libfiles::detail
 				t.entry_count = _r.be32(stsd.payload() + 4);
 
 				box entry;
-				if (t.entry_count == 0 || mp4::read_box(_r, stsd.payload() + 8, stsd.end(), entry) != mp4::header_status::box) return;
+				if (t.entry_count == 0 ||
+				    mp4::read_box(_r, stsd.payload() + 8, stsd.end(), entry) != mp4::header_status::box)
+					return;
 
 				t.entry_type = entry.type;
 				t.stream.codec_tag = box_type_text(entry.type);
 
 				switch (kind_of(t.handler, entry.type))
 				{
-				case media_stream_kind::video: read_video_entry(entry, t);
-					break;
-				case media_stream_kind::audio: read_audio_entry(entry, version, t);
-					break;
-				case media_stream_kind::subtitle: read_subtitle_entry(entry, t);
-					break;
+				case media_stream_kind::video: read_video_entry(entry, t); break;
+				case media_stream_kind::audio: read_audio_entry(entry, version, t); break;
+				case media_stream_kind::subtitle: read_subtitle_entry(entry, t); break;
 				case media_stream_kind::data: break;
 				}
 			}
@@ -1230,7 +1247,8 @@ namespace libfiles::detail
 					depth = load_be16(fields.data() + 74);
 					std::uint64_t first = 78;
 
-					if (load_be16(fields.data() + 76) == 0 && (depth == 1 || depth == 2 || depth == 4 || depth == 8) && entry.payload_size() - first >= 8)
+					if (load_be16(fields.data() + 76) == 0 && (depth == 1 || depth == 2 || depth == 4 || depth == 8) &&
+					    entry.payload_size() - first >= 8)
 					{
 						const auto last = _r.be16(entry.payload() + first + 6);
 						first += 8 + (last <= 255 ? (last + 1u) * 8u : 0u);
@@ -1286,13 +1304,15 @@ namespace libfiles::detail
 						es_rate = es.average_bit_rate;
 
 						if (s.codec == "mpeg4") coded_found = parse_mpeg4_video(es.specific, coded) || coded_found;
-						else if (s.codec == "mpeg2" || s.codec == "mpeg1") coded_found = parse_mpeg12_video(es.specific, coded) || coded_found;
+						else if (s.codec == "mpeg2" || s.codec == "mpeg1")
+							coded_found = parse_mpeg12_video(es.specific, coded) || coded_found;
 					}
 					else if (b.type == box_d263)
 					{
 						// Its vendor and decoder version, then H.263's level and profile.
 						const auto p = payload(b, 7);
-						if (p.size() == 7) stated_profile = p[6] == 0 ? std::string("Baseline") : std::format("Profile {}", p[6]);
+						if (p.size() == 7)
+							stated_profile = p[6] == 0 ? std::string("Baseline") : std::format("Profile {}", p[6]);
 					}
 					else if (b.type == box_colr)
 					{
@@ -1383,9 +1403,12 @@ namespace libfiles::detail
 						}
 						else if (version == 2 && fields.size() >= 64)
 						{
-							const auto bits = static_cast<std::uint64_t>(load_be32(fields.data() + 32)) << 32 | load_be32(fields.data() + 36);
+							const auto bits = static_cast<std::uint64_t>(load_be32(fields.data() + 32)) << 32 |
+							                  load_be32(fields.data() + 36);
 							const auto rate = std::bit_cast<double>(bits);
-							a.sample_rate = rate >= 1 && rate < 4294967295.0 ? static_cast<std::uint32_t>(std::llround(rate)) : 0;
+							a.sample_rate = rate >= 1 && rate < 4294967295.0
+							                    ? static_cast<std::uint32_t>(std::llround(rate))
+							                    : 0;
 							a.channels = load_be32(fields.data() + 40);
 							sample_size = load_be32(fields.data() + 48);
 							lpcm_flags = load_be32(fields.data() + 52);
@@ -1433,12 +1456,14 @@ namespace libfiles::detail
 
 						if (p.size() >= 42 && (p[4] & 0x7F) == 0 && (p[5] << 16 | p[6] << 8 | p[7]) >= 34)
 						{
-							coded_found = parse_flac_streaminfo(std::span(p).subspan(8, 34), coded, total) || coded_found;
+							coded_found = parse_flac_streaminfo(std::span(p).subspan(8, 34), coded, total) ||
+							              coded_found;
 						}
 					}
 					else if (b.type == box_alac)
 					{
-						const auto config = _r.read(b.start, static_cast<std::size_t>(std::min<std::uint64_t>(b.size, 256)));
+						const auto config = _r.read(b.start,
+						                            static_cast<std::size_t>(std::min<std::uint64_t>(b.size, 256)));
 						coded_found = parse_alac_config(config, coded) || coded_found;
 					}
 					else if (b.type == box_btrt)
@@ -1490,7 +1515,8 @@ namespace libfiles::detail
 						{
 							// AAC whose SBR only its stream signals gives the core's rate, half the rate that
 							// plays, which the sample description states.
-							if (config.sample_rate != 0 && a.sample_rate == 2 * config.sample_rate) config.sample_rate = a.sample_rate;
+							if (config.sample_rate != 0 && a.sample_rate == 2 * config.sample_rate)
+								config.sample_rate = a.sample_rate;
 							coded = config;
 							coded_found = true;
 						}
@@ -1504,8 +1530,8 @@ namespace libfiles::detail
 
 			// The sample format of QuickTime's and ISO's PCM: fixed by the type, or stated by the sound
 			// description - its sample size, or version 2's flags - or by ISO's pcmC box.
-			static void set_pcm_format(const std::uint32_t type, const std::uint32_t sample_size, const std::uint32_t lpcm_flags,
-			                           const std::uint32_t pcm_size, audio_format& a)
+			static void set_pcm_format(const std::uint32_t type, const std::uint32_t sample_size,
+			                           const std::uint32_t lpcm_flags, const std::uint32_t pcm_size, audio_format& a)
 			{
 				auto bits = sample_size;
 				auto floating = false;
@@ -1537,7 +1563,8 @@ namespace libfiles::detail
 
 					const auto p = payload(b);
 					const auto es = read_esds(p);
-					if (const auto codec = codec_from_object_type(es.object_type); es.found && !codec.empty()) s.codec = codec;
+					if (const auto codec = codec_from_object_type(es.object_type); es.found && !codec.empty())
+						s.codec = codec;
 					break;
 				}
 			}
@@ -1573,7 +1600,8 @@ namespace libfiles::detail
 					target.add(tag_family::quicktime, box_type_text(b.type), atom->text, atom->language);
 
 					// A track's name is its title, or failing one its ©nam.
-					if (b.type == box_name || (b.type == fourcc("\xA9nam") && t.stream.title.empty())) t.stream.title = trim_text(atom->text);
+					if (b.type == box_name || (b.type == fourcc("\xA9nam") && t.stream.title.empty()))
+						t.stream.title = trim_text(atom->text);
 				});
 			}
 
@@ -1627,18 +1655,20 @@ namespace libfiles::detail
 
 			static bool asset_box(const std::uint32_t type)
 			{
-				return type == gpp_titl || type == gpp_auth || type == gpp_perf || type == gpp_gnre || type == gpp_dscp ||
-					type == mp4::cprt || type == gpp_albm || type == gpp_yrrc || type == gpp_loci || type == gpp_kywd;
+				return type == gpp_titl || type == gpp_auth || type == gpp_perf || type == gpp_gnre ||
+				       type == gpp_dscp || type == mp4::cprt || type == gpp_albm || type == gpp_yrrc ||
+				       type == gpp_loci || type == gpp_kywd;
 			}
 
 			void read_user_data(const box& udta, const tag_target& target)
 			{
 				each_child(udta, [&](const box& b)
 				{
-					if (copyright_named(b.type) || b.type == box_name || b.type == fourcc("manu") || b.type == fourcc("modl") ||
-					    b.type == fourcc("keyw"))
+					if (copyright_named(b.type) || b.type == box_name || b.type == fourcc("manu") ||
+					    b.type == fourcc("modl") || b.type == fourcc("keyw"))
 					{
-						if (const auto atom = read_text_atom(b)) target.add(tag_family::quicktime, box_type_text(b.type), atom->text, atom->language);
+						if (const auto atom = read_text_atom(b))
+							target.add(tag_family::quicktime, box_type_text(b.type), atom->text, atom->language);
 					}
 					else if (asset_box(b.type))
 					{
@@ -1682,7 +1712,9 @@ namespace libfiles::detail
 					const auto longitude = c.s32() / 65536.0;
 					const auto latitude = c.s32() / 65536.0;
 					const auto altitude = c.s32() / 65536.0;
-					if (!c.failed()) target.add(tag_family::quicktime, key, location_text(latitude, longitude, altitude, place), language);
+					if (!c.failed())
+						target.add(tag_family::quicktime, key, location_text(latitude, longitude, altitude, place),
+						           language);
 					return;
 				}
 
@@ -1715,9 +1747,7 @@ namespace libfiles::detail
 					if (name.empty()) return;
 
 					mp4::for_each_xtra_value(entry, [&](const mp4::xtra_value& value)
-					{
-						target.add(tag_family::asf, name, xtra_text(value), {});
-					});
+					{ target.add(tag_family::asf, name, xtra_text(value), {}); });
 				});
 			}
 
@@ -1854,15 +1884,16 @@ namespace libfiles::detail
 
 			// A data box: its type, its locale - a country, then a language, of which none means any - then
 			// its value.
-			void read_data(const box& data, const std::string_view key, const std::uint32_t item, const tag_family family,
-			               const tag_target& target) const
+			void read_data(const box& data, const std::string_view key, const std::uint32_t item,
+			               const tag_family family, const tag_target& target) const
 			{
 				const auto type = _r.be32(data.payload());
 				const auto language = static_cast<std::uint16_t>(_r.be32(data.payload() + 4));
 				const auto size = data.payload_size() - 8;
 				std::string text;
 
-				if (size <= max_box_read) text = data_text(type, _r.read(data.payload() + 8, static_cast<std::size_t>(size)), item);
+				if (size <= max_box_read)
+					text = data_text(type, _r.read(data.payload() + 8, static_cast<std::size_t>(size)), item);
 				else text = binary_text(static_cast<std::size_t>(size));
 
 				target.add(family, key, text, language == 0 ? std::string() : language_name(language));
@@ -1879,12 +1910,9 @@ namespace libfiles::detail
 
 				switch (_r.be32(data.payload()))
 				{
-				case 13: picture.mime_type = "image/jpeg";
-					break;
-				case 14: picture.mime_type = "image/png";
-					break;
-				case 27: picture.mime_type = "image/bmp";
-					break;
+				case 13: picture.mime_type = "image/jpeg"; break;
+				case 14: picture.mime_type = "image/png"; break;
+				case 27: picture.mime_type = "image/bmp"; break;
 				default: break;
 				}
 
@@ -1901,7 +1929,9 @@ namespace libfiles::detail
 
 					if (b.type == box_mehd && p.size() >= 8)
 					{
-						if (p[0] == 1 && p.size() >= 12) _m.fragment_duration = static_cast<std::uint64_t>(load_be32(p.data() + 4)) << 32 | load_be32(p.data() + 8);
+						if (p[0] == 1 && p.size() >= 12)
+							_m.fragment_duration = static_cast<std::uint64_t>(load_be32(p.data() + 4)) << 32 |
+							                       load_be32(p.data() + 8);
 						else if (p[0] == 0) _m.fragment_duration = load_be32(p.data() + 4);
 					}
 					else if (b.type == box_trex && p.size() >= 16 && _m.default_durations.size() < max_tracks)
@@ -1924,17 +1954,22 @@ namespace libfiles::detail
 					else if (b.type == box_cmvd && !data) data = &b;
 				}
 
-				if (method != fourcc("zlib") || !data || data->payload_size() < 4 || data->payload_size() - 4 > max_compressed_movie) return;
+				if (method != fourcc("zlib") || !data || data->payload_size() < 4 ||
+				    data->payload_size() - 4 > max_compressed_movie)
+					return;
 
 				const auto size = _r.be32(data->payload());
 				if (size < 8 || size > max_compressed_movie) return;
 
 				std::vector<std::uint8_t> inflated;
-				if (!zlib_inflate(_r.read(data->payload() + 4, static_cast<std::size_t>(data->payload_size() - 4)), inflated, size)) return;
+				if (!zlib_inflate(_r.read(data->payload() + 4, static_cast<std::size_t>(data->payload_size() - 4)),
+				                  inflated, size))
+					return;
 
 				reader inner(inflated);
 				box moov;
-				if (mp4::read_box(inner, 0, inner.size(), moov) != mp4::header_status::box || moov.type != mp4::moov) return;
+				if (mp4::read_box(inner, 0, inner.size(), moov) != mp4::header_status::box || moov.type != mp4::moov)
+					return;
 
 				movie_reader(inner, _m, _out, _quicktime, false).read(moov);
 			}
@@ -1957,9 +1992,7 @@ namespace libfiles::detail
 		class mp4_scan
 		{
 		public:
-			mp4_scan(reader& r, const scan_intent intent, media_scan_result& out) : _r(r), _intent(intent), _out(out)
-			{
-			}
+			mp4_scan(reader& r, const scan_intent intent, media_scan_result& out) : _r(r), _intent(intent), _out(out) {}
 
 			void run()
 			{
@@ -1967,7 +2000,8 @@ namespace libfiles::detail
 
 				if (!_moov)
 				{
-					throw format_error(status == mp4::header_status::none ? "the MP4 has no movie box" : "an MP4 box runs past the end of the file");
+					throw format_error(status == mp4::header_status::none ? "the MP4 has no movie box"
+					                                                      : "an MP4 box runs past the end of the file");
 				}
 
 				finish_tracks();
@@ -2008,10 +2042,7 @@ namespace libfiles::detail
 				}
 			}
 
-			bool quicktime()
-			{
-				return _ftyp ? _ftyp_quicktime : mp4::is_quicktime(_r, nullptr);
-			}
+			bool quicktime() { return _ftyp ? _ftyp_quicktime : mp4::is_quicktime(_r, nullptr); }
 
 			void read_file_type(const box& b)
 			{
@@ -2019,7 +2050,8 @@ namespace libfiles::detail
 				_ftyp_quicktime = mp4::is_quicktime(_r, &b);
 				if (b.payload_size() < 4) return;
 
-				const auto p = _r.read(b.payload(), static_cast<std::size_t>(std::min<std::uint64_t>(b.payload_size(), 4 * 64)));
+				const auto p = _r.read(b.payload(),
+				                       static_cast<std::size_t>(std::min<std::uint64_t>(b.payload_size(), 4 * 64)));
 				_out.brand = box_type_text(load_be32(p.data()));
 				if (p.size() >= 8) _minor_version = load_be32(p.data() + 4);
 				for (std::size_t i = 8; i + 4 <= p.size(); i += 4) _brands.push_back(load_be32(p.data() + i));
@@ -2028,7 +2060,8 @@ namespace libfiles::detail
 			// A segment index: the time its references span, from the earliest presentation time.
 			void read_segment_index(const box& b)
 			{
-				const auto p = _r.read(b.payload(), static_cast<std::size_t>(std::min<std::uint64_t>(b.payload_size(), max_box_read)));
+				const auto p = _r.read(b.payload(), static_cast<std::size_t>(
+														std::min<std::uint64_t>(b.payload_size(), max_box_read)));
 				cursor c(p);
 				const auto version = c.u8();
 				c.skip(3);
@@ -2062,10 +2095,7 @@ namespace libfiles::detail
 				}
 			}
 
-			bool fragmented() const
-			{
-				return _fragments > 0 && _movie.extends;
-			}
+			bool fragmented() const { return _fragments > 0 && _movie.extends; }
 
 			void finish_tracks()
 			{
@@ -2084,12 +2114,15 @@ namespace libfiles::detail
 				{
 					auto& s = t.stream;
 
-					if (s.kind != media_stream_kind::audio && std::ranges::find(chapters, s.id) != chapters.end()) s.kind = media_stream_kind::data;
-					if (t.timescale != 0 && t.media_duration) s.duration = static_cast<double>(*t.media_duration) / t.timescale;
+					if (s.kind != media_stream_kind::audio && std::ranges::find(chapters, s.id) != chapters.end())
+						s.kind = media_stream_kind::data;
+					if (t.timescale != 0 && t.media_duration)
+						s.duration = static_cast<double>(*t.media_duration) / t.timescale;
 
 					if (!(s.duration > 0))
 					{
-						if (const auto it = _indexed.find(static_cast<std::uint32_t>(s.id)); it != _indexed.end()) s.duration = it->second.end - it->second.start;
+						if (const auto it = _indexed.find(static_cast<std::uint32_t>(s.id)); it != _indexed.end())
+							s.duration = it->second.end - it->second.start;
 					}
 
 					if (s.kind == media_stream_kind::video) finish_video(t);
@@ -2122,7 +2155,8 @@ namespace libfiles::detail
 				else if (fragmented() && t.timescale != 0)
 				{
 					const auto it = _movie.default_durations.find(static_cast<std::uint32_t>(t.stream.id));
-					if (it != _movie.default_durations.end() && it->second != 0) rate = static_cast<double>(t.timescale) / it->second;
+					if (it != _movie.default_durations.end() && it->second != 0)
+						rate = static_cast<double>(t.timescale) / it->second;
 				}
 
 				if (rate > 0 && std::isfinite(rate)) v.frame_rate = rate;
@@ -2158,7 +2192,8 @@ namespace libfiles::detail
 					}
 					else
 					{
-						for (const auto& [id, time] : _indexed) _out.duration = std::max(_out.duration, time.end - time.start);
+						for (const auto& [id, time] : _indexed)
+							_out.duration = std::max(_out.duration, time.end - time.start);
 					}
 				}
 				else if (_movie.duration && _movie.timescale != 0)
@@ -2177,7 +2212,8 @@ namespace libfiles::detail
 				{
 					const auto in_movie = mp4::movie_xmp(_r, _movie.boxes);
 					const auto place = mp4::packet_place(quicktime(), in_movie, _xmp_uuid ? &*_xmp_uuid : nullptr);
-					if (place && place->size <= max_packet) _out.xmp = _r.read(place->offset, static_cast<std::size_t>(place->size));
+					if (place && place->size <= max_packet)
+						_out.xmp = _r.read(place->offset, static_cast<std::size_t>(place->size));
 				}
 				catch (const format_error&)
 				{
@@ -2226,8 +2262,10 @@ namespace libfiles::detail
 					add_structure_row(rows, "File type", "none, as in the oldest QuickTime movies");
 				}
 
-				if (_movie.timescale != 0) add_structure_row(rows, "Movie time scale", std::format("{} a second", _movie.timescale));
-				if (_movie.duration) add_structure_row(rows, "Movie duration", std::format("{} units", *_movie.duration));
+				if (_movie.timescale != 0)
+					add_structure_row(rows, "Movie time scale", std::format("{} a second", _movie.timescale));
+				if (_movie.duration)
+					add_structure_row(rows, "Movie duration", std::format("{} units", *_movie.duration));
 				if (_fragments != 0) add_structure_row(rows, "Movie fragments", std::to_string(_fragments));
 				if (!_out.xmp.empty()) add_structure_row(rows, "XMP packet", std::format("{} bytes", _out.xmp.size()));
 
@@ -2240,14 +2278,16 @@ namespace libfiles::detail
 					row.id = std::format("mp4.box.{}", b.start);
 				}
 
-				if (_box_count > _listed.size()) add_structure_row(rows, "Boxes not listed", std::to_string(_box_count - _listed.size()));
+				if (_box_count > _listed.size())
+					add_structure_row(rows, "Boxes not listed", std::to_string(_box_count - _listed.size()));
 
 				add_structure_section(rows, "Tracks", "mp4.tracks");
 
 				for (std::size_t i = 0; i < _movie.tracks.size(); ++i)
 				{
 					const auto& t = _movie.tracks[i];
-					auto value = t.handler != 0 ? std::format("{} handler", box_type_text(t.handler)) : std::string("no handler");
+					auto value = t.handler != 0 ? std::format("{} handler", box_type_text(t.handler))
+					                            : std::string("no handler");
 					if (!t.handler_name.empty()) value += std::format(" \"{}\"", t.handler_name);
 					if (t.entry_type != 0) value += std::format(", sample description {}", box_type_text(t.entry_type));
 					if (t.entry_count > 1) value += std::format(" and {} more", t.entry_count - 1);

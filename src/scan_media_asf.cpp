@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning ASF files - WMV, WMA and ASF - from their header object: the File Properties'
 // duration and date; each stream's properties, with the WAVEFORMATEX or BITMAPINFOHEADER they hold; the
@@ -86,9 +86,10 @@ namespace libfiles::detail
 		// "{75B22630-668E-11CF-A6D9-00AA0062CE6C}": the first three fields are stored little-endian.
 		std::string guid_text(const std::span<const std::uint8_t> g)
 		{
-			return std::format("{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}", load_le32(g.data()),
-			                   load_le16(g.data() + 4), load_le16(g.data() + 6), unsigned{g[8]}, unsigned{g[9]}, unsigned{g[10]},
-			                   unsigned{g[11]}, unsigned{g[12]}, unsigned{g[13]}, unsigned{g[14]}, unsigned{g[15]});
+			return std::format("{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
+			                   load_le32(g.data()), load_le16(g.data() + 4), load_le16(g.data() + 6), unsigned{g[8]},
+			                   unsigned{g[9]}, unsigned{g[10]}, unsigned{g[11]}, unsigned{g[12]}, unsigned{g[13]},
+			                   unsigned{g[14]}, unsigned{g[15]});
 		}
 
 		std::string name_of(const asf::guid& id)
@@ -117,10 +118,12 @@ namespace libfiles::detail
 		{
 			// The ID3 picture types, which WM/Picture shares.
 			static constexpr std::string_view types[] = {
+				// clang-format off
 				"other", "file icon", "other file icon", "front cover", "back cover", "leaflet page", "media",
 				"lead artist", "artist", "conductor", "band", "composer", "lyricist", "recording location",
 				"during recording", "during performance", "video capture", "bright coloured fish", "illustration",
 				"band logo", "publisher logo",
+				// clang-format on
 			};
 
 			std::string text = p.mime_type;
@@ -149,15 +152,14 @@ namespace libfiles::detail
 		{
 		public:
 			header_reader(reader& r, const scan_intent intent, media_scan_result& out) :
-				_r(r),
-				_inspect(intent == scan_intent::inspect),
-				_out(out)
+				_r(r), _inspect(intent == scan_intent::inspect), _out(out)
 			{
 			}
 
 			void read(const std::uint64_t header_size)
 			{
-				const auto stop = asf::walk_objects(_r, asf::header_fixed, header_size, [this](const asf::object& o) { child(o, 1); });
+				const auto stop = asf::walk_objects(_r, asf::header_fixed, header_size,
+				                                    [this](const asf::object& o) { child(o, 1); });
 				if (stop != header_size) damaged(stop, header_size, 1);
 				if (_out.streams.empty()) throw format_error("the ASF header describes no streams");
 
@@ -227,7 +229,8 @@ namespace libfiles::detail
 
 				const auto available = o.size - asf::stream_properties_fixed;
 				const auto specific = _r.read(o.start + asf::stream_properties_fixed,
-				                              static_cast<std::size_t>(std::min({specific_length, available, max_type_specific})));
+				                              static_cast<std::size_t>(
+												  std::min({specific_length, available, max_type_specific})));
 
 				media_stream s;
 				s.id = flags & 0x7Fu;
@@ -264,7 +267,8 @@ namespace libfiles::detail
 				std::uint32_t encoded_width = 0;
 				std::uint32_t encoded_height = 0;
 
-				if (data.size() >= 8 && load_le32(data.data()) <= max_image_dimension && load_le32(data.data() + 4) <= max_image_dimension)
+				if (data.size() >= 8 && load_le32(data.data()) <= max_image_dimension &&
+				    load_le32(data.data() + 4) <= max_image_dimension)
 				{
 					encoded_width = load_le32(data.data());
 					encoded_height = load_le32(data.data() + 4);
@@ -272,7 +276,8 @@ namespace libfiles::detail
 
 				if (data.size() >= 11)
 				{
-					const auto format = data.subspan(11, std::min<std::size_t>(load_le16(data.data() + 9), data.size() - 11));
+					const auto format = data.subspan(11, std::min<std::size_t>(load_le16(data.data() + 9),
+					                                                           data.size() - 11));
 					read_bitmap_info(format, s);
 					read_codec_configuration(format, s);
 				}
@@ -292,7 +297,8 @@ namespace libfiles::detail
 				const auto declared = load_le32(format.data());
 				if (declared <= 40) return;
 
-				const auto extra = format.subspan(40, static_cast<std::size_t>(std::min<std::uint64_t>(declared - 40, format.size() - 40)));
+				const auto extra = format.subspan(40, static_cast<std::size_t>(
+														  std::min<std::uint64_t>(declared - 40, format.size() - 40)));
 				video_header header;
 				auto found = false;
 
@@ -342,7 +348,8 @@ namespace libfiles::detail
 
 				for (std::size_t i = 0; i < count; ++i)
 				{
-					add_tag(_out, tag_family::asf, vocabulary::asf_content_description[i], utf16_text(_r, fields[i].offset, fields[i].size));
+					add_tag(_out, tag_family::asf, vocabulary::asf_content_description[i],
+					        utf16_text(_r, fields[i].offset, fields[i].size));
 				}
 			}
 
@@ -354,7 +361,8 @@ namespace libfiles::detail
 
 			void metadata(const asf::object& o)
 			{
-				asf::walk_metadata_records(_r, o.start + asf::object_header, o.end(), [this](const asf::descriptor& d) { descriptor(d); });
+				asf::walk_metadata_records(_r, o.start + asf::object_header, o.end(),
+				                           [this](const asf::descriptor& d) { descriptor(d); });
 			}
 
 			std::uint64_t number(const asf::descriptor& d) const
@@ -379,17 +387,13 @@ namespace libfiles::detail
 			{
 				switch (d.type)
 				{
-				case asf::unicode_value:
-					return utf16_text(_r, d.value_at, d.value_length);
+				case asf::unicode_value: return utf16_text(_r, d.value_at, d.value_length);
 				case asf::bool_value:
 				case asf::dword_value:
 				case asf::qword_value:
-				case asf::word_value:
-					return d.value_length != 0 ? std::to_string(number(d)) : std::string();
-				case asf::guid_value:
-					return d.value_length >= 16 ? guid_text(_r.view(d.value_at, 16)) : std::string();
-				default:
-					return {};
+				case asf::word_value: return d.value_length != 0 ? std::to_string(number(d)) : std::string();
+				case asf::guid_value: return d.value_length >= 16 ? guid_text(_r.view(d.value_at, 16)) : std::string();
+				default: return {};
 				}
 			}
 
@@ -445,10 +449,9 @@ namespace libfiles::detail
 			static bool language_name(const std::string_view name)
 			{
 				constexpr std::string_view wanted = "wm/language";
-				return name.size() == wanted.size() && std::equal(name.begin(), name.end(), wanted.begin(), [](const char a, const char b)
-				{
-					return (a >= 'A' && a <= 'Z' ? static_cast<char>(a + ('a' - 'A')) : a) == b;
-				});
+				return name.size() == wanted.size() &&
+				       std::equal(name.begin(), name.end(), wanted.begin(), [](const char a, const char b)
+				{ return (a >= 'A' && a <= 'Z' ? static_cast<char>(a + ('a' - 'A')) : a) == b; });
 			}
 
 			// WM/Picture: the picture type, the image's size, the MIME type and the description - each a
@@ -476,7 +479,8 @@ namespace libfiles::detail
 				{
 					const auto strings = _r.view(d.value_at + 5, static_cast<std::size_t>(strings_length));
 					std::size_t mime_end = 0;
-					while (mime_end + 1 < strings.size() && (strings[mime_end] | strings[mime_end + 1]) != 0) mime_end += 2;
+					while (mime_end + 1 < strings.size() && (strings[mime_end] | strings[mime_end + 1]) != 0)
+						mime_end += 2;
 					if (mime_end + 1 >= strings.size()) return std::nullopt;
 
 					p.mime_type = std::string(trim_text(text_from_utf16(strings.first(mime_end), false)));
@@ -618,20 +622,18 @@ namespace libfiles::detail
 					if (x.language && *x.language < _languages.size()) s.language = _languages[*x.language];
 					if (s.language.empty()) s.language = known_language(x.language_record);
 					if (!x.name.empty()) s.title = x.name;
-					s.tags.insert(s.tags.end(), std::make_move_iterator(x.tags.begin()), std::make_move_iterator(x.tags.end()));
+					s.tags.insert(s.tags.end(), std::make_move_iterator(x.tags.begin()),
+					              std::make_move_iterator(x.tags.end()));
 				}
 			}
 
 			// The Language List's tags as the file keeps them, "en-us", but for "und", which names none.
-			void add_language(const std::string_view language)
-			{
-				_languages.emplace_back(known_language(language));
-			}
+			void add_language(const std::string_view language) { _languages.emplace_back(known_language(language)); }
 
 			static std::string_view known_language(const std::string_view language)
 			{
-				const auto undetermined = language.size() == 3 && (language[0] | 0x20) == 'u' && (language[1] | 0x20) == 'n' &&
-					(language[2] | 0x20) == 'd';
+				const auto undetermined = language.size() == 3 && (language[0] | 0x20) == 'u' &&
+				                          (language[1] | 0x20) == 'n' && (language[2] | 0x20) == 'd';
 				return undetermined ? std::string_view() : language;
 			}
 
@@ -657,12 +659,16 @@ namespace libfiles::detail
 					const auto max_packet = load_le32(p.data() + asf::max_packet_size_at);
 					const auto max_bitrate = load_le32(p.data() + asf::max_bitrate_at);
 
-					add_structure_row(summary_rows, "File size", std::format("{} bytes", asf::load_le64(p.data() + asf::file_size_at)));
-					add_structure_row(summary_rows, "Play duration", std::format("{:.3f} s", static_cast<double>(play) / 1e7));
+					add_structure_row(summary_rows, "File size",
+					                  std::format("{} bytes", asf::load_le64(p.data() + asf::file_size_at)));
+					add_structure_row(summary_rows, "Play duration",
+					                  std::format("{:.3f} s", static_cast<double>(play) / 1e7));
 					add_structure_row(summary_rows, "Preroll", std::format("{} ms", preroll));
 					add_structure_row(summary_rows, "Flags", flag_text.empty() ? std::string("none") : flag_text);
-					add_structure_row(summary_rows, "Data packets", std::to_string(asf::load_le64(p.data() + asf::data_packets_at)));
-					add_structure_row(summary_rows, "Packet size", std::format("{} to {} bytes", min_packet, max_packet));
+					add_structure_row(summary_rows, "Data packets",
+					                  std::to_string(asf::load_le64(p.data() + asf::data_packets_at)));
+					add_structure_row(summary_rows, "Packet size",
+					                  std::format("{} to {} bytes", min_packet, max_packet));
 					add_structure_row(summary_rows, "Maximum bit rate", std::format("{} bits a second", max_bitrate));
 				}
 
@@ -679,7 +685,8 @@ namespace libfiles::detail
 				// Tags that say when the recording was made come before the file's own date.
 				if (created != 0 && !_out.properties.created.valid())
 				{
-					_out.properties.created = utc_date_from_seconds(static_cast<std::int64_t>(created / 10'000'000) - filetime_to_unix);
+					_out.properties.created = utc_date_from_seconds(static_cast<std::int64_t>(created / 10'000'000) -
+					                                                filetime_to_unix);
 				}
 			}
 
@@ -698,21 +705,20 @@ namespace libfiles::detail
 
 			switch (s.kind)
 			{
-			case media_stream_kind::video: text = "video";
-				break;
-			case media_stream_kind::audio: text = "audio";
-				break;
-			case media_stream_kind::subtitle: text = "subtitle";
-				break;
-			case media_stream_kind::data: text = "data";
-				break;
+			case media_stream_kind::video: text = "video"; break;
+			case media_stream_kind::audio: text = "audio"; break;
+			case media_stream_kind::subtitle: text = "subtitle"; break;
+			case media_stream_kind::data: text = "data"; break;
 			}
 
 			if (!s.codec.empty()) text += ", " + s.codec;
 			if (!s.codec_tag.empty()) text += " (" + s.codec_tag + ")";
-			if (s.kind == media_stream_kind::video && s.video.width != 0) text += std::format(", {} x {}", s.video.width, s.video.height);
-			if (s.kind == media_stream_kind::audio && s.audio.sample_rate != 0) text += std::format(", {} Hz", s.audio.sample_rate);
-			if (s.kind == media_stream_kind::audio && s.audio.channels != 0) text += std::format(", {} channels", s.audio.channels);
+			if (s.kind == media_stream_kind::video && s.video.width != 0)
+				text += std::format(", {} x {}", s.video.width, s.video.height);
+			if (s.kind == media_stream_kind::audio && s.audio.sample_rate != 0)
+				text += std::format(", {} Hz", s.audio.sample_rate);
+			if (s.kind == media_stream_kind::audio && s.audio.channels != 0)
+				text += std::format(", {} channels", s.audio.channels);
 			if (s.bit_rate != 0) text += std::format(", {} bits a second", s.bit_rate);
 			return text;
 		}
@@ -733,7 +739,8 @@ namespace libfiles::detail
 				row.id = std::format("asf.top.{}", o.start);
 			});
 
-			if (stop != size) add_structure_row(rows, "Unreadable", std::format("offset {}, {} bytes", stop, size - stop));
+			if (stop != size)
+				add_structure_row(rows, "Unreadable", std::format("offset {}, {} bytes", stop, size - stop));
 
 			add_structure_section(rows, "Header", "asf.header");
 			rows.insert(rows.end(), h.object_rows.begin(), h.object_rows.end());
@@ -779,7 +786,8 @@ namespace libfiles::detail
 
 			if (const auto* const x = l.xmp())
 			{
-				const auto packet = r.read(x->start + asf::object_header, static_cast<std::size_t>(x->size - asf::object_header));
+				const auto packet = r.read(x->start + asf::object_header,
+				                           static_cast<std::size_t>(x->size - asf::object_header));
 				out.xmp.assign(packet.begin(), packet.end());
 			}
 		}

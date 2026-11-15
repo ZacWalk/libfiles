@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The names each tag family files a property under, where libfiles both reads and writes it -
 // ID3v2 frames, RIFF INFO items, ASF fields and descriptors, and the Xtra box Windows keeps in an MP4 -
@@ -52,7 +52,8 @@ namespace libfiles::detail::vocabulary
 
 	// ASF's Content Description, whose five fields have no names of their own: these are the names the scan
 	// gives them, in the order the object keeps them.
-	inline constexpr std::string_view asf_content_description[5] = {"Title", "Author", "Copyright", "Description", "Rating"};
+	inline constexpr std::string_view asf_content_description[5] = {"Title", "Author", "Copyright", "Description",
+	                                                                "Rating"};
 	inline constexpr std::size_t asf_title = 0;
 	inline constexpr std::size_t asf_author = 1;
 	inline constexpr std::size_t asf_copyright = 2;

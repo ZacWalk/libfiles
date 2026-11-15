@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for scanning camera raw files: what an index reads, as LibRaw parses it, the date the
 // camera's clock gave, the listing an inspector shows, the thumbnail a scan hands back or writes, the rule
@@ -59,7 +59,7 @@ namespace
 		explicit parsed(const std::filesystem::path& path)
 		{
 			read = processor->open_file(path.c_str()) == LIBRAW_SUCCESS &&
-				processor->adjust_sizes_info_only() == LIBRAW_SUCCESS;
+			       processor->adjust_sizes_info_only() == LIBRAW_SUCCESS;
 		}
 
 		const libraw_data_t& data() const { return processor->imgdata; }
@@ -263,9 +263,7 @@ namespace
 	class counting_stream final : public libfiles::stream
 	{
 	public:
-		explicit counting_stream(bytes data) : _data(std::move(data))
-		{
-		}
+		explicit counting_stream(bytes data) : _data(std::move(data)) {}
 
 		std::uint64_t size() override { return _data.size(); }
 
@@ -288,9 +286,7 @@ namespace
 	class failing_stream final : public libfiles::stream
 	{
 	public:
-		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from)
-		{
-		}
+		failing_stream(const bytes& data, const std::uint64_t fails_from) : _data(data), _fails_from(fails_from) {}
 
 		std::uint64_t size() override { return _data.size(); }
 
@@ -310,7 +306,8 @@ namespace
 
 TEST("Should scan a raw file read through a reader as it scans the file by its path")
 {
-	for (const auto* const name : {"12_ImageStats_WeightedAverage.dng", "01_jxl_linear_raw_integer.dng", "04_PGTM2_per_profile.dng"})
+	for (const auto* const name :
+	     {"12_ImageStats_WeightedAverage.dng", "01_jxl_linear_raw_integer.dng", "04_PGTM2_per_profile.dng"})
 	{
 		const auto path = sample(name);
 		const auto file = file_bytes(path);
@@ -339,7 +336,8 @@ TEST("Should scan a raw file read through a reader as it scans the file by its p
 
 		for (std::size_t i = 0; i < std::min(by_reader.listing.size(), by_path.listing.size()); ++i)
 		{
-			CHECK_STR(by_reader.listing[i].key + "=" + by_reader.listing[i].value, by_path.listing[i].key + "=" + by_path.listing[i].value);
+			CHECK_STR(by_reader.listing[i].key + "=" + by_reader.listing[i].value,
+			          by_path.listing[i].key + "=" + by_path.listing[i].value);
 		}
 
 		// Over a stream, LibRaw's reads go through the reader's window: a read of the stream for each block

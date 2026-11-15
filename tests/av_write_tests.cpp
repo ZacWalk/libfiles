@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for writing RIFF (WAV, AVI), MPEG audio (ID3v2) and FLV files. Each checks the bytes a
 // reader of the format looks at - FFmpeg's places in particular - and that the media never moves where
@@ -160,7 +160,8 @@ namespace
 				const auto size = libfiles::detail::load_le32(file.data() + at + 4);
 				if (size > form_end - at - 8) return v;
 
-				const auto type = size >= 4 ? std::string(reinterpret_cast<const char*>(file.data() + at + 8), 4) : std::string();
+				const auto type = size >= 4 ? std::string(reinterpret_cast<const char*>(file.data() + at + 8), 4)
+				                            : std::string();
 				if (id == "LIST" && type == "movi") v.movi = at;
 
 				if (id == "LIST" && type == "INFO" && (!info_before_movi_only || v.movi == 0))
@@ -193,7 +194,8 @@ namespace
 		return static_cast<std::size_t>(std::ranges::count_if(v.chunks, [id](const auto& c) { return c.first == id; }));
 	}
 
-	bytes make_avi(const bool info_with_junk, const std::vector<bytes>& before_movi = {}, const std::vector<bytes>& hdrl_extra = {})
+	bytes make_avi(const bool info_with_junk, const std::vector<bytes>& before_movi = {},
+	               const std::vector<bytes>& hdrl_extra = {})
 	{
 		std::vector<bytes> hdrl = {riff_chunk("avih", bytes(56, 2))};
 		for (const auto& h : hdrl_extra) hdrl.push_back(h);
@@ -236,14 +238,20 @@ namespace
 		return b.b;
 	}();
 
-	bytes make_mp3(const int version, const std::vector<bytes>& frames, const std::size_t padding, const std::uint8_t flags = 0)
+	bytes make_mp3(const int version, const std::vector<bytes>& frames, const std::size_t padding,
+	               const std::uint8_t flags = 0)
 	{
 		bytes body;
 		for (const auto& f : frames) body.insert(body.end(), f.begin(), f.end());
 		body.resize(body.size() + padding, 0);
 
 		builder b;
-		b.raw("ID3").u8(static_cast<unsigned>(version)).u8(0).u8(flags).raw(syncsafe(static_cast<std::uint32_t>(body.size()))).raw(body);
+		b.raw("ID3")
+			.u8(static_cast<unsigned>(version))
+			.u8(0)
+			.u8(flags)
+			.raw(syncsafe(static_cast<std::uint32_t>(body.size())))
+			.raw(body);
 		b.raw(mpeg_audio);
 		return b.b;
 	}
@@ -262,10 +270,13 @@ namespace
 
 		for (std::size_t pos = 10; pos + 10 <= total && file[pos] != 0;)
 		{
-			const auto size = version == 4 ? static_cast<std::size_t>((file[pos + 4] << 21) | (file[pos + 5] << 14) | (file[pos + 6] << 7) | file[pos + 7])
-			                               : static_cast<std::size_t>(libfiles::detail::load_be32(file.data() + pos + 4));
+			const auto size = version == 4
+			                      ? static_cast<std::size_t>((file[pos + 4] << 21) | (file[pos + 5] << 14) |
+			                                                 (file[pos + 6] << 7) | file[pos + 7])
+			                      : static_cast<std::size_t>(libfiles::detail::load_be32(file.data() + pos + 4));
 			out.push_back({std::string(reinterpret_cast<const char*>(file.data() + pos), 4),
-			               bytes(file.begin() + static_cast<std::ptrdiff_t>(pos + 10), file.begin() + static_cast<std::ptrdiff_t>(pos + 10 + size))});
+			               bytes(file.begin() + static_cast<std::ptrdiff_t>(pos + 10),
+			                     file.begin() + static_cast<std::ptrdiff_t>(pos + 10 + size))});
 			pos += 10 + size;
 		}
 
@@ -296,7 +307,8 @@ namespace
 
 	double amf_number_at(const bytes& file, const std::size_t at)
 	{
-		const std::uint64_t bits = static_cast<std::uint64_t>(libfiles::detail::load_be32(file.data() + at)) << 32 | libfiles::detail::load_be32(file.data() + at + 4);
+		const std::uint64_t bits = static_cast<std::uint64_t>(libfiles::detail::load_be32(file.data() + at)) << 32 |
+		                           libfiles::detail::load_be32(file.data() + at + 4);
 		return std::bit_cast<double>(bits);
 	}
 
@@ -315,7 +327,10 @@ namespace
 		builder header;
 		header.raw("FLV").u8(1).u8(1).be32(9).be32(0);
 
-		const auto video = [](const std::uint32_t ts) { return flv_tag(9, ts, media); };
+		const auto video = [](const std::uint32_t ts)
+		{
+			return flv_tag(9, ts, media);
+		};
 
 		if (!with_meta)
 		{
@@ -345,7 +360,9 @@ namespace
 		const auto total = second + video(40).size();
 
 		builder b = header;
-		b.raw(meta_with(static_cast<double>(first), static_cast<double>(second), static_cast<double>(total))).raw(video(0)).raw(video(40));
+		b.raw(meta_with(static_cast<double>(first), static_cast<double>(second), static_cast<double>(total)))
+			.raw(video(0))
+			.raw(video(40));
 		return b.b;
 	}
 
@@ -386,7 +403,8 @@ TEST("riff and mpeg audio and flv are told apart")
 	CHECK(libfiles::detect_file_format(make_mp3(3, {}, 10)) == libfiles::file_format::mp3);
 	CHECK(libfiles::detect_file_format(mpeg_audio) == libfiles::file_format::mp3);
 	CHECK(libfiles::detect_file_format(make_flv(true)) == libfiles::file_format::flv);
-	CHECK(libfiles::detect_file_format(riff_form("RMID", {riff_chunk("data", media)})) == libfiles::file_format::unknown);
+	CHECK(libfiles::detect_file_format(riff_form("RMID", {riff_chunk("data", media)})) ==
+	      libfiles::file_format::unknown);
 }
 
 TEST("a wav gains its packet and info at the end of its form")
@@ -514,8 +532,10 @@ TEST("an avi that continues in further forms takes only what fits")
 	auto with_packet = make_avi(false);
 	const auto chunk = riff_chunk("_PMX", bytes(packet.begin(), packet.end()));
 	with_packet.insert(with_packet.end(), chunk.begin(), chunk.end());
-	const auto form_size = libfiles::detail::load_le32(with_packet.data() + 4) + static_cast<std::uint32_t>(chunk.size());
-	for (auto i = 0; i < 4; ++i) with_packet[4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(form_size >> (8 * i));
+	const auto form_size = libfiles::detail::load_le32(with_packet.data() + 4) +
+	                       static_cast<std::uint32_t>(chunk.size());
+	for (auto i = 0; i < 4; ++i)
+		with_packet[4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(form_size >> (8 * i));
 	with_packet.insert(with_packet.end(), avix.begin(), avix.end());
 
 	const auto result = update(with_packet, {&meta});
@@ -601,7 +621,9 @@ TEST("an mp3 tag with room is patched, keeping the frames an edit does not own")
 	const auto other_popm = id3_frame(4, "POPM", builder().raw(text("someone@example.com")).u8(10).be32(0).b);
 	const auto itunes = id3_frame(4, "COMM", builder().u8(0).raw("eng").raw(text("iTunNORM")).raw(" 0000").b);
 	const auto plain = id3_frame(4, "COMM", builder().u8(0).raw("eng").u8(0).raw("Old comment").b);
-	const auto original = make_mp3(4, {wm, other_popm, itunes, plain, id3_frame(4, "TIT2", builder().u8(0).raw("Old").b)}, 3000);
+	const auto original = make_mp3(4,
+	                               {wm, other_popm, itunes, plain, id3_frame(4, "TIT2", builder().u8(0).raw("Old").b)},
+	                               3000);
 
 	const auto meta = rated(4);
 	libfiles::metadata_update u{&meta};
@@ -625,9 +647,7 @@ TEST("an mp3 tag with room is patched, keeping the frames an edit does not own")
 	CHECK(find(result.file, "Old comment") == std::string::npos);
 
 	const auto wmp = std::ranges::find_if(frames, [](const id3_frame_view& f)
-	{
-		return f.id == "POPM" && find(f.body, "Windows Media Player 9 Series") == 0;
-	});
+	{ return f.id == "POPM" && find(f.body, "Windows Media Player 9 Series") == 0; });
 	CHECK(wmp != frames.end() && wmp->body.size() == 30 + 5 && wmp->body[30] == 196);
 
 	const auto* const title = frame_of(frames, "TIT2");
@@ -716,8 +736,8 @@ TEST("an flv without onMetaData takes its packet as its first tag")
 
 TEST("interrupted mp3 and flv patches read whole")
 {
-	const auto replay = [](const bytes& file, const libfiles::metadata_update& u, const int old_rating, const int new_rating,
-	                       const auto& whole)
+	const auto replay = [](const bytes& file, const libfiles::metadata_update& u, const int old_rating,
+	                       const int new_rating, const auto& whole)
 	{
 		libfiles::reader r(file);
 		const auto plan = libfiles::plan_update(r, u);
@@ -744,7 +764,7 @@ TEST("interrupted mp3 and flv patches read whole")
 		std::size_t total = 0;
 		id3_frames(state, version, total);
 		return version == 4 && total == mp3.size() - mpeg_audio.size() &&
-			std::equal(mpeg_audio.begin(), mpeg_audio.end(), state.begin() + static_cast<std::ptrdiff_t>(total));
+		       std::equal(mpeg_audio.begin(), mpeg_audio.end(), state.begin() + static_cast<std::ptrdiff_t>(total));
 	});
 
 	const auto first = rated(4);

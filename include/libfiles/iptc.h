@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Reading an IPTC-IIM block for what it says: the fields an organizer files, and the listing
 // an inspector shows. The walk follows IIM 4.1's extended lengths and stops at a header it cannot
@@ -22,19 +22,19 @@ namespace libfiles
 	struct iptc_fields
 	{
 		std::vector<std::string> keywords; // 2:25
-		std::vector<std::string> bylines; // 2:80
-		std::string object_name; // 2:5
-		std::string caption; // 2:120, its CR line ends read as LF
-		std::string city; // 2:90
-		std::string state; // 2:95
-		std::string country; // 2:101
-		std::string credit; // 2:110
-		std::string source; // 2:115
-		std::string copyright; // 2:116
+		std::vector<std::string> bylines;  // 2:80
+		std::string object_name;           // 2:5
+		std::string caption;               // 2:120, its CR line ends read as LF
+		std::string city;                  // 2:90
+		std::string state;                 // 2:95
+		std::string country;               // 2:101
+		std::string credit;                // 2:110
+		std::string source;                // 2:115
+		std::string copyright;             // 2:116
 
 		// CCYYMMDD and HHMMSS+HHMM as the last dataset of each stored them, whitespace trimmed.
-		std::string date_created; // 2:55
-		std::string time_created; // 2:60
+		std::string date_created;          // 2:55
+		std::string time_created;          // 2:60
 		std::string digital_creation_date; // 2:62
 		std::string digital_creation_time; // 2:63
 	};

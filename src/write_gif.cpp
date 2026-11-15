@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing XMP to a GIF. The packet is the "XMP DataXMP" application extension of the XMP
 // specification: the raw packet, then a 258-byte "magic trailer" that lets a GIF reader, which takes
@@ -54,7 +54,8 @@ namespace libfiles::detail
 	{
 		if (!update.xmp) return;
 
-		if (std::memcmp(r.view(0, 6).data(), "GIF89a", 6) != 0) throw format_error("XMP can be stored only in a GIF89a file");
+		if (std::memcmp(r.view(0, 6).data(), "GIF89a", 6) != 0)
+			throw format_error("XMP can be stored only in a GIF89a file");
 
 		const auto fields = r.u8(10);
 		const auto global_table = (fields & 0x80) ? 3ull << ((fields & 0x07) + 1) : 0ull;
@@ -84,8 +85,8 @@ namespace libfiles::detail
 
 				if (label == 0xFF && block_size == xmp_application_id.size())
 				{
-					const auto is_xmp = std::memcmp(r.view(pos, xmp_application_id.size()).data(), xmp_application_id.data(),
-					                                xmp_application_id.size()) == 0;
+					const auto is_xmp = std::memcmp(r.view(pos, xmp_application_id.size()).data(),
+					                                xmp_application_id.data(), xmp_application_id.size()) == 0;
 					pos += xmp_application_id.size();
 					const auto start = pos;
 					skip_sub_blocks(r, pos);

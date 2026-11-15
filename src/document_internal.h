@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Bounds, status and row delivery shared by native image readers.
 
@@ -14,7 +14,9 @@
 
 namespace libfiles::detail
 {
-	struct document_stop {};
+	struct document_stop
+	{
+	};
 
 	struct document_decode
 	{
@@ -41,8 +43,7 @@ namespace libfiles::detail
 
 		void working_bytes(const std::uint64_t bytes)
 		{
-			if (bytes > options.maximum_working_bytes ||
-				bytes > std::numeric_limits<std::size_t>::max())
+			if (bytes > options.maximum_working_bytes || bytes > std::numeric_limits<std::size_t>::max())
 			{
 				result.resource_limit = true;
 				fail("the image exceeds the decoder's working-memory limit");
@@ -53,8 +54,8 @@ namespace libfiles::detail
 		{
 			check_cancel();
 			if (value.width == 0 || value.height == 0 ||
-				value.width > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
-				value.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+			    value.width > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
+			    value.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
 				fail("invalid image dimensions");
 			frame = value;
 			if (!output.begin_frame(frame))

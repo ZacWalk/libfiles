@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The date rules readers and writers share: the strict form an edit gives a date in, the calendar
 // arithmetic every count of seconds a container keeps is converted by, in both directions, and EXIF's text.
@@ -80,7 +80,8 @@ namespace libfiles::detail
 
 	std::int64_t seconds_since(const int epoch_year, const date& d) noexcept
 	{
-		const auto days = days_from_civil(d.year, static_cast<unsigned>(d.month), static_cast<unsigned>(d.day)) - days_from_civil(epoch_year, 1, 1);
+		const auto days = days_from_civil(d.year, static_cast<unsigned>(d.month), static_cast<unsigned>(d.day)) -
+		                  days_from_civil(epoch_year, 1, 1);
 		auto seconds = days * 86400 + d.hour * 3600 + d.minute * 60 + d.second;
 		if (d.zoned()) seconds -= static_cast<std::int64_t>(d.offset_minutes) * 60;
 		return seconds;

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the MPEG transport and program stream media scans. Each stream is built here packet
 // by packet - the tables with their CRCs, PES packets with their timestamps, the codec headers bit by
@@ -26,8 +26,7 @@ namespace
 	using libfiles::media_scan_result;
 	using libfiles::media_stream_kind;
 
-	template <typename... Parts>
-	bytes cat(const Parts&... parts)
+	template <typename... Parts> bytes cat(const Parts&... parts)
 	{
 		bytes out;
 		(out.insert(out.end(), parts.begin(), parts.end()), ...);
@@ -47,7 +46,8 @@ namespace
 
 	bool has_row(const media_scan_result& r, const std::string_view key)
 	{
-		return std::ranges::any_of(r.structure, [key](const libfiles::structure_row& row) { return row.key.starts_with(key); });
+		return std::ranges::any_of(r.structure,
+		                           [key](const libfiles::structure_row& row) { return row.key.starts_with(key); });
 	}
 
 	// ---- Bits and codec headers ----------------------------------------------------------------------
@@ -143,7 +143,8 @@ namespace
 	bytes mdpm_sei(const bytes& packs)
 	{
 		builder payload;
-		payload.raw(bytes{0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66});
+		payload.raw(
+			bytes{0x17, 0xEE, 0x8C, 0x60, 0xF8, 0x4D, 0x11, 0xD9, 0x8C, 0xD6, 0x08, 0x00, 0x20, 0x0C, 0x9A, 0x66});
 		payload.raw("MDPM").u8(static_cast<unsigned>(packs.size() / 5)).raw(packs);
 		return builder().u8(0x06).u8(5).u8(static_cast<unsigned>(payload.size())).raw(payload.b).u8(0x80).b;
 	}
@@ -151,6 +152,7 @@ namespace
 	// Packs 0x18 and 0x19, a recording time, and 0xE0, Sony's maker code, with 0xE4 to 0xE6, its model.
 	bytes sony_packs(const std::uint8_t zone)
 	{
+		// clang-format off
 		return builder()
 		       .u8(0x18).u8(zone).u8(0x20).u8(0x11).u8(0x07)
 		       .u8(0x19).u8(0x04).u8(0x14).u8(0x37).u8(0x28)
@@ -158,6 +160,7 @@ namespace
 		       .u8(0xE4).raw("HDR-")
 		       .u8(0xE5).raw("CX55")
 		       .u8(0xE6).raw("0V").u8(0).u8(0).b;
+		// clang-format on
 	}
 
 	// The first access unit of an H.264 stream: a delimiter, the parameter sets, any SEI and an IDR slice.
@@ -178,7 +181,17 @@ namespace
 	{
 		msb_bits s;
 		s.put(0x4201, 16).put(0, 4).put(0, 3).put(1, 1);
-		s.put(0, 2).put(0, 1).put(1, 5).put(0x60000000, 32).put(1, 1).put(0, 1).put(0, 1).put(1, 1).put(0, 43).put(0, 1).put(93, 8);
+		s.put(0, 2)
+			.put(0, 1)
+			.put(1, 5)
+			.put(0x60000000, 32)
+			.put(1, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(1, 1)
+			.put(0, 43)
+			.put(0, 1)
+			.put(93, 8);
 		s.ue(0).ue(1).ue(width).ue(height).put(0, 1);
 		s.ue(0).ue(0).ue(4).put(1, 1).ue(4).ue(2).ue(0);
 		s.ue(0).ue(3).ue(0).ue(3).ue(0).ue(0);
@@ -200,9 +213,18 @@ namespace
 	bytes mpeg_video_sequence(const unsigned width, const unsigned height, const unsigned rate_code, const bool mpeg2)
 	{
 		msb_bits s;
-		s.put(0x1B3, 32).put(width, 12).put(height, 12).put(1, 4).put(rate_code, 4).put(0x3FFFF, 18).put(1, 1).put(112, 10);
+		s.put(0x1B3, 32)
+			.put(width, 12)
+			.put(height, 12)
+			.put(1, 4)
+			.put(rate_code, 4)
+			.put(0x3FFFF, 18)
+			.put(1, 1)
+			.put(112, 10);
 		s.put(0, 1).put(0, 1).put(0, 1);
-		if (mpeg2) s.put(0x1B5, 32).put(1, 4).put(0x48, 8).put(1, 1).put(1, 2).put(0, 4).put(0, 12).put(1, 1).put(0, 8).put(0, 8);
+		if (mpeg2)
+			s.put(0x1B5, 32).put(1, 4).put(0x48, 8).put(1, 1).put(1, 2).put(0, 4).put(0, 12).put(1, 1).put(0, 8).put(0,
+			                                                                                                         8);
 		s.put(0x1B8, 32).put(0, 25).put(1, 1).put(0, 1).align();
 		s.put(0x100, 32).put(0, 10).put(1, 3).put(0xFFFF, 16).put(0, 1).align();
 		s.put(0x101, 32).put(0x2A, 8).put(0x55, 8);
@@ -241,7 +263,20 @@ namespace
 	{
 		msb_bits s;
 		s.put(0x0B77, 16).put(0, 16).put(0, 2).put(20, 6);
-		s.put(8, 5).put(0, 3).put(2, 3).put(0, 2).put(0, 1).put(27, 5).put(0, 1).put(0, 1).put(0, 1).put(0, 1).put(0, 1).put(0, 1).put(0, 1).put(0, 1);
+		s.put(8, 5)
+			.put(0, 3)
+			.put(2, 3)
+			.put(0, 2)
+			.put(0, 1)
+			.put(27, 5)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1)
+			.put(0, 1);
 		s.b.resize(768, 0);
 		return s.b;
 	}
@@ -280,11 +315,9 @@ namespace
 
 	bytes timestamp(const std::uint64_t t, const unsigned prefix)
 	{
-		return {
-			static_cast<std::uint8_t>(prefix << 4 | ((t >> 29) & 0x0E) | 1), static_cast<std::uint8_t>(t >> 22),
-			static_cast<std::uint8_t>(((t >> 14) & 0xFE) | 1), static_cast<std::uint8_t>(t >> 7),
-			static_cast<std::uint8_t>(((t << 1) & 0xFE) | 1)
-		};
+		return {static_cast<std::uint8_t>(prefix << 4 | ((t >> 29) & 0x0E) | 1), static_cast<std::uint8_t>(t >> 22),
+		        static_cast<std::uint8_t>(((t >> 14) & 0xFE) | 1), static_cast<std::uint8_t>(t >> 7),
+		        static_cast<std::uint8_t>(((t << 1) & 0xFE) | 1)};
 	}
 
 	struct pes_options
@@ -332,8 +365,15 @@ namespace
 
 		const auto flags = (o.pts ? (o.dts ? 0xC0 : 0x80) : 0) | (o.extended_id ? 0x01 : 0);
 		const auto length = 3 + optional.size() + payload.size();
-		return builder().be32(0x100u | stream_id).be16(o.open ? 0 : static_cast<unsigned>(length)).u8(0x80).u8(static_cast<unsigned>(flags))
-		                .u8(static_cast<unsigned>(optional.size())).raw(optional).raw(payload).b;
+		return builder()
+		    .be32(0x100u | stream_id)
+		    .be16(o.open ? 0 : static_cast<unsigned>(length))
+		    .u8(0x80)
+		    .u8(static_cast<unsigned>(flags))
+		    .u8(static_cast<unsigned>(optional.size()))
+		    .raw(optional)
+		    .raw(payload)
+		    .b;
 	}
 
 	// A PES packet in MPEG-1's form: stuffing, the STD buffer's size, then the timestamps.
@@ -341,7 +381,12 @@ namespace
 	{
 		auto header = bytes{0xFF, 0xFF, 0x60, 0x2E};
 		header = cat(header, pts ? timestamp(*pts, 2) : bytes{0x0F});
-		return builder().be32(0x100u | stream_id).be16(static_cast<unsigned>(header.size() + payload.size())).raw(header).raw(payload).b;
+		return builder()
+		    .be32(0x100u | stream_id)
+		    .be16(static_cast<unsigned>(header.size() + payload.size()))
+		    .raw(header)
+		    .raw(payload)
+		    .b;
 	}
 
 	// ---- Transport streams ---------------------------------------------------------------------------
@@ -392,15 +437,18 @@ namespace
 		bytes descriptors;
 	};
 
-	bytes pmt(const std::uint16_t program, const std::uint16_t pcr_pid, const bytes& descriptors, const std::vector<es_entry>& streams,
-	          const bool damage = false)
+	bytes pmt(const std::uint16_t program, const std::uint16_t pcr_pid, const bytes& descriptors,
+	          const std::vector<es_entry>& streams, const bool damage = false)
 	{
 		builder body;
 		body.be16(0xE000u | pcr_pid).be16(0xF000u | static_cast<unsigned>(descriptors.size())).raw(descriptors);
 
 		for (const auto& e : streams)
 		{
-			body.u8(e.type).be16(0xE000u | e.pid).be16(0xF000u | static_cast<unsigned>(e.descriptors.size())).raw(e.descriptors);
+			body.u8(e.type)
+				.be16(0xE000u | e.pid)
+				.be16(0xF000u | static_cast<unsigned>(e.descriptors.size()))
+				.raw(e.descriptors);
 		}
 
 		return psi_section(0x02, program, body.b, damage);
@@ -451,7 +499,8 @@ namespace
 			out.push_back(0x47);
 			out.push_back(static_cast<std::uint8_t>((start ? 0x40 : 0) | pid >> 8));
 			out.push_back(static_cast<std::uint8_t>(pid));
-			out.push_back(static_cast<std::uint8_t>(scrambling << 6 | (adaptation ? 0x20 : 0) | (take ? 0x10 : 0) | counter));
+			out.push_back(
+				static_cast<std::uint8_t>(scrambling << 6 | (adaptation ? 0x20 : 0) | (take ? 0x10 : 0) | counter));
 			if (take) counter = static_cast<std::uint8_t>((counter + 1) & 0x0F);
 
 			if (adaptation)
@@ -467,9 +516,11 @@ namespace
 					{
 						const auto base = pcr / 300;
 						const auto extension = pcr % 300;
-						const auto field = builder().be32(static_cast<std::uint32_t>(base >> 1))
-						                            .u8(static_cast<unsigned>((base & 1) << 7 | 0x7E | extension >> 8))
-						                            .u8(static_cast<unsigned>(extension & 0xFF)).b;
+						const auto field = builder()
+						                       .be32(static_cast<std::uint32_t>(base >> 1))
+						                       .u8(static_cast<unsigned>((base & 1) << 7 | 0x7E | extension >> 8))
+						                       .u8(static_cast<unsigned>(extension & 0xFF))
+						                       .b;
 						out.insert(out.end(), field.begin(), field.end());
 					}
 
@@ -481,12 +532,10 @@ namespace
 			return take;
 		}
 
-		void section(const std::uint16_t pid, const bytes& s)
-		{
-			split(pid, cat(bytes{0}, s), no_pcr, 0);
-		}
+		void section(const std::uint16_t pid, const bytes& s) { split(pid, cat(bytes{0}, s), no_pcr, 0); }
 
-		void pes(const std::uint16_t pid, const bytes& p, const std::uint64_t pcr = no_pcr, const unsigned scrambling = 0)
+		void pes(const std::uint16_t pid, const bytes& p, const std::uint64_t pcr = no_pcr,
+		         const unsigned scrambling = 0)
 		{
 			split(pid, p, pcr, scrambling);
 		}
@@ -551,22 +600,26 @@ namespace
 			return;
 		}
 
-		auto ok = std::isfinite(r.duration) && r.duration >= 0 && r.duration <= whole.duration + 1.0 && r.streams.size() <= whole.streams.size();
+		auto ok = std::isfinite(r.duration) && r.duration >= 0 && r.duration <= whole.duration + 1.0 &&
+		          r.streams.size() <= whole.streams.size();
 
 		for (const auto& s : r.streams)
 		{
-			const auto same = std::ranges::find_if(whole.streams, [&s](const libfiles::media_stream& w) { return w.id == s.id && w.kind == s.kind; });
+			const auto same = std::ranges::find_if(whole.streams, [&s](const libfiles::media_stream& w)
+			{ return w.id == s.id && w.kind == s.kind; });
 			ok = ok && same != whole.streams.end() && std::isfinite(s.duration) && s.duration >= 0;
 		}
 
-		if (!ok) test::fail(__FILE__, __LINE__, "an inconsistent scan of a stream cut or damaged at " + std::to_string(at));
+		if (!ok)
+			test::fail(__FILE__, __LINE__, "an inconsistent scan of a stream cut or damaged at " + std::to_string(at));
 	}
 
 	// Damage that leaves the result anyone's guess: only that it is an error or well formed.
 	void check_sane(const bytes& file, const std::size_t at)
 	{
 		const auto r = scan(file);
-		auto ok = r.success ? std::isfinite(r.duration) && r.duration >= 0 && r.streams.size() <= 256 : !r.error.empty();
+		auto ok = r.success ? std::isfinite(r.duration) && r.duration >= 0 && r.streams.size() <= 256
+		                    : !r.error.empty();
 		for (const auto& s : r.streams) ok = ok && std::isfinite(s.duration) && s.duration >= 0;
 		if (!ok) test::fail(__FILE__, __LINE__, "a damaged stream scanned badly at " + std::to_string(at));
 	}
@@ -605,12 +658,24 @@ namespace
 
 		if (mpeg1)
 		{
-			s.put(2, 4).put(base >> 30, 3).put(1, 1).put((base >> 15) & 0x7FFF, 15).put(1, 1).put(base & 0x7FFF, 15).put(1, 1);
+			s.put(2, 4)
+				.put(base >> 30, 3)
+				.put(1, 1)
+				.put((base >> 15) & 0x7FFF, 15)
+				.put(1, 1)
+				.put(base & 0x7FFF, 15)
+				.put(1, 1);
 			s.put(1, 1).put(mux_rate, 22).put(1, 1);
 			return s.b;
 		}
 
-		s.put(1, 2).put(base >> 30, 3).put(1, 1).put((base >> 15) & 0x7FFF, 15).put(1, 1).put(base & 0x7FFF, 15).put(1, 1);
+		s.put(1, 2)
+			.put(base >> 30, 3)
+			.put(1, 1)
+			.put((base >> 15) & 0x7FFF, 15)
+			.put(1, 1)
+			.put(base & 0x7FFF, 15)
+			.put(1, 1);
 		s.put(scr % 300, 9).put(1, 1).put(mux_rate, 22).put(3, 2).put(0x1F, 5).put(2, 3);
 		return cat(s.b, bytes{0xFF, 0xFF});
 	}
@@ -624,7 +689,18 @@ namespace
 	bytes system_header(const std::vector<buffer_bound>& streams, const unsigned audio, const unsigned video)
 	{
 		msb_bits s;
-		s.put(1, 1).put(25200, 22).put(1, 1).put(audio, 6).put(0, 1).put(0, 1).put(1, 1).put(1, 1).put(1, 1).put(video, 5).put(0, 1).put(0x7F, 7);
+		s.put(1, 1)
+			.put(25200, 22)
+			.put(1, 1)
+			.put(audio, 6)
+			.put(0, 1)
+			.put(0, 1)
+			.put(1, 1)
+			.put(1, 1)
+			.put(1, 1)
+			.put(video, 5)
+			.put(0, 1)
+			.put(0x7F, 7);
 		for (const auto& [id, size] : streams) s.put(id, 8).put(3, 2).put(1, 1).put(size, 13);
 		return builder().be32(0x1BB).be16(static_cast<unsigned>(s.b.size())).raw(s.b).b;
 	}
@@ -639,7 +715,8 @@ namespace
 	bytes stream_map(const std::vector<map_line>& entries)
 	{
 		builder map;
-		for (const auto& [type, id, descriptors] : entries) map.u8(type).u8(id).be16(static_cast<unsigned>(descriptors.size())).raw(descriptors);
+		for (const auto& [type, id, descriptors] : entries)
+			map.u8(type).u8(id).be16(static_cast<unsigned>(descriptors.size())).raw(descriptors);
 
 		builder body;
 		body.u8(0x80).u8(0xFF).be16(0).be16(static_cast<unsigned>(map.size())).raw(map.b);
@@ -681,7 +758,8 @@ namespace
 			if (frame == 0) ps.raw(system_header({{0xE0, 232}, {0xBD, 58}, {0xBF, 2}}, 1, 1));
 			if (frame == 0) ps.raw(builder().be32(0x1BF).be16(4).be32(0).b);
 
-			const auto video = frame == 0 ? mpeg_video_sequence(720, 576, 3, true) : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8, 0, 0, 1, 1, 0x2A};
+			const auto video = frame == 0 ? mpeg_video_sequence(720, 576, 3, true)
+			                              : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8, 0, 0, 1, 1, 0x2A};
 			ps.raw(pes(0xE0, video, at(pts + 3600).with_dts(pts)));
 
 			for (; ac3 < 32 && ps_start + ac3 * 2880 < pts + 3600; ++ac3)
@@ -761,19 +839,21 @@ TEST("media ts reads 192-byte M2TS packets with Blu-ray's stream types and the A
 	ts.section(0, pat({{0, 0x1F}, {1, 0x100}}));
 
 	const auto hdmv = cat(registration("HDMV"), descriptor(0x88, {0x0F, 0xFF, 0xFC, 0xFC}));
-	ts.section(0x100, pmt(1, 0x1001, hdmv, {
-		                      {0x1B, 0x1011, cat(registration("HDMV"), bytes{0xFF, 0x1B, 0x43, 0x3F})},
-		                      {0x80, 0x1100, {}},
-		                      {0x81, 0x1101, registration("AC-3")},
-		                      {0x90, 0x1200, {}},
-	                      }));
+	ts.section(0x100, pmt(1, 0x1001, hdmv,
+	                      {
+							  {0x1B, 0x1011, cat(registration("HDMV"), bytes{0xFF, 0x1B, 0x43, 0x3F})},
+							  {0x80, 0x1100, {}},
+							  {0x81, 0x1101, registration("AC-3")},
+							  {0x90, 0x1200, {}},
+						  }));
 
 	constexpr std::uint64_t start = 900000;
 
 	for (std::uint64_t frame = 0; frame < 25; ++frame)
 	{
 		const auto pts = start + frame * 3600;
-		const auto unit = frame == 0 ? h264_first_unit(h264_sps(1440, 1080, 25), mdpm_sei(sony_packs(0x42))) : h264_unit();
+		const auto unit = frame == 0 ? h264_first_unit(h264_sps(1440, 1080, 25), mdpm_sei(sony_packs(0x42)))
+		                             : h264_unit();
 		ts.pes(0x1011, pes(0xE0, unit, at(pts).with_dts(pts).open_length()));
 		ts.pes(0x1001, {}, (pts - 9000) * 300);
 
@@ -879,25 +959,30 @@ TEST("media ts reads MPEG-2 video and private data named by its descriptors")
 {
 	ts_writer ts;
 	ts.section(0, pat({{3, 0x20}}));
-	ts.section(0x20, pmt(3, 0x200, {}, {
-		                     {0x02, 0x200, {}},
-		                     {0x06, 0x201, cat(descriptor(0x6A, {0x00}), language("deu", 3))},
-		                     {0x06, 0x202, descriptor(0x56, cat(to_bytes("eng"), bytes{0x09, 0x88}))},
-		                     {0x06, 0x203, descriptor(0x59, cat(to_bytes("fra"), bytes{0x10, 0x00, 0x01, 0x00, 0x01}))},
-		                     {0x06, 0x204, cat(registration("Opus"), descriptor(0x7F, {0x80, 0x06}), language("und"))},
-		                     {0x05, 0x205, {}},
-		                     {0x06, 0x206, cat(descriptor(0x7A, {0x00}), descriptor(0x0A, cat(to_bytes("und"), bytes{0}, to_bytes("spa"), bytes{0})))},
-	                     }));
+	ts.section(0x20, pmt(3, 0x200, {},
+	                     {
+							 {0x02, 0x200, {}},
+							 {0x06, 0x201, cat(descriptor(0x6A, {0x00}), language("deu", 3))},
+							 {0x06, 0x202, descriptor(0x56, cat(to_bytes("eng"), bytes{0x09, 0x88}))},
+							 {0x06, 0x203, descriptor(0x59, cat(to_bytes("fra"), bytes{0x10, 0x00, 0x01, 0x00, 0x01}))},
+							 {0x06, 0x204, cat(registration("Opus"), descriptor(0x7F, {0x80, 0x06}), language("und"))},
+							 {0x05, 0x205, {}},
+							 {0x06, 0x206,
+	                          cat(descriptor(0x7A, {0x00}),
+	                              descriptor(0x0A, cat(to_bytes("und"), bytes{0}, to_bytes("spa"), bytes{0})))},
+						 }));
 
 	for (std::uint64_t frame = 0; frame < 25; ++frame)
 	{
 		const auto pts = ts_start + frame * 3600;
-		const auto video = frame == 0 ? mpeg_video_sequence(720, 576, 3, true) : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8};
+		const auto video = frame == 0 ? mpeg_video_sequence(720, 576, 3, true)
+		                              : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8};
 		ts.pes(0x200, pes(0xE0, video, at(pts + 3600).with_dts(pts).open_length()), pts * 300);
 		ts.pes(0x204, pes(0xBD, bytes{0x7F, 0xE0, 0x10, 0xFC, 0x00}, at(pts)));
 	}
 
-	for (std::uint64_t frame = 0; frame < 31; ++frame) ts.pes(0x201, pes(0xBD, ac3_frame(), at(ts_start + frame * 2880)));
+	for (std::uint64_t frame = 0; frame < 31; ++frame)
+		ts.pes(0x201, pes(0xBD, ac3_frame(), at(ts_start + frame * 2880)));
 
 	const auto r = scan(ts.out);
 	CHECK(r.success);
@@ -1251,7 +1336,8 @@ TEST("media ts reads a large stream's ends and nothing between")
 	ts_writer av;
 	av.section(0, pat({{1, 0x1000}}));
 	av.section(0x1000, pmt(1, 0x100, {}, {{0x1B, 0x100, {}}, {0x0F, 0x101, {}}}));
-	av.pes(0x100, pes(0xE0, h264_first_unit(h264_sps(1920, 1080, 25)), at(ts_start).with_dts(ts_start).open_length()), ts_start * 300);
+	av.pes(0x100, pes(0xE0, h264_first_unit(h264_sps(1920, 1080, 25)), at(ts_start).with_dts(ts_start).open_length()),
+	       ts_start * 300);
 	av.pes(0x101, pes(0xC0, cat(adts_frame(3, 2), adts_frame(3, 2)), at(ts_start)));
 	av.filler(170000);
 	av.pes(0x100, pes(0xE0, h264_unit(), at(ts_start + 90000 * 600).open_length()), (ts_start + 90000 * 600) * 300);
@@ -1378,7 +1464,8 @@ TEST("media ps reads an MPEG-1 system stream")
 		const auto pts = ps_start + frame * 3600;
 		ps.raw(pack_header(pts * 300, 3000, true));
 		if (frame == 0) ps.raw(system_header({{0xE0, 46}, {0xC0, 32}}, 1, 1));
-		const auto video = frame == 0 ? mpeg_video_sequence(352, 288, 3, false) : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8};
+		const auto video = frame == 0 ? mpeg_video_sequence(352, 288, 3, false)
+		                              : bytes{0, 0, 1, 0, 0x00, 0x58, 0xFF, 0xF8};
 		ps.raw(pes_mpeg1(0xE0, video, pts));
 		ps.raw(pes_mpeg1(0xC0, mpeg_audio_frame(), pts));
 	}

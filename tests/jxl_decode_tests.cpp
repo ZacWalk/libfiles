@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding JPEG XL: images libjxl writes losslessly, whose every pixel is known -
 // opaque, straight and premultiplied alpha, grey, turned by their codestream, animated, and in a
@@ -13,11 +13,13 @@
 
 #include "builders.h"
 #include "libfiles/decode.h"
+#include "libfiles/scan.h"
 
 #include <jxl/encode.h>
 
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 using namespace test_build;
@@ -40,10 +42,9 @@ namespace
 	std::array<std::uint8_t, 4> source_pixel(const std::uint32_t x, const std::uint32_t y, const int frame,
 	                                         const bool alpha)
 	{
-		return {
-			static_cast<std::uint8_t>(x * 30 + frame * 7), static_cast<std::uint8_t>(y * 40),
-			static_cast<std::uint8_t>(200 - x * y), alpha ? static_cast<std::uint8_t>((x + y) % 3 == 0 ? 0 : 60 + x * 20) : std::uint8_t{255}
-		};
+		return {static_cast<std::uint8_t>(x * 30 + frame * 7), static_cast<std::uint8_t>(y * 40),
+		        static_cast<std::uint8_t>(200 - x * y),
+		        alpha ? static_cast<std::uint8_t>((x + y) % 3 == 0 ? 0 : 60 + x * 20) : std::uint8_t{255}};
 	}
 
 	// An image libjxl writes losslessly, the colour premultiplied where asked.
@@ -77,8 +78,8 @@ namespace
 		const auto boxes = !s.exif.empty();
 
 		if ((!boxes || JxlEncoderUseBoxes(encoder) == JXL_ENC_SUCCESS) &&
-			JxlEncoderSetBasicInfo(encoder, &info) == JXL_ENC_SUCCESS &&
-			JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS)
+		    JxlEncoderSetBasicInfo(encoder, &info) == JXL_ENC_SUCCESS &&
+		    JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS)
 		{
 			if (boxes)
 			{
@@ -144,8 +145,19 @@ namespace
 	// entry is the orientation.
 	bytes exif_box(const std::uint16_t orientation)
 	{
-		return builder().be32(0).raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(orientation)
-		                .le16(0).le32(0).b;
+		return builder()
+		    .be32(0)
+		    .raw("II")
+		    .le16(42)
+		    .le32(8)
+		    .le16(1)
+		    .le16(0x0112)
+		    .le16(3)
+		    .le32(1)
+		    .le16(orientation)
+		    .le16(0)
+		    .le32(0)
+		    .b;
 	}
 
 	// Memory filled with a byte the decoder never writes, with padding after each row.
@@ -157,12 +169,18 @@ namespace
 		int calls = 0;
 		libfiles::frame_info told;
 
+		std::size_t pixel_bytes() const
+		{
+			return told.format == libfiles::pixel_format::rgba16 || told.format == libfiles::pixel_format::rgbx16 ? 8
+			                                                                                                      : 4;
+		}
+
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
 			++calls;
 			told = frame;
 			if (refuse) return {};
-			stride = std::size_t{4} * frame.width + 12;
+			stride = pixel_bytes() * frame.width + 12;
 			memory.assign(stride * frame.height, 0xAB);
 			return {memory.data(), stride};
 		}
@@ -172,19 +190,69 @@ namespace
 			return memory.data() + y * stride + x * 4;
 		}
 
+		std::array<std::uint16_t, 4> wide_pixel(const std::uint32_t x, const std::uint32_t y) const
+		{
+			std::array<std::uint16_t, 4> channels{};
+			std::memcpy(channels.data(), memory.data() + y * stride + x * 8, 8);
+			return channels;
+		}
+
 		bool padding_kept() const
 		{
 			for (std::size_t y = 0; y < told.height; ++y)
-				for (auto x = std::size_t{4} * told.width; x < stride; ++x)
+				for (auto x = pixel_bytes() * told.width; x < stride; ++x)
 					if (memory[y * stride + x] != 0xAB) return false;
 			return true;
 		}
 	};
 
-	libfiles::decode_result decode_file(const bytes& file, jxl_sink& sink)
+	libfiles::decode_result decode_file(const bytes& file, jxl_sink& sink, const libfiles::decode_options& options = {})
 	{
 		libfiles::reader r{std::span<const std::uint8_t>(file)};
-		return libfiles::decode(r, sink);
+		return libfiles::decode(r, sink, options);
+	}
+
+	// A one-row RGB image of 16-bit samples, written losslessly in the colour encoding given, so the decoder
+	// gives the samples back as they are in that encoding.
+	bytes write_jxl16(const std::vector<std::uint16_t>& rgb, const JxlColorEncoding& color)
+	{
+		auto* const encoder = JxlEncoderCreate(nullptr);
+		JxlBasicInfo info;
+		JxlEncoderInitBasicInfo(&info);
+		info.xsize = static_cast<std::uint32_t>(rgb.size() / 3);
+		info.ysize = 1;
+		info.bits_per_sample = 16;
+		info.num_color_channels = 3;
+		info.uses_original_profile = JXL_TRUE;
+		bytes file;
+
+		if (JxlEncoderSetBasicInfo(encoder, &info) == JXL_ENC_SUCCESS &&
+		    JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS)
+		{
+			auto* const settings = JxlEncoderFrameSettingsCreate(encoder, nullptr);
+			JxlEncoderSetFrameLossless(settings, JXL_TRUE);
+			const JxlPixelFormat format{3, JXL_TYPE_UINT16, JXL_NATIVE_ENDIAN, 0};
+			JxlEncoderAddImageFrame(settings, &format, rgb.data(), rgb.size() * 2);
+			JxlEncoderCloseInput(encoder);
+
+			file.resize(1024);
+			auto* next = file.data();
+			auto available = file.size();
+			auto status = JXL_ENC_NEED_MORE_OUTPUT;
+
+			while ((status = JxlEncoderProcessOutput(encoder, &next, &available)) == JXL_ENC_NEED_MORE_OUTPUT)
+			{
+				const auto written = static_cast<std::size_t>(next - file.data());
+				file.resize(file.size() * 2);
+				next = file.data() + written;
+				available = file.size() - written;
+			}
+
+			file.resize(status == JXL_ENC_SUCCESS ? static_cast<std::size_t>(next - file.data()) : 0);
+		}
+
+		JxlEncoderDestroy(encoder);
+		return file;
 	}
 
 	// Every pixel of a decode is the written one, as BGRA, the colour within a level where it was
@@ -201,8 +269,10 @@ namespace
 				if (s.premultiplied && expected[3] == 0) continue;
 
 				const std::array<std::uint8_t, 3> colour = s.grey
-					                                           ? std::array<std::uint8_t, 3>{expected[1], expected[1], expected[1]}
-					                                           : std::array<std::uint8_t, 3>{expected[2], expected[1], expected[0]};
+				                                               ? std::array<std::uint8_t, 3>{expected[1], expected[1],
+				                                                                             expected[1]}
+				                                               : std::array<std::uint8_t, 3>{expected[2], expected[1],
+				                                                                             expected[0]};
 				const auto tolerance = s.premultiplied ? 2 : 0;
 
 				for (auto c = 0; c < 3; ++c)
@@ -270,20 +340,27 @@ TEST("Should report a JPEG XL's orientation from its codestream, and leave its p
 	CHECK(pixels_are(sink, spec));
 }
 
-TEST("Should decode a grey JPEG XL as BGRX, and an animated one's first frame")
+TEST("Should decode a grey JPEG XL as BGRX, and an animated one's first frame, which a scan calls an animation")
 {
 	jxl_spec grey;
 	grey.grey = true;
+	const auto grey_file = write_jxl(grey);
 	jxl_sink grey_sink;
-	CHECK(decode_file(write_jxl(grey), grey_sink).success);
+	CHECK(decode_file(grey_file, grey_sink).success);
 	CHECK(pixels_are(grey_sink, grey));
 
 	jxl_spec animated;
 	animated.frames = 2;
+	const auto animated_file = write_jxl(animated);
 	jxl_sink animated_sink;
-	CHECK(decode_file(write_jxl(animated), animated_sink).success);
+	CHECK(decode_file(animated_file, animated_sink).success);
 	CHECK(pixels_are(animated_sink, animated, 0));
 	CHECK(!pixels_are(animated_sink, animated, 1));
+
+	libfiles::reader grey_reader{std::span<const std::uint8_t>(grey_file)};
+	CHECK(!libfiles::scan(grey_reader).animated);
+	libfiles::reader animated_reader{std::span<const std::uint8_t>(animated_file)};
+	CHECK(libfiles::scan(animated_reader).animated);
 }
 
 TEST("Should not decode a JPEG XL cut short, and refuse what the sink refuses")
@@ -330,6 +407,51 @@ TEST("Should decode a JPEG XL from a stream as from memory")
 
 	CHECK(memory_result.success && stream_result.success);
 	CHECK(from_stream.memory == from_memory.memory);
+}
+
+TEST("Should keep a JPEG XL's sixteen bits for a caller that takes them")
+{
+	JxlColorEncoding srgb;
+	JxlColorEncodingSetToSRGB(&srgb, JXL_FALSE);
+	const auto file = write_jxl16({0x1234, 0xABCD, 0x0102, 0xFFFF, 0x0000, 0x8000}, srgb);
+	CHECK(!file.empty());
+
+	libfiles::decode_options options;
+	options.allow_16bit = true;
+	jxl_sink sink;
+	CHECK(decode_file(file, sink, options).success);
+	CHECK(sink.told.format == libfiles::pixel_format::rgbx16);
+	CHECK(sink.wide_pixel(0, 0) == (std::array<std::uint16_t, 4>{0x1234, 0xABCD, 0x0102, 0xFFFF}));
+	CHECK(sink.wide_pixel(1, 0) == (std::array<std::uint16_t, 4>{0xFFFF, 0x0000, 0x8000, 0xFFFF}));
+	CHECK(sink.padding_kept());
+
+	// Without the option, bytes, as before.
+	jxl_sink byte_sink;
+	CHECK(decode_file(file, byte_sink).success);
+	CHECK(byte_sink.told.format == libfiles::pixel_format::bgrx8);
+	CHECK(std::abs(byte_sink.pixel(0, 0)[2] - 18) <= 1);
+}
+
+// A neutral at 50 nits of PQ comes out at 50 / 203 of SDR white, sRGB-encoded, as a PQ PNG's does.
+TEST("Should map a JPEG XL whose colour encoding is PQ to SDR")
+{
+	JxlColorEncoding pq;
+	JxlColorEncodingSetToSRGB(&pq, JXL_FALSE);
+	pq.primaries = JXL_PRIMARIES_2100;
+	pq.transfer_function = JXL_TRANSFER_FUNCTION_PQ;
+	const auto file = write_jxl16({28854, 28854, 28854, 65535, 65535, 65535}, pq);
+	CHECK(!file.empty());
+
+	jxl_sink sink;
+	const auto result = decode_file(file, sink);
+	CHECK(result.success);
+	CHECK(result.frame.tone_mapped);
+	CHECK(sink.told.format == libfiles::pixel_format::bgrx8);
+
+	const auto* const grey = sink.pixel(0, 0);
+	CHECK(std::abs(grey[0] - 136) <= 1 && std::abs(grey[1] - 136) <= 1 && std::abs(grey[2] - 136) <= 1);
+	CHECK(sink.pixel(1, 0)[1] == 255);
+	CHECK(sink.padding_kept());
 }
 
 #endif

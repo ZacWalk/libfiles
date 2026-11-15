@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The rules the values in a photo's EXIF, IPTC and XMP are read by - dates and their zones and
 // fractions, numbers, rationals and coordinates - as Diffractor read them before its reading moved here, so

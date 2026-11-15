@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The meta class: parsing a packet into the tree, reading and changing properties with the
 // XMP Toolkit's rules for paths, aliases, arrays and localized text, and iterating the tree in the
@@ -121,8 +121,9 @@ namespace libfiles::xmp
 			{
 				const auto matches_generic = [generic_lang](const std::string& lang)
 				{
-					return lang.size() >= generic_lang.size() && lang.compare(0, generic_lang.size(), generic_lang) == 0 &&
-						(lang.size() == generic_lang.size() || lang[generic_lang.size()] == '-');
+					return lang.size() >= generic_lang.size() &&
+					       lang.compare(0, generic_lang.size(), generic_lang) == 0 &&
+					       (lang.size() == generic_lang.size() || lang[generic_lang.size()] == '-');
 				};
 
 				std::size_t i = 0;
@@ -139,7 +140,8 @@ namespace libfiles::xmp
 				{
 					for (++i; i < array->children.size(); ++i)
 					{
-						if (matches_generic(array->children[i]->qualifiers[0]->value)) return lang_match::multiple_generic;
+						if (matches_generic(array->children[i]->qualifiers[0]->value))
+							return lang_match::multiple_generic;
 					}
 
 					return lang_match::single_generic;
@@ -212,7 +214,8 @@ namespace libfiles::xmp
 			for (const auto& qual : n->qualifiers)
 			{
 				const auto qual_path = path + "/?" + qual->name;
-				out.push_back({schema, qual_path, is_simple(qual->options) ? qual->value : std::string(), qual->options});
+				out.push_back(
+					{schema, qual_path, is_simple(qual->options) ? qual->value : std::string(), qual->options});
 				add_offspring(out, schema, qual.get(), qual_path);
 			}
 
@@ -233,7 +236,8 @@ namespace libfiles::xmp
 					child_path += child->name;
 				}
 
-				out.push_back({schema, child_path, is_simple(child->options) ? child->value : std::string(), child->options});
+				out.push_back(
+					{schema, child_path, is_simple(child->options) ? child->value : std::string(), child->options});
 				add_offspring(out, schema, child, child_path);
 			}
 		}
@@ -428,7 +432,8 @@ namespace libfiles::xmp
 		for (std::size_t i = 0; i < n->children.size(); ++i)
 		{
 			const auto& c = n->children[i];
-			if (c->qualifiers.empty() || c->qualifiers[0]->name != "xml:lang") throw error("Language qualifier must be first");
+			if (c->qualifiers.empty() || c->qualifiers[0]->name != "xml:lang")
+				throw error("Language qualifier must be first");
 
 			if (c->qualifiers[0]->value == "x-default")
 			{
@@ -551,8 +556,8 @@ namespace libfiles::xmp
 
 			for (const auto& prop : schema->children)
 			{
-				result.push_back({schema->name, prop->name, is_simple(prop->options) ? prop->value : std::string(),
-				                  prop->options});
+				result.push_back(
+					{schema->name, prop->name, is_simple(prop->options) ? prop->value : std::string(), prop->options});
 				add_offspring(result, schema->name, prop.get(), prop->name);
 			}
 		}

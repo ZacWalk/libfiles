@@ -1,19 +1,22 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Decoding the image a file holds into memory its caller provides. The caller allocates, so a
 // decode lands in the caller's own surface - a texture's staging memory, a bitmap - with nothing copied
-// between, and the caller decides what it can afford before the decoder reads the pixels.
+// between, and the caller decides what it can afford before the decoder reads the pixels. An HDR picture
+// comes mapped to SDR, or - for a caller that keeps HDR - as its signal, with what says how it is coded.
 
 #pragma once
 
 #include "libfiles/reader.h"
 #include "libfiles/scan.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,6 +38,10 @@ namespace libfiles
 		// Four bytes a pixel: blue, green, red and alpha, the alpha straight rather than premultiplied -
 		// Direct3D's B8G8R8A8 as a straight-alpha texture holds it.
 		bgra8,
+		// Eight bytes a pixel: red, green, blue and a fourth channel, sixteen bits each in the machine's byte
+		// order - Direct3D's R16G16B16A16. The fourth is 65535 in rgbx16 and straight alpha in rgba16.
+		rgbx16,
+		rgba16,
 	};
 
 	// Memory for a decoded image: rows of pixels, stride bytes apart. For nv12, the chroma rows follow
@@ -43,6 +50,106 @@ namespace libfiles
 	{
 		std::uint8_t* pixels = nullptr;
 		std::size_t stride = 0;
+	};
+
+	// Pixels a caller holds: height rows of width pixels, stride bytes apart, as decode() writes them - what an
+	// encoder reads, and what the HDR conversions in hdr.h read.
+	struct image_view
+	{
+		const std::uint8_t* pixels = nullptr;
+		std::size_t stride = 0;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		pixel_format format = pixel_format::bgrx8;
+		// For nv12: limited-range BT.601 rather than full range.
+		bool limited_range = false;
+	};
+
+	// The transfer an HDR picture's signal is coded with: SMPTE ST 2084's perceptual quantizer, absolute light up
+	// to 10000 nits, or BT.2100's hybrid log-gamma, light relative to the display it is shown on.
+	enum class hdr_transfer : std::uint8_t
+	{
+		pq,
+		hlg,
+	};
+
+	// The CIE xy chromaticities of a picture's red, green and blue primaries and of its white: BT.709's and D65
+	// unless set.
+	struct chromaticities
+	{
+		double red_x = 0.640;
+		double red_y = 0.330;
+		double green_x = 0.300;
+		double green_y = 0.600;
+		double blue_x = 0.150;
+		double blue_y = 0.060;
+		double white_x = 0.3127;
+		double white_y = 0.3290;
+
+		friend bool operator==(const chromaticities&, const chromaticities&) = default;
+	};
+
+	// The primaries an ITU-T H.273 colour-primaries code point names, for the ones HDR pictures use: BT.709 (1),
+	// BT.2020 (9), DCI-P3 (11) and Display P3 (12). Nothing for any other.
+	std::optional<chromaticities> chromaticities_of(int colour_primaries) noexcept;
+
+	// What an HDR picture - PQ or HLG - says of its colour and its light, as decode() reads it and the AVIF, JPEG XL
+	// and PNG encoders write it back: their colour boxes' and chunks' code points, a HEIF's and a PNG's content light
+	// level and mastering display, and a JPEG XL's intensity target.
+	struct hdr_description
+	{
+		hdr_transfer transfer = hdr_transfer::pq;
+		// The H.273 code point naming the primaries: 9 for BT.2020, 12 for Display P3. 2, unspecified, where the file
+		// gives chromaticities of its own. primaries holds them either way.
+		std::uint8_t colour_primaries = 9;
+		chromaticities primaries = {0.708, 0.292, 0.170, 0.797, 0.131, 0.046, 0.3127, 0.3290};
+		// The brightest pixel's light and the brightest frame's average, in nits, as a content light level states
+		// them; 0 where the file states none.
+		double max_cll = 0;
+		double max_fall = 0;
+
+		// The display the picture was graded on: its primaries and white, and its brightest and darkest light, in nits.
+		struct mastering_display
+		{
+			chromaticities primaries;
+			double max_luminance = 0;
+			double min_luminance = 0;
+
+			friend bool operator==(const mastering_display&, const mastering_display&) = default;
+		};
+
+		std::optional<mastering_display> mastering;
+		// A JPEG XL's intensity target: the light its brightest signal stands for, in nits. 0 where none is stated.
+		double intensity_target = 0;
+
+		// The brightest light the picture holds, in nits, as the mapping to SDR reads it: max_cll, else the mastering
+		// display's peak, else the intensity target below 10000, which says nothing; 0 when there is none, which PQ
+		// takes as the 1000 nits most of it is graded to.
+		double peak_nits() const noexcept;
+
+		friend bool operator==(const hdr_description&, const hdr_description&) = default;
+	};
+
+	// A gain map's metadata in ISO 21496-1's terms: how a map of values from 0 to 1 brightens the picture it goes
+	// with - the base rendition - into the alternate rendition, an HDR one where the base is SDR. A value v is the
+	// gain log2(alternate + alternate_offset) - log2(base + base_offset), in linear light, coded as
+	// pow((gain - gain_min) / (gain_max - gain_min), gamma). A display with headroom h - log2 of its peak over SDR
+	// white - applies the gain weighted by where h lies between the two renditions' headrooms.
+	struct gain_map_metadata
+	{
+		// log2 of each rendition's peak over SDR white: 0 for an SDR base.
+		double base_headroom = 0;
+		double alternate_headroom = 1;
+		// For red, green and blue, alike for a map that is one value for all three.
+		std::array<double, 3> gain_min{0, 0, 0};
+		std::array<double, 3> gain_max{1, 1, 1};
+		std::array<double, 3> gamma{1, 1, 1};
+		std::array<double, 3> base_offset{1.0 / 64, 1.0 / 64, 1.0 / 64};
+		std::array<double, 3> alternate_offset{1.0 / 64, 1.0 / 64, 1.0 / 64};
+		// The gain is applied in the base rendition's primaries, rather than the alternate's.
+		bool use_base_colour_space = true;
+
+		friend bool operator==(const gain_map_metadata&, const gain_map_metadata&) = default;
 	};
 
 	// What a decode will produce, told to the sink before any pixel is read.
@@ -83,11 +190,25 @@ namespace libfiles
 		// HEIF: the libheif decoder plugin the image is decoded with, by its id, where the caller named
 		// one with heif_hevc_decoder; empty where libheif chooses.
 		std::string heif_decoder;
+		// The image is HDR - its transfer PQ or HLG - and was mapped to SDR as libfiles shows such a still:
+		// as Diffractor shows HDR video, with 203 nits as white. Set in decode_result::frame alone.
+		bool tone_mapped = false;
+		// The image's ICC profile describes colours other than sRGB's, and they were mapped to sRGB, as
+		// decode_options::map_to_srgb asks. Set in decode_result::frame alone.
+		bool profile_mapped = false;
+		// The image is HDR: how its signal is coded, whether it was mapped to SDR or - for a caller that keeps
+		// HDR - written as it is. Set in decode_result::frame, and for allocate where the decoder knows it by
+		// then: a PNG's whole, a HEIF's without the light levels its decoded image carries, and a JPEG XL's
+		// where keeping HDR decides the format it is decoded to.
+		std::optional<hdr_description> hdr;
+		// HEIF, for decode_options::heif_gain_map: how to apply the gain map decoded. Set for allocate.
+		std::optional<gain_map_metadata> gain_map;
 	};
 
 	// Where a decoder puts the image. allocate is asked once, as soon as the decoder knows the size it
 	// will write and before it writes a pixel - for every format but HEIF and camera raw, as soon as the
-	// file has given the size, before the pixels are read. The decoder writes every byte of each row's
+	// file has given the size, before the pixels are read; for a JPEG XL whose format keeping HDR decides,
+	// once the colour encoding that follows the size has. The decoder writes every byte of each row's
 	// pixels and nothing past them, so a row's padding is the caller's.
 	class image_sink
 	{
@@ -138,6 +259,25 @@ namespace libfiles
 		// WebP thumbnails may require rounding down into their bounds rather than the default
 		// nearest-pixel rule. Neither policy enlarges an image.
 		bool round_webp_size_down = false;
+		// The caller takes rgbx16 or rgba16 where the image holds more than eight bits a channel: a 16-bit
+		// PNG, a HEIF or AVIF of 10 or 12 bits, a JPEG XL of more than 8. Every other image, and every image
+		// when this is false, comes as bytes, each channel rounded to the nearest level.
+		bool allow_16bit = false;
+		// An HDR image - a HEIF, AVIF, JPEG XL or PNG whose transfer is PQ or HLG - comes as its signal rather
+		// than mapped to SDR: R'G'B' in its own primaries, as rgbx16 or rgba16 whatever allow_16bit says, with
+		// frame_info::hdr saying how it is coded. map_hdr_to_sdr in hdr.h maps it as decode() would have.
+		bool keep_hdr = false;
+		// An image whose ICC profile describes colours other than sRGB's - a phone's Display P3, a camera's
+		// Adobe RGB (1998) - comes mapped to sRGB, as map_icc_to_srgb in icc.h maps it, and never as nv12; the
+		// profile is the one scan() finds in the file. A JPEG, PNG, WebP, HEIF, AVIF or PSD's alone, and not an HDR
+		// image's or a gain map's. Left as the file holds them otherwise, as an editor that writes the profile
+		// back wants them.
+		bool map_to_srgb = false;
+		// HEIF: decodes the primary image's gain map rather than the primary image - the input an ISO 21496-1
+		// tone map item takes beside it, or Apple's HDR gain map auxiliary image - as bytes, bgrx8, a grey map
+		// with its value in every channel. frame_info::gain_map says how to apply it; an Apple map's values are
+		// rewritten to say it in ISO 21496-1's terms. Refused, with no allocate, when the image has none.
+		bool heif_gain_map = false;
 	};
 
 	struct decode_result
@@ -212,6 +352,6 @@ namespace libfiles
 	// source, as it is when the target has a zero edge. Computed as Diffractor's ui::scale_dimensions
 	// computes it, so a reduced decode stands in for a decode and a fit: the scale in steps of
 	// 1/100000, each step and edge rounded to the nearest, and no edge below 1.
-	image_size scaled_size_for(std::uint32_t source_width, std::uint32_t source_height,
-	                           std::uint32_t target_width, std::uint32_t target_height) noexcept;
+	image_size scaled_size_for(std::uint32_t source_width, std::uint32_t source_height, std::uint32_t target_width,
+	                           std::uint32_t target_height) noexcept;
 }

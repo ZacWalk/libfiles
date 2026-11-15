@@ -1,9 +1,10 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Purpose: Tests for writing a JPEG XL's metadata: its packet and the EXIF it holds, in files built box by
-// box here and in files libjxl makes from a JPEG, which must still give that JPEG back after an edit.
+// Purpose: Tests for writing a JPEG XL's metadata: its packet, the EXIF it holds and the orientation its
+// codestream keeps, in files built box by box here and in files libjxl makes from a JPEG, which must still give
+// that JPEG back, turned with it, after an edit.
 
 #include "test.h"
 
@@ -108,12 +109,14 @@ namespace
 		{
 			box_at box;
 			box.offset = pos;
-			box.type.assign(file.begin() + static_cast<std::ptrdiff_t>(pos + 4), file.begin() + static_cast<std::ptrdiff_t>(pos + 8));
+			box.type.assign(file.begin() + static_cast<std::ptrdiff_t>(pos + 4),
+			                file.begin() + static_cast<std::ptrdiff_t>(pos + 8));
 			std::uint64_t size = libfiles::detail::load_be32(file.data() + pos);
 
 			if (size == 1 && pos + 16 <= file.size())
 			{
-				size = std::uint64_t{libfiles::detail::load_be32(file.data() + pos + 8)} << 32 | libfiles::detail::load_be32(file.data() + pos + 12);
+				size = std::uint64_t{libfiles::detail::load_be32(file.data() + pos + 8)} << 32 |
+				       libfiles::detail::load_be32(file.data() + pos + 12);
 				box.header = 16;
 			}
 			else if (size == 0)
@@ -145,7 +148,8 @@ namespace
 
 	bytes contents_of(const bytes& file, const box_at& box)
 	{
-		return {file.begin() + static_cast<std::ptrdiff_t>(box.offset + box.header), file.begin() + static_cast<std::ptrdiff_t>(box.offset + box.size)};
+		return {file.begin() + static_cast<std::ptrdiff_t>(box.offset + box.header),
+		        file.begin() + static_cast<std::ptrdiff_t>(box.offset + box.size)};
 	}
 
 	// The contents of the first box of a type, or nothing.
@@ -162,18 +166,32 @@ namespace
 	// A little-endian TIFF stream whose one entry is the orientation.
 	bytes oriented_tiff(const unsigned orientation)
 	{
-		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(orientation).le16(0).le32(0).b;
+		return builder()
+		    .raw("II")
+		    .le16(42)
+		    .le32(8)
+		    .le16(1)
+		    .le16(0x0112)
+		    .le16(3)
+		    .le32(1)
+		    .le16(orientation)
+		    .le16(0)
+		    .le32(0)
+		    .b;
 	}
 
-	bytes exif_contents(const bytes& tiff) { return builder().be32(0).raw(tiff).b; }
+	bytes exif_contents(const bytes& tiff)
+	{
+		return builder().be32(0).raw(tiff).b;
+	}
 
 #ifdef LIBFILES_JXL
 	bytes real_brob(const std::string_view type, const bytes& contents, const bool trailing = false)
 	{
 		auto compressed = bytes(BrotliEncoderMaxCompressedSize(contents.size()));
 		auto size = compressed.size();
-		if (!BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, contents.size(),
-		                            contents.data(), &size, compressed.data()))
+		if (!BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, contents.size(), contents.data(),
+		                           &size, compressed.data()))
 			return {};
 		compressed.resize(size);
 		builder payload;
@@ -213,7 +231,8 @@ TEST("a jpeg xl takes its first packet before its codestream, and keeps every ot
 
 	// The boxes before the packet are as they were, and the codestream's every byte.
 	const auto boxes = boxes_of(first.file);
-	CHECK(std::equal(original.begin(), original.begin() + static_cast<std::ptrdiff_t>(boxes[3].offset), first.file.begin()));
+	CHECK(std::equal(original.begin(), original.begin() + static_cast<std::ptrdiff_t>(boxes[3].offset),
+	                 first.file.begin()));
 	CHECK(contents_of(first.file, boxes[4]) == stream);
 
 	// Partial codestream boxes, with a box between them: the packet goes before the first.
@@ -250,8 +269,9 @@ TEST("a jpeg xl packet that fits is patched where it lies, and an interrupted pa
 	// A packet in a box with a 64-bit size keeps it, so the edit is still a patch; one in a box that runs to
 	// the end of the file is given its size.
 	const auto packet = packet_bytes(rated(2));
-	const auto wide = container({iso_box("jxlc", codestream({})),
-	                             builder().be32(1).raw("xml ").be32(0).be32(static_cast<std::uint32_t>(packet.size() + 16)).raw(packet).b});
+	const auto wide = container(
+		{iso_box("jxlc", codestream({})),
+	     builder().be32(1).raw("xml ").be32(0).be32(static_cast<std::uint32_t>(packet.size() + 16)).raw(packet).b});
 	const auto wide_edit = update(wide, rated(4));
 	CHECK(wide_edit.plan.in_place());
 	CHECK_EQ(rating_of(wide_edit.file), 4);
@@ -295,7 +315,10 @@ TEST("a compressed jpeg xl box is read with the decompressor its scan was given,
 	const auto file = container({iso_box("jxlc", codestream({})), brob("Exif", exif_contents(oriented_tiff(1))),
 	                             brob("xml ", packet_bytes(rated(2)))});
 	libfiles::brotli_decompressor rejects = [](std::span<const std::uint8_t>, std::string_view,
-	                                           std::size_t) -> std::optional<bytes> { return {}; };
+	                                           std::size_t) -> std::optional<bytes>
+	{
+		return {};
+	};
 
 	// An explicitly supplied decompressor still controls the result, including one that refuses the box.
 	const auto rejected_meta = rated(5);
@@ -339,16 +362,15 @@ TEST("built-in Brotli reads JPEG XL brob boxes for scan packet and update")
 		const bytes plain{'t', 'i', 'n', 'y'};
 		bytes compressed(BrotliEncoderMaxCompressedSize(plain.size()));
 		auto compressed_size = compressed.size();
-		CHECK(BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, plain.size(),
-		                            plain.data(), &compressed_size, compressed.data()));
+		CHECK(BrotliEncoderCompress(5, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_GENERIC, plain.size(), plain.data(),
+		                            &compressed_size, compressed.data()));
 		compressed.resize(compressed_size);
 		const auto small = (*builtin)(compressed, "xml ", 16u * 1024u * 1024u);
 		CHECK(small && *small == plain);
 		if (small) CHECK(small->capacity() <= 64u * 1024u);
 	}
 
-	const auto file = container({iso_box("jxlc", codestream({})),
-	                             real_brob("Exif", exif_contents(oriented_tiff(1))),
+	const auto file = container({iso_box("jxlc", codestream({})), real_brob("Exif", exif_contents(oriented_tiff(1))),
 	                             real_brob("xml ", packet_bytes(rated(2)))});
 
 	const auto scan = scanned(file);
@@ -367,13 +389,13 @@ TEST("built-in Brotli reads JPEG XL brob boxes for scan packet and update")
 
 	// A malformed or trailing stream is refused by the built-in decoder, while the explicit
 	// callback path remains independently testable above.
-	const auto malformed = container({iso_box("jxlc", codestream({})),
-	                                  real_brob("xml ", packet_bytes(rated(2)), true)});
+	const auto malformed = container(
+		{iso_box("jxlc", codestream({})), real_brob("xml ", packet_bytes(rated(2)), true)});
 	CHECK(scanned(malformed).metadata.xmp.empty());
 }
 #endif
 
-TEST("a jpeg xl reads back the edits it keeps outside the packet, and leaves its orientation to its codestream")
+TEST("a jpeg xl reads back the edits it keeps outside the packet, and keeps its orientation in its codestream")
 {
 	CHECK(libfiles::can_update(libfiles::file_format::jxl));
 	CHECK(libfiles::detect_file_format(codestream({})) == libfiles::file_format::jxl);
@@ -383,20 +405,22 @@ TEST("a jpeg xl reads back the edits it keeps outside the packet, and leaves its
 	check_round_trip("jxl", container({iso_box("jxlc", codestream({}))}), {});
 	check_round_trip("jxl codestream", codestream({}), {});
 
-	// One that holds EXIF keeps what a WebP's EXIF keeps, but for the orientation, which its codestream
-	// keeps: an EXIF orientation alone would contradict the picture.
-	const auto with_exif = container({iso_box("Exif", exif_contents(oriented_tiff(3))), iso_box("jxlc", codestream({.orientation = 3}))});
+	// One that holds EXIF keeps what a WebP's EXIF keeps. The orientation goes in the codestream, which libjxl
+	// turns the picture by, and the EXIF's is made to agree with it.
+	const auto with_exif = container(
+		{iso_box("Exif", exif_contents(oriented_tiff(3))), iso_box("jxlc", codestream({.orientation = 3}))});
 	check_round_trip("jxl with exif", with_exif,
-	                 {"copyright", "creators", "description", "digitized", "keywords", "location", "rating", "taken", "year"});
+	                 {"copyright", "creators", "description", "digitized", "keywords", "location", "orientation",
+	                  "rating", "taken", "year"});
 
 	libfiles::metadata_update turned;
 	turned.legacy.orientation = 6;
 	turned.legacy.rating = 2;
 	const auto edited = update(with_exif, turned);
 	CHECK(edited.plan.ok());
-	CHECK(exif_properties(edited.file).orientation == 3);
+	CHECK(exif_properties(edited.file).orientation == 6);
 	CHECK(exif_properties(edited.file).rating == 2);
-	CHECK(scanned(edited.file).orientation == 3);
+	CHECK(scanned(edited.file).orientation == 6);
 }
 
 TEST("a jpeg xl made from a jpeg keeps the boxes it gives the jpeg back from at their size")
@@ -404,7 +428,8 @@ TEST("a jpeg xl made from a jpeg keeps the boxes it gives the jpeg back from at 
 	const auto jbrd = iso_box("jbrd", bytes{1, 2, 3, 4});
 	const auto padded = packet_bytes(rated(1));
 	const auto exif = camera_exif();
-	const auto file = container({jbrd, iso_box("Exif", exif_contents(exif)), iso_box("xml ", padded), iso_box("jxlc", codestream({}))});
+	const auto file = container(
+		{jbrd, iso_box("Exif", exif_contents(exif)), iso_box("xml ", padded), iso_box("jxlc", codestream({}))});
 
 	libfiles::metadata_update u;
 	const auto meta = rated(4);
@@ -426,20 +451,24 @@ TEST("a jpeg xl made from a jpeg keeps the boxes it gives the jpeg back from at 
 	CHECK(!kept.rating.has_value());
 
 	// A file without the box takes every field.
-	const auto plain = update(container({iso_box("Exif", exif_contents(exif)), iso_box("xml ", padded), iso_box("jxlc", codestream({}))}), u);
+	const auto plain = update(container({iso_box("Exif", exif_contents(exif)), iso_box("xml ", padded),
+	                                     iso_box("jxlc", codestream({}))}),
+	                          u);
 	CHECK(plain.plan.ok());
 	const auto grown = exif_properties(plain.file);
 	CHECK_STR(grown.description, "A description far longer than the one the camera wrote");
 	CHECK(grown.rating == 4);
 
 	// A packet that has no room is refused rather than written at another size.
-	const auto tight = container({jbrd, iso_box("xml ", packet_bytes(rated(1), {.omit_packet_wrapper = true})), iso_box("jxlc", codestream({}))});
+	const auto tight = container({jbrd, iso_box("xml ", packet_bytes(rated(1), {.omit_packet_wrapper = true})),
+	                              iso_box("jxlc", codestream({}))});
 	const auto refused = update(tight, rated(5));
 	CHECK(!refused.plan.ok());
 	CHECK(refused.plan.error.find("no room") != std::string::npos);
 
 	// A second packet box is not the one the JPEG is given back with, and takes any size.
-	const auto two = container({jbrd, iso_box("xml ", padded), iso_box("xml ", packet_bytes(rated(2), {.omit_packet_wrapper = true})),
+	const auto two = container({jbrd, iso_box("xml ", padded),
+	                            iso_box("xml ", packet_bytes(rated(2), {.omit_packet_wrapper = true})),
 	                            iso_box("jxlc", codestream({}))});
 	const auto second = update(two, rated(5));
 	CHECK(second.plan.ok());
@@ -451,8 +480,10 @@ TEST("a jpeg xl the read stops in is not updated")
 {
 	const auto meta = rated(2);
 
-	for (const auto& file : {container({iso_box("xml ", packet_bytes(rated(1)))}), builder().raw(jxl_signature).raw(iso_box("jxlc", codestream({}))).b,
-	                         container({iso_box("jxlc", codestream({})), builder().be32(400).raw("xml ").raw("cut").b})})
+	for (const auto& file :
+	     {container({iso_box("xml ", packet_bytes(rated(1)))}),
+	      builder().raw(jxl_signature).raw(iso_box("jxlc", codestream({}))).b,
+	      container({iso_box("jxlc", codestream({})), builder().be32(400).raw("xml ").raw("cut").b})})
 	{
 		libfiles::reader r(file);
 		const auto plan = libfiles::plan_update(r, {&meta});
@@ -461,7 +492,10 @@ TEST("a jpeg xl the read stops in is not updated")
 	}
 
 	// Nor is any cut of one, which never throws.
-	const auto whole = update(container({iso_box("Exif", exif_contents(oriented_tiff(1))), iso_box("jxlc", codestream({}))}), rated(1)).file;
+	const auto whole = update(container(
+								  {iso_box("Exif", exif_contents(oriented_tiff(1))), iso_box("jxlc", codestream({}))}),
+	                          rated(1))
+	                       .file;
 	libfiles::metadata_update u{&meta};
 	u.legacy.rating = 3;
 
@@ -479,11 +513,14 @@ TEST("a jpeg xl the read stops in is not updated")
 namespace
 {
 	// Brotli for the boxes libjxl compresses, as an application gives it.
-	std::optional<bytes> real_brotli(const std::span<const std::uint8_t> compressed, std::string_view, const std::size_t max_size)
+	std::optional<bytes> real_brotli(const std::span<const std::uint8_t> compressed, std::string_view,
+	                                 const std::size_t max_size)
 	{
 		bytes out(max_size);
 		auto size = out.size();
-		if (BrotliDecoderDecompress(compressed.size(), compressed.data(), &size, out.data()) != BROTLI_DECODER_RESULT_SUCCESS) return {};
+		if (BrotliDecoderDecompress(compressed.size(), compressed.data(), &size, out.data()) !=
+		    BROTLI_DECODER_RESULT_SUCCESS)
+			return {};
 		out.resize(size);
 		return out;
 	}
@@ -515,10 +552,12 @@ namespace
 		auto* const encoder = JxlEncoderCreate(nullptr);
 		bytes file;
 
-		if (JxlEncoderUseContainer(encoder, JXL_TRUE) == JXL_ENC_SUCCESS && JxlEncoderStoreJPEGMetadata(encoder, JXL_TRUE) == JXL_ENC_SUCCESS)
+		if (JxlEncoderUseContainer(encoder, JXL_TRUE) == JXL_ENC_SUCCESS &&
+		    JxlEncoderStoreJPEGMetadata(encoder, JXL_TRUE) == JXL_ENC_SUCCESS)
 		{
 			auto* const settings = JxlEncoderFrameSettingsCreate(encoder, nullptr);
-			JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_JPEG_COMPRESS_BOXES, compress_boxes ? 1 : 0);
+			JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_JPEG_COMPRESS_BOXES,
+			                                 compress_boxes ? 1 : 0);
 
 			if (JxlEncoderAddJPEGFrame(settings, jpeg.data(), jpeg.size()) == JXL_ENC_SUCCESS)
 			{
@@ -542,56 +581,6 @@ namespace
 
 		JxlEncoderDestroy(encoder);
 		return file;
-	}
-
-	// The JPEG libjxl gives back from a JPEG XL, or nothing when it cannot.
-	std::optional<bytes> reconstruct(const bytes& file)
-	{
-		auto* const decoder = JxlDecoderCreate(nullptr);
-		std::optional<bytes> out;
-		bytes jpeg;
-
-		if (JxlDecoderSubscribeEvents(decoder, JXL_DEC_JPEG_RECONSTRUCTION | JXL_DEC_FULL_IMAGE) == JXL_DEC_SUCCESS &&
-			JxlDecoderSetInput(decoder, file.data(), file.size()) == JXL_DEC_SUCCESS)
-		{
-			JxlDecoderCloseInput(decoder);
-			auto reconstructing = false;
-
-			for (;;)
-			{
-				const auto status = JxlDecoderProcessInput(decoder);
-
-				if (status == JXL_DEC_JPEG_RECONSTRUCTION)
-				{
-					reconstructing = true;
-					jpeg.resize(4096);
-					if (JxlDecoderSetJPEGBuffer(decoder, jpeg.data(), jpeg.size()) != JXL_DEC_SUCCESS) break;
-				}
-				else if (status == JXL_DEC_JPEG_NEED_MORE_OUTPUT)
-				{
-					const auto used = jpeg.size() - JxlDecoderReleaseJPEGBuffer(decoder);
-					jpeg.resize(jpeg.size() * 2);
-					if (JxlDecoderSetJPEGBuffer(decoder, jpeg.data() + used, jpeg.size() - used) != JXL_DEC_SUCCESS) break;
-				}
-				else if (status == JXL_DEC_FULL_IMAGE)
-				{
-					if (reconstructing)
-					{
-						jpeg.resize(jpeg.size() - JxlDecoderReleaseJPEGBuffer(decoder));
-						out = jpeg;
-					}
-
-					break;
-				}
-				else
-				{
-					break;
-				}
-			}
-		}
-
-		JxlDecoderDestroy(decoder);
-		return out;
 	}
 
 	// A JPEG from its first scan to its end: the picture, whatever its segments before it hold.
@@ -637,7 +626,7 @@ TEST("a jpeg xl libjxl made from a jpeg still gives the jpeg back after an edit"
 	{
 		const auto file = transcode(jpeg, compress);
 		CHECK(!file.empty());
-		CHECK(reconstruct(file) == jpeg);
+		CHECK(libfiles::reconstruct_jpeg(file) == jpeg);
 		CHECK(types_of(file).find("jbrd") != std::string::npos);
 		CHECK((types_of(file).find("brob") != std::string::npos) == compress);
 
@@ -656,15 +645,15 @@ TEST("a jpeg xl libjxl made from a jpeg still gives the jpeg back after an edit"
 
 		// The JPEG it gives back is the one it was made from, with the edit in its packet and in the EXIF
 		// that had room for it.
-		const auto back = reconstruct(edited.file);
-		CHECK(back.has_value());
-		if (!back) continue;
+		const auto back = libfiles::reconstruct_jpeg(edited.file);
+		CHECK(!back.empty());
+		if (back.empty()) continue;
 
-		CHECK_EQ(back->size(), jpeg.size());
-		CHECK(entropy_coded(*back) == entropy_coded(jpeg));
+		CHECK_EQ(back.size(), jpeg.size());
+		CHECK(entropy_coded(back) == entropy_coded(jpeg));
 		CHECK(!entropy_coded(jpeg).empty());
-		CHECK_EQ(rating_of(*back), 5);
-		const auto back_exif = exif_properties(*back);
+		CHECK_EQ(rating_of(back), 5);
+		const auto back_exif = exif_properties(back);
 		CHECK(same_moment(back_exif.created, 2021, 6, 15, 10, 20, 30));
 		CHECK_STR(back_exif.description, "Short");
 
@@ -685,6 +674,156 @@ TEST("a jpeg xl libjxl made from a jpeg still gives the jpeg back after an edit"
 		const auto refused = update(file, too_much);
 		CHECK(!refused.plan.ok());
 		CHECK(refused.plan.error.find("no room") != std::string::npos);
+	}
+}
+
+// A JPEG XL made from a JPEG gives that JPEG back with the EXIF its first Exif box holds, whose orientation a reader
+// of the JPEG turns it by. A turn is written where that EXIF takes it, so the JPEG given back turns with the JPEG XL,
+// and refused where it does not; the orientation the file has already is no turn.
+TEST("a jpeg xl made from a jpeg is turned only where the jpeg it gives back turns with it")
+{
+	libfiles::exif_fields upright;
+	upright.description = "Short";
+	upright.orientation = 1;
+	const auto upright_exif = libfiles::make_exif(upright);
+	libfiles::embedded_metadata oriented;
+	oriented.exif = upright_exif;
+
+	libfiles::metadata_update turn;
+	turn.legacy.orientation = 6;
+	turn.legacy.description = "A description far longer than the one the camera wrote";
+
+	const auto jpeg = make_jpeg(oriented);
+	const auto file = transcode(jpeg, false);
+	const auto turned = update(file, turn);
+	CHECK_STR(turned.plan.error, "");
+	CHECK(scanned(turned.file).orientation == 6);
+
+	// Turned beside a field that would grow the block, which is left for the packet.
+	const auto back = libfiles::reconstruct_jpeg(turned.file);
+	CHECK(!entropy_coded(jpeg).empty() && entropy_coded(back) == entropy_coded(jpeg));
+	CHECK(exif_properties(back).orientation == 6);
+	CHECK_STR(exif_properties(back).description, "Short");
+
+	const auto camera = camera_exif();
+	libfiles::embedded_metadata unoriented;
+	unoriented.exif = camera;
+
+	for (const auto& metadata : {libfiles::embedded_metadata{}, unoriented})
+	{
+		const auto plain = transcode(make_jpeg(metadata), false);
+		CHECK(!plain.empty());
+		const auto refused = update(plain, turn);
+		CHECK(!refused.plan.ok());
+		CHECK(refused.plan.error.find("no orientation") != std::string::npos);
+
+		libfiles::metadata_update unturned;
+		unturned.legacy.orientation = 1;
+		const auto same = update(plain, unturned);
+		CHECK_STR(same.plan.error, "");
+		CHECK(same.file == plain);
+	}
+}
+
+namespace
+{
+	// The profile libjxl describes sRGB with, which a JPEG XL encoded with it then holds as its own.
+	bytes libjxl_srgb_profile()
+	{
+		bytes rgb(std::size_t{8} * 8 * 4, 0x80);
+		const libfiles::image_view view{rgb.data(), 32, 8, 8, libfiles::pixel_format::bgrx8};
+		libfiles::jxl_options lossless;
+		lossless.lossless = true;
+		const auto plain = libfiles::encode_jxl(view, 1, {}, lossless).data;
+
+		bytes icc;
+		auto* const decoder = JxlDecoderCreate(nullptr);
+		std::size_t size = 0;
+
+		if (JxlDecoderSubscribeEvents(decoder, JXL_DEC_COLOR_ENCODING) == JXL_DEC_SUCCESS &&
+		    JxlDecoderSetInput(decoder, plain.data(), plain.size()) == JXL_DEC_SUCCESS)
+		{
+			JxlDecoderCloseInput(decoder);
+
+			if (JxlDecoderProcessInput(decoder) == JXL_DEC_COLOR_ENCODING &&
+			    JxlDecoderGetICCProfileSize(decoder, JXL_COLOR_PROFILE_TARGET_ORIGINAL, &size) == JXL_DEC_SUCCESS)
+			{
+				icc.resize(size);
+				if (JxlDecoderGetColorAsICCProfile(decoder, JXL_COLOR_PROFILE_TARGET_ORIGINAL, icc.data(),
+				                                   icc.size()) != JXL_DEC_SUCCESS)
+					icc.clear();
+			}
+		}
+
+		JxlDecoderDestroy(decoder);
+		return icc;
+	}
+}
+
+// A turn written in the codestream, as libjxl reads it: the orientation rewritten where the header holds one, and
+// written in where it holds none - its whole metadata the default, or with a colour profile after it - by whole
+// bytes, the picture after the header untouched. The EXIF, where there is one, is made to agree.
+TEST("a jpeg xl's orientation is written in its codestream whatever its header held, its picture untouched")
+{
+	constexpr std::uint32_t width = 40;
+	constexpr std::uint32_t height = 24;
+	bytes pixels(std::size_t{width} * height * 4);
+	for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = static_cast<std::uint8_t>(i * 7 % 251);
+	const libfiles::image_view view{pixels.data(), std::size_t{width} * 4, width, height,
+	                                libfiles::pixel_format::bgrx8};
+
+	const auto profile = libjxl_srgb_profile();
+	CHECK(!profile.empty());
+	const auto exif = exif_contents(oriented_tiff(1));
+
+	struct example
+	{
+		const char* name;
+		bool lossless;
+		std::uint16_t orientation;
+		bool icc;
+		bool exif;
+		bool packet;
+	};
+
+	for (const auto& e : {example{"all default", false, 1, false, false, false},
+	                      example{"all default, given a packet", false, 1, false, false, true},
+	                      example{"no extra fields", true, 1, false, true, false},
+	                      example{"no extra fields, a profile", false, 1, true, true, false},
+	                      example{"an orientation", true, 3, false, false, false}})
+	{
+		libfiles::embedded_metadata metadata;
+		if (e.icc) metadata.icc = profile;
+		if (e.exif) metadata.exif = std::span(exif).subspan(4);
+		libfiles::jxl_options options;
+		options.lossless = e.lossless;
+		const auto encoded = libfiles::encode_jxl(view, e.orientation, metadata, options);
+		CHECK(!encoded.data.empty());
+		CHECK(encoded.notes.empty());
+		const auto& file = encoded.data;
+
+		const auto meta = rated(4);
+		libfiles::metadata_update u{e.packet ? &meta : nullptr};
+		u.legacy.orientation = 6;
+		const auto turned = update(file, u);
+		CHECK_STR(std::string(e.name) + ": " + turned.plan.error, std::string(e.name) + ": ");
+		CHECK(turned.plan.in_place() == (e.orientation != 1));
+
+		const auto after = scanned(turned.file);
+		CHECK(after.success);
+		CHECK(after.orientation == 6);
+		if (e.exif) CHECK(exif_properties(turned.file).orientation == 6);
+		if (e.packet) CHECK_EQ(rating_of(turned.file), 4);
+
+		pixels_sink before;
+		pixels_sink now;
+		libfiles::reader before_reader(file);
+		libfiles::reader now_reader(turned.file);
+		const auto decoded = libfiles::decode(now_reader, now);
+		CHECK(libfiles::decode(before_reader, before).success);
+		CHECK(decoded.success);
+		CHECK_EQ(decoded.frame.orientation, std::uint16_t{6});
+		CHECK(!before.memory.empty() && before.memory == now.memory);
 	}
 }
 

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the JPEG XL codecs libfiles builds for its consumers: Brotli compressing and
 // decompressing, libjxl encoding and decoding through its thread runner - losslessly to the same bytes,
@@ -72,10 +72,10 @@ namespace
 		const JxlPixelFormat format{4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
 
 		if (JxlEncoderSetBasicInfo(encoder, &info) == JXL_ENC_SUCCESS &&
-			JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS &&
-			(lossless ? JxlEncoderSetFrameLossless(settings, JXL_TRUE) : JxlEncoderSetFrameDistance(settings, 1.0f)) ==
-			JXL_ENC_SUCCESS &&
-			JxlEncoderAddImageFrame(settings, &format, rgba.data(), rgba.size()) == JXL_ENC_SUCCESS)
+		    JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS &&
+		    (lossless ? JxlEncoderSetFrameLossless(settings, JXL_TRUE) : JxlEncoderSetFrameDistance(settings, 1.0f)) ==
+		        JXL_ENC_SUCCESS &&
+		    JxlEncoderAddImageFrame(settings, &format, rgba.data(), rgba.size()) == JXL_ENC_SUCCESS)
 		{
 			JxlEncoderCloseInput(encoder);
 			file.resize(256);
@@ -124,39 +124,36 @@ namespace
 			switch (JxlDecoderProcessInput(decoder))
 			{
 			case JXL_DEC_BASIC_INFO:
-				{
-					JxlBasicInfo info;
-					JxlDecoderGetBasicInfo(decoder, &info);
-					result.width = info.xsize;
-					result.height = info.ysize;
-					JxlResizableParallelRunnerSetThreads(runner, JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize));
-					break;
-				}
+			{
+				JxlBasicInfo info;
+				JxlDecoderGetBasicInfo(decoder, &info);
+				result.width = info.xsize;
+				result.height = info.ysize;
+				JxlResizableParallelRunnerSetThreads(runner,
+				                                     JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize));
+				break;
+			}
 			case JXL_DEC_COLOR_ENCODING:
-				{
-					std::size_t size = 0;
+			{
+				std::size_t size = 0;
 
-					if (JxlDecoderGetICCProfileSize(decoder, JXL_COLOR_PROFILE_TARGET_DATA, &size) == JXL_DEC_SUCCESS)
-					{
-						result.icc.resize(size);
-						JxlDecoderGetColorAsICCProfile(decoder, JXL_COLOR_PROFILE_TARGET_DATA, result.icc.data(), size);
-					}
-					break;
-				}
-			case JXL_DEC_NEED_IMAGE_OUT_BUFFER:
+				if (JxlDecoderGetICCProfileSize(decoder, JXL_COLOR_PROFILE_TARGET_DATA, &size) == JXL_DEC_SUCCESS)
 				{
-					std::size_t size = 0;
-					JxlDecoderImageOutBufferSize(decoder, &format, &size);
-					result.rgba.resize(size);
-					JxlDecoderSetImageOutBuffer(decoder, &format, result.rgba.data(), size);
-					break;
+					result.icc.resize(size);
+					JxlDecoderGetColorAsICCProfile(decoder, JXL_COLOR_PROFILE_TARGET_DATA, result.icc.data(), size);
 				}
-			case JXL_DEC_FULL_IMAGE:
-				result.success = true;
 				break;
-			case JXL_DEC_SUCCESS:
-				finished = true;
+			}
+			case JXL_DEC_NEED_IMAGE_OUT_BUFFER:
+			{
+				std::size_t size = 0;
+				JxlDecoderImageOutBufferSize(decoder, &format, &size);
+				result.rgba.resize(size);
+				JxlDecoderSetImageOutBuffer(decoder, &format, result.rgba.data(), size);
 				break;
+			}
+			case JXL_DEC_FULL_IMAGE: result.success = true; break;
+			case JXL_DEC_SUCCESS: finished = true; break;
 			default:
 				result.success = false;
 				finished = true;
@@ -173,7 +170,8 @@ namespace
 TEST("Should compress and decompress with Brotli")
 {
 	std::string text;
-	for (auto i = 0; i < 400; ++i) text += "libfiles builds Brotli for libjxl and its consumers, line " + std::to_string(i % 7) + "\n";
+	for (auto i = 0; i < 400; ++i)
+		text += "libfiles builds Brotli for libjxl and its consumers, line " + std::to_string(i % 7) + "\n";
 
 	auto encoded_size = BrotliEncoderMaxCompressedSize(text.size());
 	bytes encoded(encoded_size);
@@ -185,15 +183,16 @@ TEST("Should compress and decompress with Brotli")
 	std::string decoded(text.size(), '\0');
 	auto decoded_size = decoded.size();
 	CHECK_EQ(BrotliDecoderDecompress(encoded.size(), encoded.data(), &decoded_size,
-	                                 reinterpret_cast<std::uint8_t*>(decoded.data())), BROTLI_DECODER_RESULT_SUCCESS);
+	                                 reinterpret_cast<std::uint8_t*>(decoded.data())),
+	         BROTLI_DECODER_RESULT_SUCCESS);
 	CHECK_EQ(decoded_size, text.size());
 	CHECK(decoded == text);
 
 	// Cut short, it says so rather than inventing the rest.
 	std::string cut(text.size(), '\0');
 	auto cut_size = cut.size();
-	CHECK(BrotliDecoderDecompress(encoded.size() / 2, encoded.data(), &cut_size, reinterpret_cast<std::uint8_t*>(cut.data())) !=
-		BROTLI_DECODER_RESULT_SUCCESS);
+	CHECK(BrotliDecoderDecompress(encoded.size() / 2, encoded.data(), &cut_size,
+	                              reinterpret_cast<std::uint8_t*>(cut.data())) != BROTLI_DECODER_RESULT_SUCCESS);
 }
 
 TEST("Should encode and decode a lossless JPEG XL with libjxl to the same pixels")
@@ -256,10 +255,13 @@ TEST("Should read libjxl's colour profile with skcms, and convert sRGB to linear
 
 	const std::uint8_t source[] = {128, 64, 255, 255, 0, 0, 0, 255};
 	float converted[8] = {};
-	CHECK(skcms_Transform(source, skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, skcms_sRGB_profile(), converted,
-	                      skcms_PixelFormat_RGBA_ffff, skcms_AlphaFormat_Unpremul, &linear, 2));
+	CHECK(skcms_Transform(source, skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, skcms_sRGB_profile(),
+	                      converted, skcms_PixelFormat_RGBA_ffff, skcms_AlphaFormat_Unpremul, &linear, 2));
 
-	const auto expected = [](const double encoded) { return std::pow((encoded / 255.0 + 0.055) / 1.055, 2.4); };
+	const auto expected = [](const double encoded)
+	{
+		return std::pow((encoded / 255.0 + 0.055) / 1.055, 2.4);
+	};
 	CHECK(std::abs(converted[0] - expected(128)) < 0.002);
 	CHECK(std::abs(converted[1] - expected(64)) < 0.002);
 	CHECK(std::abs(converted[2] - 1.0) < 0.002);

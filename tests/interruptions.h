@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Replaying an update patched into a live file as an interruption could leave it. Writes
 // between two flushes may reach the disk in any order, so every state is each flushed step whole and
@@ -29,9 +29,7 @@ namespace test_build
 			int flushes_before = 0;
 		};
 
-		explicit recording_stream(std::vector<std::uint8_t> file) : _file(std::move(file))
-		{
-		}
+		explicit recording_stream(std::vector<std::uint8_t> file) : _file(std::move(file)) {}
 
 		std::uint64_t size() override { return _file.size(); }
 
@@ -77,8 +75,8 @@ namespace test_build
 	};
 
 	// Every file an interruption could leave; empty when a step holds too many writes to try.
-	inline std::vector<std::vector<std::uint8_t>> interrupted_states(const std::vector<std::uint8_t>& original,
-	                                                                 const std::vector<recording_stream::write_record>& writes)
+	inline std::vector<std::vector<std::uint8_t>> interrupted_states(
+		const std::vector<std::uint8_t>& original, const std::vector<recording_stream::write_record>& writes)
 	{
 		std::vector<std::vector<std::uint8_t>> states;
 		auto settled = original;
@@ -95,7 +93,8 @@ namespace test_build
 			for (std::uint32_t landed = 0; landed < (1u << n); ++landed)
 			{
 				auto state = settled;
-				for (std::size_t k = 0; k < n; ++k) if (landed & (1u << k)) recording_stream::apply(state, writes[i + k]);
+				for (std::size_t k = 0; k < n; ++k)
+					if (landed & (1u << k)) recording_stream::apply(state, writes[i + k]);
 				states.push_back(std::move(state));
 			}
 

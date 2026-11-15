@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Editing the metadata photos hold outside their XMP packet: EXIF directories, IPTC-IIM
 // datasets and Photoshop image resources, and the mapping from a semantic edit onto them. Shared by
@@ -35,7 +35,13 @@ namespace libfiles::detail
 	class tiff_editor
 	{
 	public:
-		enum class directory : std::uint8_t { ifd0, exif, gps, interoperability };
+		enum class directory : std::uint8_t
+		{
+			ifd0,
+			exif,
+			gps,
+			interoperability
+		};
 
 		static constexpr std::uint16_t type_byte = 1;
 		static constexpr std::uint16_t type_ascii = 2;
@@ -63,7 +69,8 @@ namespace libfiles::detail
 		void set_ascii(directory d, std::uint16_t tag, std::string_view text);
 		void set_short(directory d, std::uint16_t tag, std::uint16_t value);
 		void set_long(directory d, std::uint16_t tag, std::uint32_t value);
-		void set_rationals(directory d, std::uint16_t tag, const std::vector<std::pair<std::uint32_t, std::uint32_t>>& values);
+		void set_rationals(directory d, std::uint16_t tag,
+		                   const std::vector<std::pair<std::uint32_t, std::uint32_t>>& values);
 		void remove(directory d, std::uint16_t tag);
 
 		// Copies descriptive fields through the shared TIFF parser, not pixel-layout fields.
@@ -158,9 +165,7 @@ namespace libfiles::detail
 	{
 		photo_legacy() = default;
 
-		explicit photo_legacy(tiff_editor* editor) : exif(editor)
-		{
-		}
+		explicit photo_legacy(tiff_editor* editor) : exif(editor) {}
 
 		// The EXIF edits; for a TIFF file, the file's own directories.
 		tiff_editor* exif = nullptr;

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The box header every ISO base media file shares - MP4 and QuickTime, HEIF and AVIF, and the
 // JPEG XL container - decoded once, in its 32-bit and 64-bit forms, and the four-character codes boxes
@@ -24,15 +24,15 @@ namespace libfiles::detail::bmff
 	constexpr std::uint32_t fourcc(const char (&name)[5])
 	{
 		return static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[0])) << 24 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 |
-			static_cast<std::uint8_t>(name[3]);
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[1])) << 16 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(name[2])) << 8 | static_cast<std::uint8_t>(name[3]);
 	}
 
 	// A code's four characters as they stand, NULs and all, as libheif and libjxl hand one to a caller.
 	inline std::string fourcc_text(const std::uint32_t code)
 	{
-		return {static_cast<char>(code >> 24), static_cast<char>(code >> 16), static_cast<char>(code >> 8), static_cast<char>(code)};
+		return {static_cast<char>(code >> 24), static_cast<char>(code >> 16), static_cast<char>(code >> 8),
+		        static_cast<char>(code)};
 	}
 
 	struct box_header

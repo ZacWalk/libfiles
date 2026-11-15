@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the format decoders share and do not export: each format's decoder and the cursor
 // they read headers with.
@@ -79,10 +79,10 @@ namespace libfiles::detail
 	};
 
 	void decode_psd(reader& r, image_sink& sink, decode_result& result);
-	void decode_png(reader& r, image_sink& sink, decode_result& result);
+	void decode_png(reader& r, image_sink& sink, const decode_options& options, decode_result& result);
 	void decode_webp(reader& r, image_sink& sink, const decode_options& options, decode_result& result);
 	void decode_heif(reader& r, image_sink& sink, const decode_options& options, decode_result& result);
-	void decode_jxl(reader& r, image_sink& sink, decode_result& result);
+	void decode_jxl(reader& r, image_sink& sink, const decode_options& options, decode_result& result);
 
 	// libjpeg's decompressor, kept by a decoder between images.
 	struct jpeg_state;

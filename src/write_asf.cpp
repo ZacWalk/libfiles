@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to ASF files - WMV, WMA and ASF. The packet lives where the toolkit kept it,
 // in a top-level XMP object after the data. Title, the artist as author, copyright and the comment as
@@ -96,7 +96,8 @@ namespace libfiles::detail
 				const auto start = static_cast<std::size_t>(o.start);
 				child c;
 				c.id = o.id;
-				c.raw.assign(payload.begin() + static_cast<std::ptrdiff_t>(start), payload.begin() + static_cast<std::ptrdiff_t>(start + o.size));
+				c.raw.assign(payload.begin() + static_cast<std::ptrdiff_t>(start),
+				             payload.begin() + static_cast<std::ptrdiff_t>(start + o.size));
 				c.at = base + start;
 				out.push_back(std::move(c));
 			});
@@ -166,7 +167,8 @@ namespace libfiles::detail
 				if (e.size() < extension_fixed) throw format_error("an ASF header holds a damaged extension");
 
 				const auto data_size = static_cast<std::size_t>(load_le32(e.data() + asf::extension_data_size_at));
-				if (data_size != e.size() - extension_fixed) throw format_error("an ASF header holds a damaged extension");
+				if (data_size != e.size() - extension_fixed)
+					throw format_error("an ASF header holds a damaged extension");
 
 				auto inner = parse_objects(std::span(e).subspan(extension_fixed), 0);
 				if (std::erase_if(inner, [](const child& c) { return c.id == padding_id; }) != 0)
@@ -174,7 +176,8 @@ namespace libfiles::detail
 					bytes rebuilt(e.begin(), e.begin() + extension_fixed);
 					for (const auto& c : inner) rebuilt.insert(rebuilt.end(), c.raw.begin(), c.raw.end());
 					store_le64(rebuilt.data() + 16, rebuilt.size());
-					store_le32(rebuilt.data() + asf::extension_data_size_at, static_cast<std::uint32_t>(rebuilt.size() - extension_fixed));
+					store_le32(rebuilt.data() + asf::extension_data_size_at,
+					           static_cast<std::uint32_t>(rebuilt.size() - extension_fixed));
 					e = std::move(rebuilt);
 				}
 			}
@@ -321,10 +324,12 @@ namespace libfiles::detail
 				const auto& raw = existing->raw;
 				reader r(raw);
 
-				const auto whole = asf::walk_content_descriptors(r, object_header, raw.size(), [&](const asf::descriptor& d)
+				const auto whole = asf::walk_content_descriptors(r, object_header, raw.size(),
+				                                                 [&](const asf::descriptor& d)
 				{
 					const std::span<const std::uint8_t> name(raw.data() + d.name_at, d.name_length);
-					const auto owned = (owns_category && named(name, vocabulary::wm_category)) || (owns_rating && named(name, vocabulary::wm_shared_user_rating));
+					const auto owned = (owns_category && named(name, vocabulary::wm_category)) ||
+					                   (owns_rating && named(name, vocabulary::wm_shared_user_rating));
 
 					if (!owned)
 					{
@@ -446,7 +451,8 @@ namespace libfiles::detail
 			}
 			else
 			{
-				const auto packet_object = make_object(xmp_id, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()});
+				const auto packet_object = make_object(xmp_id, {reinterpret_cast<const std::uint8_t*>(packet.data()),
+				                                                packet.size()});
 				appended.insert(appended.end(), packet_object.begin(), packet_object.end());
 				if (current) pad_object_at(current->start);
 			}
@@ -469,7 +475,8 @@ namespace libfiles::detail
 
 		// The File Properties keep the file's size, which a broadcast file does not know.
 		const auto* const properties = h.find(file_properties_id);
-		const auto keeps_size = properties && properties->raw.size() >= asf::file_properties_size && !broadcast(*properties);
+		const auto keeps_size = properties && properties->raw.size() >= asf::file_properties_size &&
+		                        !broadcast(*properties);
 
 		if (h.changed)
 		{
@@ -489,14 +496,16 @@ namespace libfiles::detail
 
 			if (fits)
 			{
-				if (auto p = changed_span(ho.start, original, updated, commit)) plan.replacements.push_back(std::move(*p));
+				if (auto p = changed_span(ho.start, original, updated, commit))
+					plan.replacements.push_back(std::move(*p));
 			}
 			else
 			{
 				plan.replacements.push_back({ho.start, ho.size, std::move(updated)});
 			}
 		}
-		else if (keeps_size && result_size != r.size() && load_le64(properties->raw.data() + asf::file_size_at) != result_size)
+		else if (keeps_size && result_size != r.size() &&
+		         load_le64(properties->raw.data() + asf::file_size_at) != result_size)
 		{
 			bytes size;
 			append_le64(size, result_size);
@@ -505,7 +514,8 @@ namespace libfiles::detail
 
 		if (!appended.empty())
 		{
-			if (l.objects.back().end() != r.size()) throw format_error("the ASF ends with bytes that are not an object");
+			if (l.objects.back().end() != r.size())
+				throw format_error("the ASF ends with bytes that are not an object");
 			plan.replacements.push_back({r.size(), 0, std::move(appended)});
 		}
 	}

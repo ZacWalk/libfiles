@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native BMP, GIF, TIFF and PNG document encoders, plus the small document-to-JPEG
 // adapter. Encoders consume libfiles' existing row and document types; they never flatten a
@@ -63,8 +63,7 @@ namespace libfiles
 			return options.cancelled && options.cancelled();
 		}
 
-		void progress(const document_encode_options& options, const std::uint32_t current,
-		              const std::uint32_t total)
+		void progress(const document_encode_options& options, const std::uint32_t current, const std::uint32_t total)
 		{
 			if (options.progress) options.progress(current, total);
 		}
@@ -85,15 +84,13 @@ namespace libfiles
 			try
 			{
 				const auto row = document_row_bytes(frame.width, frame.storage);
-				if (frame.width == 0 || frame.height == 0 || frame.stride < row ||
-					frame.stride % 4 != 0 ||
-					(frame.height != 0 && frame.stride > frame.pixels.size() / frame.height))
+				if (frame.width == 0 || frame.height == 0 || frame.stride < row || frame.stride % 4 != 0 ||
+				    (frame.height != 0 && frame.stride > frame.pixels.size() / frame.height))
 				{
 					error = "invalid native frame rows";
 					return false;
 				}
-				if (palette_entries(frame.storage) != 0 &&
-					frame.palette.size() < palette_entries(frame.storage))
+				if (palette_entries(frame.storage) != 0 && frame.palette.size() < palette_entries(frame.storage))
 				{
 					error = "native frame palette is too short";
 					return false;
@@ -107,8 +104,7 @@ namespace libfiles
 			}
 		}
 
-		bool valid_document(const decoded_document& document, const image_format format,
-		                    std::string& error)
+		bool valid_document(const decoded_document& document, const image_format format, std::string& error)
 		{
 			if (document.frames.empty())
 			{
@@ -129,8 +125,8 @@ namespace libfiles
 					return false;
 				}
 				if (frame.left < 0 || frame.top < 0 ||
-					static_cast<std::uint64_t>(frame.left) + frame.width > document.info.width ||
-					static_cast<std::uint64_t>(frame.top) + frame.height > document.info.height)
+				    static_cast<std::uint64_t>(frame.left) + frame.width > document.info.width ||
+				    static_cast<std::uint64_t>(frame.top) + frame.height > document.info.height)
 				{
 					error = "native frame lies outside its canvas";
 					return false;
@@ -139,8 +135,7 @@ namespace libfiles
 			return true;
 		}
 
-		std::span<const std::uint8_t> metadata_block(const decoded_document& document,
-		                                             const document_metadata kind)
+		std::span<const std::uint8_t> metadata_block(const decoded_document& document, const document_metadata kind)
 		{
 			std::span<const std::uint8_t> result;
 			for (const auto& block : document.metadata)
@@ -161,7 +156,7 @@ namespace libfiles
 			// be mistaken for raw IPTC-IIM and wrapped a second time by the JPEG encoder.
 			constexpr std::string_view photoshop_signature("Photoshop 3.0\0", 14);
 			if (result.photoshop.empty() && result.iptc.size() >= photoshop_signature.size() &&
-				std::memcmp(result.iptc.data(), photoshop_signature.data(), photoshop_signature.size()) == 0)
+			    std::memcmp(result.iptc.data(), photoshop_signature.data(), photoshop_signature.size()) == 0)
 			{
 				result.photoshop = result.iptc;
 				result.iptc = {};
@@ -170,15 +165,16 @@ namespace libfiles
 		}
 
 		void normalize_orientation_metadata(embedded_metadata& metadata, const bool reset,
-		                                   std::vector<std::uint8_t>& exif_storage,
-		                                   std::vector<std::uint8_t>& xmp_storage,
-		                                   const std::uint32_t width, const std::uint32_t height)
+		                                    std::vector<std::uint8_t>& exif_storage,
+		                                    std::vector<std::uint8_t>& xmp_storage, const std::uint32_t width,
+		                                    const std::uint32_t height)
 		{
 			if (!reset) return;
 			if (!metadata.exif.empty())
 			{
 				const auto offset = encode_detail::is_exif_signature(metadata.exif)
-					? encode_detail::exif_signature.size() : 0u;
+				                        ? encode_detail::exif_signature.size()
+				                        : 0u;
 				if (metadata.exif.size() > offset)
 				{
 					const auto original = metadata.exif.subspan(offset);
@@ -199,8 +195,7 @@ namespace libfiles
 					exif_storage.assign(metadata.exif.begin(), metadata.exif.begin() + offset);
 					exif_storage.insert(exif_storage.end(), normalized.begin(), normalized.end());
 				}
-				else
-					throw encode_error("EXIF metadata is empty after its signature");
+				else throw encode_error("EXIF metadata is empty after its signature");
 				metadata.exif = exif_storage;
 			}
 			if (!metadata.xmp.empty())
@@ -208,8 +203,8 @@ namespace libfiles
 				try
 				{
 					xmp::meta packet;
-					packet.parse(std::string_view(reinterpret_cast<const char*>(metadata.xmp.data()),
-					                              metadata.xmp.size()));
+					packet.parse(
+						std::string_view(reinterpret_cast<const char*>(metadata.xmp.data()), metadata.xmp.size()));
 					bool changed = false;
 					const auto set = [&](const std::string_view ns, const char* name, const std::uint32_t value)
 					{
@@ -255,9 +250,9 @@ namespace libfiles
 		{
 			constexpr std::string_view signature("Photoshop 3.0\0", 14);
 			const auto opaque = metadata.photoshop.size() >= signature.size() &&
-				std::memcmp(metadata.photoshop.data(), signature.data(), signature.size()) == 0
-				                ? metadata.photoshop.subspan(signature.size())
-				                : metadata.photoshop;
+			                            std::memcmp(metadata.photoshop.data(), signature.data(), signature.size()) == 0
+			                        ? metadata.photoshop.subspan(signature.size())
+			                        : metadata.photoshop;
 			std::vector<std::uint8_t> result(opaque.begin(), opaque.end());
 			if (!metadata.iptc.empty())
 			{
@@ -276,19 +271,19 @@ namespace libfiles
 		}
 
 		[[maybe_unused]] std::uint32_t resolution_x(const decoded_document& document,
-		                            const document_encode_options& options)
+		                                            const document_encode_options& options)
 		{
 			return document.info.has_resolution ? document.info.pixels_per_meter_x : options.pixels_per_meter_x;
 		}
 
 		[[maybe_unused]] std::uint32_t resolution_y(const decoded_document& document,
-		                            const document_encode_options& options)
+		                                            const document_encode_options& options)
 		{
 			return document.info.has_resolution ? document.info.pixels_per_meter_y : options.pixels_per_meter_y;
 		}
 
 		[[maybe_unused]] std::uint32_t index_at(const decoded_frame& frame, const std::uint8_t* row,
-		                       const std::uint32_t x)
+		                                        const std::uint32_t x)
 		{
 			switch (frame.storage)
 			{
@@ -315,42 +310,35 @@ namespace libfiles
 			out.push_back(static_cast<std::uint8_t>(value >> 24));
 		}
 
-		document_encode_result encode_bmp(const decoded_document& document,
-		                                  const document_encode_options& options)
+		document_encode_result encode_bmp(const decoded_document& document, const document_encode_options& options)
 		{
 			std::string error;
 			if (!valid_document(document, image_format::bmp, error)) return failed(std::move(error));
 			if (document.frames.size() != 1) return unsupported("BMP has one image frame");
 			const auto& frame = document.frames.front();
 
-			if (frame.storage != document_storage::indexed1 &&
-				frame.storage != document_storage::indexed2 &&
-				frame.storage != document_storage::indexed4 &&
-				frame.storage != document_storage::indexed8 &&
-				frame.storage != document_storage::indexed8_alpha &&
-				frame.storage != document_storage::gray8 &&
-				frame.storage != document_storage::bgr555 &&
-				frame.storage != document_storage::bgr565 &&
-				frame.storage != document_storage::bgr24 &&
-				frame.storage != document_storage::bgrx32 &&
-				frame.storage != document_storage::bgra32)
+			if (frame.storage != document_storage::indexed1 && frame.storage != document_storage::indexed2 &&
+			    frame.storage != document_storage::indexed4 && frame.storage != document_storage::indexed8 &&
+			    frame.storage != document_storage::indexed8_alpha && frame.storage != document_storage::gray8 &&
+			    frame.storage != document_storage::bgr555 && frame.storage != document_storage::bgr565 &&
+			    frame.storage != document_storage::bgr24 && frame.storage != document_storage::bgrx32 &&
+			    frame.storage != document_storage::bgra32)
 				return unsupported("BMP does not represent this native storage");
 
 			const auto bits = storage_bits(frame.storage);
 			const auto colors = frame.storage == document_storage::gray8 ? 256u : palette_entries(frame.storage);
 			const auto bitfields = frame.storage == document_storage::bgr555 ||
-				frame.storage == document_storage::bgr565;
+			                       frame.storage == document_storage::bgr565;
 			const auto row = document_row_bytes(frame.width, frame.storage);
-			const auto header_size = std::uint64_t{14} + 40 + std::uint64_t{colors} * 4 +
-				(bitfields ? 12 : 0);
+			const auto header_size = std::uint64_t{14} + 40 + std::uint64_t{colors} * 4 + (bitfields ? 12 : 0);
 			if (frame.width > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
-				frame.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
-				row > std::numeric_limits<std::uint64_t>::max() / frame.height)
+			    frame.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
+			    row > std::numeric_limits<std::uint64_t>::max() / frame.height)
 				return unsupported("BMP dimensions or raster are too large");
 			const auto pixel_size = std::uint64_t{row} * frame.height;
 			if (header_size > std::numeric_limits<std::uint32_t>::max() ||
-				pixel_size > std::numeric_limits<std::uint32_t>::max() - header_size ||
-				header_size + pixel_size > std::numeric_limits<std::size_t>::max())
+			    pixel_size > std::numeric_limits<std::uint32_t>::max() - header_size ||
+			    header_size + pixel_size > std::numeric_limits<std::size_t>::max())
 				return unsupported("BMP output is too large");
 
 			document_encode_result result;
@@ -385,19 +373,19 @@ namespace libfiles
 				for (std::size_t i = 0; i < colors; ++i)
 				{
 					const auto value = frame.storage == document_storage::gray8
-						                   ? 0xff000000u | static_cast<std::uint32_t>(i) * 0x010101u
-						                   : frame.palette[i];
+					                       ? 0xff000000u | static_cast<std::uint32_t>(i) * 0x010101u
+					                       : frame.palette[i];
 					put_le32(out, value);
 				}
-				if (frame.storage == document_storage::indexed8_alpha ||
-					frame.transparent.has_value())
-					result.warnings.emplace_back("BMP stores palette alpha and transparency only in its reserved palette byte");
+				if (frame.storage == document_storage::indexed8_alpha || frame.transparent.has_value())
+					result.warnings.emplace_back(
+						"BMP stores palette alpha and transparency only in its reserved palette byte");
 			}
 			if (frame.storage == document_storage::bgra32)
 				result.warnings.emplace_back("BMP BI_RGB readers may ignore the BGRA alpha byte");
 			if (!embedded(document).exif.empty() || !embedded(document).xmp.empty() ||
-				!embedded(document).iptc.empty() || !embedded(document).icc.empty() ||
-				!embedded(document).photoshop.empty() || !comment_block(document).empty())
+			    !embedded(document).iptc.empty() || !embedded(document).icc.empty() ||
+			    !embedded(document).photoshop.empty() || !comment_block(document).empty())
 				result.warnings.emplace_back("BMP has no standard metadata blocks; native metadata was not embedded");
 
 			for (std::uint32_t y = 0; y < frame.height; ++y)
@@ -410,7 +398,7 @@ namespace libfiles
 				}
 
 				const auto* const source = frame.pixels.data() +
-					(static_cast<std::size_t>(frame.height - 1 - y) * frame.stride);
+				                           (static_cast<std::size_t>(frame.height - 1 - y) * frame.stride);
 				out.insert(out.end(), source, source + row);
 				progress(options, y + 1, frame.height);
 			}
@@ -424,7 +412,7 @@ namespace libfiles
 			if (image.format != pixel_format::bgrx8 && image.format != pixel_format::bgra8)
 				return unsupported("BMP row encoding accepts only four-byte BGR rows");
 			if (image.width > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
-				image.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+			    image.height > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
 				return unsupported("BMP dimensions are too large");
 			const auto row = static_cast<std::uint64_t>(image.width) * 4;
 			if (image.height != 0 && row > std::numeric_limits<std::uint64_t>::max() / image.height)
@@ -432,7 +420,7 @@ namespace libfiles
 			const auto pixels = row * image.height;
 			const auto header = std::uint64_t{14} + 40;
 			if (pixels > std::numeric_limits<std::uint32_t>::max() - header ||
-				header + pixels > std::numeric_limits<std::size_t>::max())
+			    header + pixels > std::numeric_limits<std::size_t>::max())
 				return unsupported("BMP output is too large");
 			document_encode_result result;
 			result.data.reserve(static_cast<std::size_t>(header + pixels));
@@ -462,8 +450,7 @@ namespace libfiles
 					fail_cancelled(result);
 					return result;
 				}
-				const auto* const source = image.pixels +
-					static_cast<std::size_t>(image.height - 1 - y) * image.stride;
+				const auto* const source = image.pixels + static_cast<std::size_t>(image.height - 1 - y) * image.stride;
 				result.data.insert(result.data.end(), source, source + row);
 				progress(options, y + 1, image.height);
 			}
@@ -490,8 +477,7 @@ namespace libfiles
 
 			explicit png_writer(std::vector<std::string>& warnings)
 			{
-				png = png_create_write_struct(PNG_LIBPNG_VER_STRING, &warnings, png_encode_error,
-				                               png_encode_warning);
+				png = png_create_write_struct(PNG_LIBPNG_VER_STRING, &warnings, png_encode_error, png_encode_warning);
 				if (png) info = png_create_info_struct(png);
 				if (!png || !info)
 				{
@@ -511,8 +497,7 @@ namespace libfiles
 			output->insert(output->end(), bytes, bytes + size);
 		}
 
-		void add_png_unknown(std::vector<png_unknown_chunk>& chunks,
-		                     std::vector<std::vector<std::uint8_t>>& storage,
+		void add_png_unknown(std::vector<png_unknown_chunk>& chunks, std::vector<std::vector<std::uint8_t>>& storage,
 		                     const char name[5], const std::span<const std::uint8_t> bytes)
 		{
 			if (bytes.empty()) return;
@@ -544,10 +529,11 @@ namespace libfiles
 			png_writer writer(result.warnings);
 			png_set_write_fn(writer.png, &result.data, png_write_bytes, nullptr);
 			const auto depth = indexed || is_gray ? static_cast<int>(storage_bits(frame.storage)) : 8;
-			const auto color = indexed ? PNG_COLOR_TYPE_PALETTE :
-				is_gray ? PNG_COLOR_TYPE_GRAY : (bgra ? PNG_COLOR_TYPE_RGB_ALPHA : PNG_COLOR_TYPE_RGB);
-			png_set_IHDR(writer.png, writer.info, frame.width, frame.height, depth, color,
-			             PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			const auto color = indexed   ? PNG_COLOR_TYPE_PALETTE
+			                   : is_gray ? PNG_COLOR_TYPE_GRAY
+			                             : (bgra ? PNG_COLOR_TYPE_RGB_ALPHA : PNG_COLOR_TYPE_RGB);
+			png_set_IHDR(writer.png, writer.info, frame.width, frame.height, depth, color, PNG_INTERLACE_NONE,
+			             PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
 			std::vector<png_color> palette;
 			std::vector<png_byte> alpha;
@@ -562,7 +548,8 @@ namespace libfiles
 					              static_cast<png_byte>(value)};
 				}
 				bool has_alpha = frame.storage == document_storage::indexed8_alpha;
-				for (std::size_t i = 0; i < entries; ++i) has_alpha |= static_cast<std::uint8_t>(frame.palette[i] >> 24) != 255;
+				for (std::size_t i = 0; i < entries; ++i)
+					has_alpha |= static_cast<std::uint8_t>(frame.palette[i] >> 24) != 255;
 				has_alpha |= frame.transparent.has_value();
 				png_set_PLTE(writer.png, writer.info, palette.data(), static_cast<int>(entries));
 				if (has_alpha)
@@ -580,8 +567,8 @@ namespace libfiles
 
 			auto meta = embedded(document);
 			std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-			normalize_orientation_metadata(meta, options.reset_orientation_metadata,
-			                                normalized_exif, normalized_xmp, frame.width, frame.height);
+			normalize_orientation_metadata(meta, options.reset_orientation_metadata, normalized_exif, normalized_xmp,
+			                               frame.width, frame.height);
 			if (!meta.icc.empty())
 			{
 				if (meta.icc.size() > std::numeric_limits<png_uint_32>::max())
@@ -591,7 +578,8 @@ namespace libfiles
 			}
 			if (!meta.exif.empty())
 			{
-				const auto skip = encode_detail::is_exif_signature(meta.exif) ? encode_detail::exif_signature.size() : 0u;
+				const auto skip = encode_detail::is_exif_signature(meta.exif) ? encode_detail::exif_signature.size()
+				                                                              : 0u;
 				if (meta.exif.size() - skip > std::numeric_limits<png_uint_32>::max())
 					return unsupported("PNG EXIF block is too large");
 				png_set_eXIf_1(writer.png, writer.info, static_cast<png_uint_32>(meta.exif.size() - skip),
@@ -608,11 +596,10 @@ namespace libfiles
 				if (block.kind != document_metadata::png_text) continue;
 				const auto& bytes = block.bytes;
 				if (bytes.size() < 6 ||
-					(std::memcmp(bytes.data(), "tEXt", 4) != 0 && std::memcmp(bytes.data(), "iTXt", 4) != 0))
+				    (std::memcmp(bytes.data(), "tEXt", 4) != 0 && std::memcmp(bytes.data(), "iTXt", 4) != 0))
 					return failed("invalid retained PNG text chunk");
 				const auto key_end = std::find(bytes.begin() + 4, bytes.end(), 0);
-				if (key_end == bytes.end() || key_end == bytes.begin() + 4 ||
-					key_end - bytes.begin() > 83)
+				if (key_end == bytes.end() || key_end == bytes.begin() + 4 || key_end - bytes.begin() > 83)
 					return failed("invalid retained PNG text keyword");
 				if (std::memcmp(bytes.data(), "iTXt", 4) == 0)
 				{
@@ -620,12 +607,11 @@ namespace libfiles
 					if (bytes.end() - header < 4 || header[0] != 0 || header[1] != 0)
 						return failed("invalid retained PNG international text header");
 					const auto language_end = std::find(header + 2, bytes.end(), 0);
-					if (language_end == bytes.end() ||
-						std::find(language_end + 1, bytes.end(), 0) == bytes.end())
+					if (language_end == bytes.end() || std::find(language_end + 1, bytes.end(), 0) == bytes.end())
 						return failed("invalid retained PNG international text language");
 				}
 				add_png_unknown(unknown, unknown_storage, reinterpret_cast<const char*>(bytes.data()),
-					std::span(bytes).subspan(4));
+				                std::span(bytes).subspan(4));
 			}
 			if (!unknown.empty())
 				png_set_unknown_chunks(writer.png, writer.info, unknown.data(), static_cast<int>(unknown.size()));
@@ -724,8 +710,8 @@ namespace libfiles
 			if (!map || map->ColorCount != static_cast<int>(source.size())) return false;
 			for (std::size_t i = 0; i < source.size(); ++i)
 				if (map->Colors[i].Red != static_cast<GifByteType>(source[i] >> 16) ||
-					map->Colors[i].Green != static_cast<GifByteType>(source[i] >> 8) ||
-					map->Colors[i].Blue != static_cast<GifByteType>(source[i]))
+				    map->Colors[i].Green != static_cast<GifByteType>(source[i] >> 8) ||
+				    map->Colors[i].Blue != static_cast<GifByteType>(source[i]))
 					return false;
 			return true;
 		}
@@ -733,7 +719,11 @@ namespace libfiles
 		bool gif_transparency(const decoded_frame& frame, int& transparent, std::string& error)
 		{
 			transparent = frame.transparent ? static_cast<int>(*frame.transparent) : -1;
-			if (transparent >= static_cast<int>(frame.palette.size())) { error = "GIF transparency index is out of range"; return false; }
+			if (transparent >= static_cast<int>(frame.palette.size()))
+			{
+				error = "GIF transparency index is out of range";
+				return false;
+			}
 			for (std::size_t i = 0; i < frame.palette.size(); ++i)
 			{
 				const auto alpha = static_cast<std::uint8_t>(frame.palette[i] >> 24);
@@ -764,8 +754,7 @@ namespace libfiles
 				return unsupported("GIF canvas exceeds its 16-bit dimensions");
 			for (const auto& frame : document.frames)
 			{
-				if (palette_entries(frame.storage) == 0)
-					return unsupported("GIF encoding requires indexed frames");
+				if (palette_entries(frame.storage) == 0) return unsupported("GIF encoding requires indexed frames");
 				if (frame.palette.empty() || frame.palette.size() > 256)
 					return unsupported("GIF frame palette is invalid");
 				if (frame.left > 65535 || frame.top > 65535 || frame.width > 65535 || frame.height > 65535)
@@ -776,7 +765,8 @@ namespace libfiles
 			for (const auto& block : document.metadata)
 				if (block.kind != document_metadata::comment)
 				{
-					result.warnings.emplace_back("GIF has no standard metadata blocks beyond comments; opaque metadata was not embedded");
+					result.warnings.emplace_back(
+						"GIF has no standard metadata blocks beyond comments; opaque metadata was not embedded");
 					break;
 				}
 			gif_output output;
@@ -794,8 +784,8 @@ namespace libfiles
 				if (global) GifFreeMapObject(global);
 				if (file) EGifCloseFile(file, &error_code);
 			};
-			if (EGifPutScreenDesc(file, static_cast<int>(document.info.width),
-			                      static_cast<int>(document.info.height), global->BitsPerPixel, 0, global) == GIF_ERROR)
+			if (EGifPutScreenDesc(file, static_cast<int>(document.info.width), static_cast<int>(document.info.height),
+			                      global->BitsPerPixel, 0, global) == GIF_ERROR)
 			{
 				close();
 				return failed("could not write GIF screen descriptor");
@@ -818,12 +808,12 @@ namespace libfiles
 			}
 			if (document.frames.size() > 1)
 			{
-				const std::uint8_t application[] = {'N','E','T','S','C','A','P','E','2','.', '0'};
+				const std::uint8_t application[] = {'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0'};
 				const std::uint8_t loop[] = {1, 0, 0};
 				if (EGifPutExtensionLeader(file, APPLICATION_EXT_FUNC_CODE) == GIF_ERROR ||
-					EGifPutExtensionBlock(file, sizeof(application), application) == GIF_ERROR ||
-					EGifPutExtensionBlock(file, sizeof(loop), loop) == GIF_ERROR ||
-					EGifPutExtensionTrailer(file) == GIF_ERROR)
+				    EGifPutExtensionBlock(file, sizeof(application), application) == GIF_ERROR ||
+				    EGifPutExtensionBlock(file, sizeof(loop), loop) == GIF_ERROR ||
+				    EGifPutExtensionTrailer(file) == GIF_ERROR)
 				{
 					close();
 					return failed("could not write GIF animation extension");
@@ -841,38 +831,37 @@ namespace libfiles
 				}
 				const auto delay = std::min<std::uint32_t>(65535, frame.delay_ms.value_or(0) / 10);
 				const auto disposal = std::min<std::uint32_t>(7, frame.disposal.value_or(0));
-				const std::uint8_t control[] = {
-					static_cast<std::uint8_t>((disposal & 7) << 2 | (transparent >= 0 ? 1 : 0)),
-					static_cast<std::uint8_t>(delay), static_cast<std::uint8_t>(delay >> 8),
-					static_cast<std::uint8_t>(transparent < 0 ? 0 : transparent)
-				};
+				const std::uint8_t control[] = {static_cast<std::uint8_t>((disposal & 7) << 2 |
+				                                                          (transparent >= 0 ? 1 : 0)),
+				                                static_cast<std::uint8_t>(delay), static_cast<std::uint8_t>(delay >> 8),
+				                                static_cast<std::uint8_t>(transparent < 0 ? 0 : transparent)};
 				if (EGifPutExtension(file, GRAPHICS_EXT_FUNC_CODE, sizeof(control), control) == GIF_ERROR)
 				{
 					close();
 					return failed("could not write GIF frame control");
 				}
-				ColorMapObject* local = same_gif_palette(global, frame.palette) ? nullptr :
-					make_gif_palette(frame.palette);
+				ColorMapObject* local = same_gif_palette(global, frame.palette) ? nullptr
+				                                                                : make_gif_palette(frame.palette);
 				if (!same_gif_palette(global, frame.palette) && !local)
 				{
 					close();
 					return unsupported("GIF local palette is invalid");
 				}
-				const auto descriptor = EGifPutImageDesc(file, frame.left, frame.top,
-					static_cast<int>(frame.width), static_cast<int>(frame.height), false, local);
+				const auto descriptor = EGifPutImageDesc(file, frame.left, frame.top, static_cast<int>(frame.width),
+				                                         static_cast<int>(frame.height), false, local);
 				if (descriptor == GIF_ERROR)
 				{
 					if (local) GifFreeMapObject(local);
 					close();
 					return failed("could not write GIF frame descriptor");
 				}
-					if (!working_allowed(options, frame.width))
-					{
-						if (local) GifFreeMapObject(local);
-						close();
-						return unsupported("GIF row exceeds the encoder working-memory limit");
-					}
-					std::vector<GifByteType> indices(frame.width);
+				if (!working_allowed(options, frame.width))
+				{
+					if (local) GifFreeMapObject(local);
+					close();
+					return unsupported("GIF row exceeds the encoder working-memory limit");
+				}
+				std::vector<GifByteType> indices(frame.width);
 				for (std::uint32_t y = 0; y < frame.height; ++y)
 				{
 					if (cancelled(options))
@@ -884,7 +873,8 @@ namespace libfiles
 						return result;
 					}
 					const auto* const source = frame.pixels.data() + static_cast<std::size_t>(y) * frame.stride;
-					for (std::uint32_t x = 0; x < frame.width; ++x) indices[x] = static_cast<GifByteType>(index_at(frame, source, x));
+					for (std::uint32_t x = 0; x < frame.width; ++x)
+						indices[x] = static_cast<GifByteType>(index_at(frame, source, x));
 					if (EGifPutLine(file, indices.data(), static_cast<int>(indices.size())) == GIF_ERROR)
 					{
 						if (local) GifFreeMapObject(local);
@@ -921,8 +911,8 @@ namespace libfiles
 		tsize_t tiff_write(thandle_t handle, tdata_t data, const tsize_t size)
 		{
 			auto& output = *static_cast<tiff_output*>(handle);
-			if (size < 0 || static_cast<std::uint64_t>(size) >
-				std::numeric_limits<std::size_t>::max() - output.position)
+			if (size < 0 ||
+			    static_cast<std::uint64_t>(size) > std::numeric_limits<std::size_t>::max() - output.position)
 			{
 				output.failed = true;
 				return 0;
@@ -960,8 +950,8 @@ namespace libfiles
 			std::memcpy(&signed_offset, &offset, sizeof(offset));
 			const auto base = whence == SEEK_SET ? 0ull : whence == SEEK_CUR ? output.position : output.bytes.size();
 			if (signed_offset < 0 && static_cast<std::uint64_t>(-signed_offset) > base) return static_cast<toff_t>(-1);
-			const auto next = signed_offset < 0 ? base - static_cast<std::uint64_t>(-signed_offset) :
-				base + static_cast<std::uint64_t>(signed_offset);
+			const auto next = signed_offset < 0 ? base - static_cast<std::uint64_t>(-signed_offset)
+			                                    : base + static_cast<std::uint64_t>(signed_offset);
 			output.position = next;
 			return static_cast<toff_t>(next);
 		}
@@ -971,8 +961,7 @@ namespace libfiles
 			return static_cast<toff_t>(static_cast<tiff_output*>(handle)->bytes.size());
 		}
 
-		bool tiff_set_resolution(TIFF* file, const decoded_document& document,
-		                         const document_encode_options& options)
+		bool tiff_set_resolution(TIFF* file, const decoded_document& document, const document_encode_options& options)
 		{
 			const auto x = resolution_x(document, options);
 			const auto y = resolution_y(document, options);
@@ -983,21 +972,19 @@ namespace libfiles
 					return static_cast<float>((static_cast<std::uint64_t>(ppm) * 100 + 3937 / 2) / 3937);
 				};
 				return TIFFSetField(file, TIFFTAG_RESOLUTIONUNIT, RESUNIT_INCH) &&
-					TIFFSetField(file, TIFFTAG_XRESOLUTION, inch(x)) &&
-					TIFFSetField(file, TIFFTAG_YRESOLUTION, inch(y));
+				       TIFFSetField(file, TIFFTAG_XRESOLUTION, inch(x)) &&
+				       TIFFSetField(file, TIFFTAG_YRESOLUTION, inch(y));
 			}
 			if (x == 0 || y == 0) return true;
 			return TIFFSetField(file, TIFFTAG_RESOLUTIONUNIT, RESUNIT_CENTIMETER) &&
-				TIFFSetField(file, TIFFTAG_XRESOLUTION, static_cast<float>(x) / 100.0f) &&
-				TIFFSetField(file, TIFFTAG_YRESOLUTION, static_cast<float>(y) / 100.0f);
+			       TIFFSetField(file, TIFFTAG_XRESOLUTION, static_cast<float>(x) / 100.0f) &&
+			       TIFFSetField(file, TIFFTAG_YRESOLUTION, static_cast<float>(y) / 100.0f);
 		}
 
-		void carry_tiff_exif(std::vector<std::uint8_t>& output,
-		                     const std::span<const std::uint8_t> exif,
+		void carry_tiff_exif(std::vector<std::uint8_t>& output, const std::span<const std::uint8_t> exif,
 		                     const document_encode_options& options)
 		{
-			if (exif.empty() || (options.legacy_compatibility && !options.reset_orientation_metadata))
-				return;
+			if (exif.empty() || (options.legacy_compatibility && !options.reset_orientation_metadata)) return;
 			const auto skip = encode_detail::is_exif_signature(exif) ? encode_detail::exif_signature.size() : 0u;
 			try
 			{
@@ -1022,24 +1009,27 @@ namespace libfiles
 				return unsupported("TIFF row encoding accepts BGRX8 or BGRA8");
 			auto normalized_metadata = metadata;
 			std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-			normalize_orientation_metadata(normalized_metadata, options.reset_orientation_metadata,
-			                                normalized_exif, normalized_xmp, image.width, image.height);
+			normalize_orientation_metadata(normalized_metadata, options.reset_orientation_metadata, normalized_exif,
+			                               normalized_xmp, image.width, image.height);
 			tiff_output output;
-			TIFF* file = TIFFClientOpen("libfiles", "w", &output, tiff_read, tiff_write, tiff_seek,
-			                            [](thandle_t) -> int { return 0; }, tiff_size,
-			                            [](thandle_t, void**, toff_t*) -> int { return 0; },
+			TIFF* file = TIFFClientOpen("libfiles", "w", &output, tiff_read, tiff_write, tiff_seek, [](thandle_t) -> int
+			{ return 0; }, tiff_size, [](thandle_t, void**, toff_t*) -> int { return 0; },
 			                            [](thandle_t, void*, toff_t) {});
 			if (!file) return failed("could not create TIFF writer");
-			const auto close = [&] { TIFFClose(file); file = nullptr; };
+			const auto close = [&]
+			{
+				TIFFClose(file);
+				file = nullptr;
+			};
 			const auto samples = image.format == pixel_format::bgra8 ? 4 : 3;
 			if (!TIFFSetField(file, TIFFTAG_IMAGEWIDTH, image.width) ||
-				!TIFFSetField(file, TIFFTAG_IMAGELENGTH, image.height) ||
-				!TIFFSetField(file, TIFFTAG_SAMPLESPERPIXEL, samples) ||
-				!TIFFSetField(file, TIFFTAG_BITSPERSAMPLE, 8) ||
-				!TIFFSetField(file, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB) ||
-				!TIFFSetField(file, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG) ||
-				!TIFFSetField(file, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT) ||
-				!TIFFSetField(file, TIFFTAG_COMPRESSION, COMPRESSION_PACKBITS))
+			    !TIFFSetField(file, TIFFTAG_IMAGELENGTH, image.height) ||
+			    !TIFFSetField(file, TIFFTAG_SAMPLESPERPIXEL, samples) ||
+			    !TIFFSetField(file, TIFFTAG_BITSPERSAMPLE, 8) ||
+			    !TIFFSetField(file, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB) ||
+			    !TIFFSetField(file, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG) ||
+			    !TIFFSetField(file, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT) ||
+			    !TIFFSetField(file, TIFFTAG_COMPRESSION, COMPRESSION_PACKBITS))
 			{
 				close();
 				return failed("could not set TIFF page fields");
@@ -1053,17 +1043,17 @@ namespace libfiles
 					return static_cast<float>((static_cast<std::uint64_t>(ppm) * 100 + 3937 / 2) / 3937);
 				};
 				if (!TIFFSetField(file, TIFFTAG_RESOLUTIONUNIT, RESUNIT_INCH) ||
-					!TIFFSetField(file, TIFFTAG_XRESOLUTION, inch(x)) ||
-					!TIFFSetField(file, TIFFTAG_YRESOLUTION, inch(y)))
+				    !TIFFSetField(file, TIFFTAG_XRESOLUTION, inch(x)) ||
+				    !TIFFSetField(file, TIFFTAG_YRESOLUTION, inch(y)))
 				{
 					close();
 					return failed("could not set TIFF resolution");
 				}
 			}
 			else if (x > 0 && y > 0 &&
-				(!TIFFSetField(file, TIFFTAG_RESOLUTIONUNIT, RESUNIT_CENTIMETER) ||
-				 !TIFFSetField(file, TIFFTAG_XRESOLUTION, static_cast<float>(x) / 100.0f) ||
-				 !TIFFSetField(file, TIFFTAG_YRESOLUTION, static_cast<float>(y) / 100.0f)))
+			         (!TIFFSetField(file, TIFFTAG_RESOLUTIONUNIT, RESUNIT_CENTIMETER) ||
+			          !TIFFSetField(file, TIFFTAG_XRESOLUTION, static_cast<float>(x) / 100.0f) ||
+			          !TIFFSetField(file, TIFFTAG_YRESOLUTION, static_cast<float>(y) / 100.0f)))
 			{
 				close();
 				return failed("could not set TIFF resolution");
@@ -1077,13 +1067,15 @@ namespace libfiles
 					return failed("could not set TIFF alpha");
 				}
 			}
-			if (!normalized_metadata.xmp.empty()) TIFFSetField(file, TIFFTAG_XMLPACKET,
-				static_cast<std::uint32_t>(normalized_metadata.xmp.size()), normalized_metadata.xmp.data());
-			if (!normalized_metadata.icc.empty()) TIFFSetField(file, TIFFTAG_ICCPROFILE,
-				static_cast<std::uint32_t>(normalized_metadata.icc.size()), normalized_metadata.icc.data());
+			if (!normalized_metadata.xmp.empty())
+				TIFFSetField(file, TIFFTAG_XMLPACKET, static_cast<std::uint32_t>(normalized_metadata.xmp.size()),
+				             normalized_metadata.xmp.data());
+			if (!normalized_metadata.icc.empty())
+				TIFFSetField(file, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(normalized_metadata.icc.size()),
+				             normalized_metadata.icc.data());
 			const auto photoshop = tiff_photoshop(normalized_metadata);
-			if (!photoshop.empty()) TIFFSetField(file, TIFFTAG_PHOTOSHOP,
-				static_cast<std::uint32_t>(photoshop.size()), photoshop.data());
+			if (!photoshop.empty())
+				TIFFSetField(file, TIFFTAG_PHOTOSHOP, static_cast<std::uint32_t>(photoshop.size()), photoshop.data());
 			const auto row_bytes = static_cast<std::uint64_t>(image.width) * samples;
 			if (!working_allowed(options, row_bytes))
 			{
@@ -1136,17 +1128,19 @@ namespace libfiles
 
 			document_encode_result result;
 			tiff_output output;
-			TIFF* file = TIFFClientOpen("libfiles", "w", &output, tiff_read, tiff_write, tiff_seek,
-			                            [](thandle_t) -> int { return 0; }, tiff_size,
-			                            [](thandle_t, void**, toff_t*) -> int { return 0; },
+			TIFF* file = TIFFClientOpen("libfiles", "w", &output, tiff_read, tiff_write, tiff_seek, [](thandle_t) -> int
+			{ return 0; }, tiff_size, [](thandle_t, void**, toff_t*) -> int { return 0; },
 			                            [](thandle_t, void*, toff_t) {});
 			if (!file) return failed("could not create TIFF writer");
-			const auto close = [&] { TIFFClose(file); file = nullptr; };
+			const auto close = [&]
+			{
+				TIFFClose(file);
+				file = nullptr;
+			};
 			auto meta = embedded(document);
 			std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-			normalize_orientation_metadata(meta, options.reset_orientation_metadata,
-			                                normalized_exif, normalized_xmp,
-			                                document.frames.front().width, document.frames.front().height);
+			normalize_orientation_metadata(meta, options.reset_orientation_metadata, normalized_exif, normalized_xmp,
+			                               document.frames.front().width, document.frames.front().height);
 			const auto comment = comment_block(document);
 			const auto photoshop = tiff_photoshop(meta);
 			for (std::size_t page = 0; page < document.frames.size(); ++page)
@@ -1154,9 +1148,8 @@ namespace libfiles
 				const auto& frame = document.frames[page];
 				const auto palette_storage = palette_entries(frame.storage) != 0;
 				const auto packed_storage = frame.storage == document_storage::bgr555 ||
-					frame.storage == document_storage::bgr565;
-				auto palette_alpha = frame.storage == document_storage::indexed8_alpha ||
-					frame.transparent.has_value();
+				                            frame.storage == document_storage::bgr565;
+				auto palette_alpha = frame.storage == document_storage::indexed8_alpha || frame.transparent.has_value();
 				if (palette_storage)
 					for (const auto color : frame.palette)
 						palette_alpha |= static_cast<std::uint8_t>(color >> 24) != 255;
@@ -1165,39 +1158,40 @@ namespace libfiles
 				const auto alpha = frame.storage == document_storage::bgra32 || palette_alpha;
 				const auto samples = indexed || gray ? 1 : alpha ? 4 : 3;
 				const auto bits = indexed ? storage_bits(frame.storage) : 8;
-				const auto photometric = indexed ? PHOTOMETRIC_PALETTE : gray ? PHOTOMETRIC_MINISBLACK : PHOTOMETRIC_RGB;
+				const auto photometric = indexed ? PHOTOMETRIC_PALETTE
+				                         : gray  ? PHOTOMETRIC_MINISBLACK
+				                                 : PHOTOMETRIC_RGB;
 				if (!TIFFSetField(file, TIFFTAG_IMAGEWIDTH, frame.width) ||
-					!TIFFSetField(file, TIFFTAG_IMAGELENGTH, frame.height) ||
-					!TIFFSetField(file, TIFFTAG_SAMPLESPERPIXEL, samples) ||
-					!TIFFSetField(file, TIFFTAG_BITSPERSAMPLE, bits) ||
-					!TIFFSetField(file, TIFFTAG_PHOTOMETRIC, photometric) ||
-					!TIFFSetField(file, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG) ||
-					!TIFFSetField(file, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT) ||
-					!TIFFSetField(file, TIFFTAG_COMPRESSION, COMPRESSION_PACKBITS) ||
-					!tiff_set_resolution(file, document, options))
+				    !TIFFSetField(file, TIFFTAG_IMAGELENGTH, frame.height) ||
+				    !TIFFSetField(file, TIFFTAG_SAMPLESPERPIXEL, samples) ||
+				    !TIFFSetField(file, TIFFTAG_BITSPERSAMPLE, bits) ||
+				    !TIFFSetField(file, TIFFTAG_PHOTOMETRIC, photometric) ||
+				    !TIFFSetField(file, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG) ||
+				    !TIFFSetField(file, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT) ||
+				    !TIFFSetField(file, TIFFTAG_COMPRESSION, COMPRESSION_PACKBITS) ||
+				    !tiff_set_resolution(file, document, options))
 				{
 					close();
 					return failed("could not set TIFF page fields");
 				}
 				if (options.legacy_compatibility)
 				{
-					const auto original_bytes = std::max<std::uint64_t>(
-						1, (static_cast<std::uint64_t>(frame.width) * storage_bits(frame.storage)) / 8);
+					const auto original_bytes = std::max<std::uint64_t>(1, (static_cast<std::uint64_t>(frame.width) *
+					                                                        storage_bits(frame.storage)) /
+					                                                           8);
 					const auto rows_per_strip = static_cast<std::uint32_t>(
 						std::max<std::uint64_t>(1, (1024u * 8u) / original_bytes));
-					if (!TIFFSetField(file, TIFFTAG_ROWSPERSTRIP,
-					                  TIFFDefaultStripSize(file, rows_per_strip)) ||
-						!TIFFSetField(file, TIFFTAG_SUBFILETYPE, FILETYPE_PAGE))
+					if (!TIFFSetField(file, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(file, rows_per_strip)) ||
+					    !TIFFSetField(file, TIFFTAG_SUBFILETYPE, FILETYPE_PAGE))
 					{
 						close();
 						return failed("could not set historical TIFF page fields");
 					}
 					char page_name[20]{};
 					std::snprintf(page_name, sizeof(page_name), "Page %zu", page + 2);
-					if (!TIFFSetField(file, TIFFTAG_PAGENUMBER,
-					                  static_cast<std::uint16_t>(page + 2),
+					if (!TIFFSetField(file, TIFFTAG_PAGENUMBER, static_cast<std::uint16_t>(page + 2),
 					                  static_cast<std::uint16_t>(document.frames.size())) ||
-						!TIFFSetField(file, TIFFTAG_PAGENAME, page_name))
+					    !TIFFSetField(file, TIFFTAG_PAGENAME, page_name))
 					{
 						close();
 						return failed("could not set historical TIFF page numbering");
@@ -1234,10 +1228,11 @@ namespace libfiles
 						return failed("could not set TIFF palette");
 					}
 				}
-				if (!meta.xmp.empty()) TIFFSetField(file, TIFFTAG_XMLPACKET,
-					static_cast<std::uint32_t>(meta.xmp.size()), meta.xmp.data());
-				if (!meta.icc.empty()) TIFFSetField(file, TIFFTAG_ICCPROFILE,
-					static_cast<std::uint32_t>(meta.icc.size()), meta.icc.data());
+				if (!meta.xmp.empty())
+					TIFFSetField(file, TIFFTAG_XMLPACKET, static_cast<std::uint32_t>(meta.xmp.size()), meta.xmp.data());
+				if (!meta.icc.empty())
+					TIFFSetField(file, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(meta.icc.size()),
+					             meta.icc.data());
 				if (!comment.empty())
 				{
 					std::string text(reinterpret_cast<const char*>(comment.data()), comment.size());
@@ -1245,7 +1240,8 @@ namespace libfiles
 				}
 				if (!photoshop.empty())
 				{
-					TIFFSetField(file, TIFFTAG_PHOTOSHOP, static_cast<std::uint32_t>(photoshop.size()), photoshop.data());
+					TIFFSetField(file, TIFFTAG_PHOTOSHOP, static_cast<std::uint32_t>(photoshop.size()),
+					             photoshop.data());
 				}
 				const auto packed_bytes = (static_cast<std::uint64_t>(frame.width) * bits + 7) / 8;
 				const auto converted_bytes = static_cast<std::uint64_t>(frame.width) * samples;
@@ -1254,8 +1250,7 @@ namespace libfiles
 					close();
 					return unsupported("TIFF row exceeds the encoder working-memory limit");
 				}
-				std::vector<std::uint8_t> converted(
-					indexed || gray ? 0 : static_cast<std::size_t>(converted_bytes));
+				std::vector<std::uint8_t> converted(indexed || gray ? 0 : static_cast<std::size_t>(converted_bytes));
 				for (std::uint32_t y = 0; y < frame.height; ++y)
 				{
 					if (cancelled(options))
@@ -1278,14 +1273,12 @@ namespace libfiles
 								const auto value = static_cast<std::uint16_t>(
 									source[x * 2] | static_cast<std::uint16_t>(source[x * 2 + 1]) << 8);
 								blue = static_cast<std::uint8_t>((value & 0x001fu) << 3);
-								green = static_cast<std::uint8_t>(
-									frame.storage == document_storage::bgr565
-										? (value & 0x07e0u) >> 3
-										: (value & 0x03e0u) >> 2);
-								red = static_cast<std::uint8_t>(
-									frame.storage == document_storage::bgr565
-										? (value & 0xf800u) >> 8
-										: (value & 0x7c00u) >> 7);
+								green = static_cast<std::uint8_t>(frame.storage == document_storage::bgr565
+								                                      ? (value & 0x07e0u) >> 3
+								                                      : (value & 0x03e0u) >> 2);
+								red = static_cast<std::uint8_t>(frame.storage == document_storage::bgr565
+								                                    ? (value & 0xf800u) >> 8
+								                                    : (value & 0x7c00u) >> 7);
 							}
 							else if (palette_storage)
 							{
@@ -1351,7 +1344,7 @@ namespace libfiles
 			if (document.frames.size() != 1) return unsupported("JPEG has one image frame");
 			const auto& frame = document.frames.front();
 			if (frame.storage != document_storage::gray8 && frame.storage != document_storage::bgr24 &&
-				frame.storage != document_storage::bgrx32 && frame.storage != document_storage::bgra32)
+			    frame.storage != document_storage::bgrx32 && frame.storage != document_storage::bgra32)
 				return unsupported("JPEG does not represent indexed or packed native storage");
 
 			document_encode_result result;
@@ -1367,8 +1360,8 @@ namespace libfiles
 				jpeg.legacy_density = options.legacy_compatibility;
 				auto metadata = embedded(document);
 				std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-				normalize_orientation_metadata(metadata, options.reset_orientation_metadata,
-				                                normalized_exif, normalized_xmp, frame.width, frame.height);
+				normalize_orientation_metadata(metadata, options.reset_orientation_metadata, normalized_exif,
+				                               normalized_xmp, frame.width, frame.height);
 				if (frame.storage == document_storage::gray8)
 				{
 					jpeg.grayscale = true;
@@ -1420,8 +1413,8 @@ namespace libfiles
 			{
 				auto normalized_metadata = metadata;
 				std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-				normalize_orientation_metadata(normalized_metadata, options.reset_orientation_metadata,
-				                                normalized_exif, normalized_xmp, image.width, image.height);
+				normalize_orientation_metadata(normalized_metadata, options.reset_orientation_metadata, normalized_exif,
+				                               normalized_xmp, image.width, image.height);
 				jpeg_encoder encoder;
 				jpeg_options jpeg;
 				jpeg.quality = options.quality;
@@ -1474,8 +1467,7 @@ namespace libfiles
 	{
 		switch (format)
 		{
-		case image_format::bmp:
-			return true;
+		case image_format::bmp: return true;
 		case image_format::jpeg:
 #ifdef LIBFILES_JPEG
 			return true;
@@ -1500,13 +1492,12 @@ namespace libfiles
 #else
 			return false;
 #endif
-		default:
-			return false;
+		default: return false;
 		}
 	}
 
 	document_encode_result encode_document(const decoded_document& document, const image_format format,
-	                                        const document_encode_options& options)
+	                                       const document_encode_options& options)
 	{
 		if (cancelled(options))
 		{
@@ -1543,8 +1534,7 @@ namespace libfiles
 #else
 				return unsupported("libfiles was built without TIFF encoding");
 #endif
-			default:
-				return unsupported("libfiles has no native encoder for this format");
+			default: return unsupported("libfiles has no native encoder for this format");
 			}
 		}
 		catch (const std::bad_alloc&)
@@ -1561,15 +1551,13 @@ namespace libfiles
 	}
 
 	document_encode_result encode_document(const image_view& image, const image_format format,
-	                                        const document_info& info, const embedded_metadata& metadata,
-	                                        const document_encode_options& options)
+	                                       const document_info& info, const embedded_metadata& metadata,
+	                                       const document_encode_options& options)
 	{
-		if (!image.pixels || image.width == 0 || image.height == 0)
-			return failed("invalid image rows");
+		if (!image.pixels || image.width == 0 || image.height == 0) return failed("invalid image rows");
 		const auto bpp = image.format == pixel_format::nv12 ? 1u : 4u;
-		if (image.format == pixel_format::nv12 ||
-			image.width > std::numeric_limits<std::size_t>::max() / bpp ||
-			image.stride < static_cast<std::size_t>(image.width) * bpp)
+		if (image.format == pixel_format::nv12 || image.width > std::numeric_limits<std::size_t>::max() / bpp ||
+		    image.stride < static_cast<std::size_t>(image.width) * bpp)
 			return unsupported("native row encoding does not accept this pixel format");
 		if (image.height != 0 && image.stride > std::numeric_limits<std::size_t>::max() / image.height)
 			return failed("image rows are too large");
@@ -1589,12 +1577,12 @@ namespace libfiles
 			{
 				auto row_metadata = metadata;
 				std::vector<std::uint8_t> normalized_exif, normalized_xmp;
-				normalize_orientation_metadata(row_metadata, options.reset_orientation_metadata,
-				                                normalized_exif, normalized_xmp, image.width, image.height);
-				row_metadata.pixels_per_meter_x = info.has_resolution ? info.pixels_per_meter_x :
-					options.pixels_per_meter_x;
-				row_metadata.pixels_per_meter_y = info.has_resolution ? info.pixels_per_meter_y :
-					options.pixels_per_meter_y;
+				normalize_orientation_metadata(row_metadata, options.reset_orientation_metadata, normalized_exif,
+				                               normalized_xmp, image.width, image.height);
+				row_metadata.pixels_per_meter_x = info.has_resolution ? info.pixels_per_meter_x
+				                                                      : options.pixels_per_meter_x;
+				row_metadata.pixels_per_meter_y = info.has_resolution ? info.pixels_per_meter_y
+				                                                      : options.pixels_per_meter_y;
 				const auto result = encode_png(image, 1, row_metadata);
 				document_encode_result encoded_result;
 				encoded_result.data = result.data;
@@ -1608,8 +1596,7 @@ namespace libfiles
 					encoded_result.data.clear();
 					fail_cancelled(encoded_result);
 				}
-				else
-					progress(options, image.height, image.height);
+				else progress(options, image.height, image.height);
 				return encoded_result;
 			}
 			catch (const std::bad_alloc&)
@@ -1649,19 +1636,18 @@ namespace libfiles
 			return unsupported("libfiles was built without TIFF encoding");
 #endif
 		}
-		if (format == image_format::gif)
-			return unsupported("GIF row encoding requires an indexed document frame");
+		if (format == image_format::gif) return unsupported("GIF row encoding requires an indexed document frame");
 
 		decoded_document document;
 		document.info = info;
 		document.info.width = image.width;
 		document.info.height = image.height;
-		document.info.storage = image.format == pixel_format::bgra8 ? document_storage::bgra32 :
-			document_storage::bgrx32;
+		document.info.storage = image.format == pixel_format::bgra8 ? document_storage::bgra32
+		                                                            : document_storage::bgrx32;
 		document.info.bits_per_pixel = 32;
 		document.info.frames = 1;
 		document.info.has_resolution = info.has_resolution ||
-			(options.pixels_per_meter_x > 0 && options.pixels_per_meter_y > 0);
+		                               (options.pixels_per_meter_x > 0 && options.pixels_per_meter_y > 0);
 		document.info.pixels_per_meter_x = info.has_resolution ? info.pixels_per_meter_x : options.pixels_per_meter_x;
 		document.info.pixels_per_meter_y = info.has_resolution ? info.pixels_per_meter_y : options.pixels_per_meter_y;
 		decoded_frame frame;
@@ -1685,13 +1671,12 @@ namespace libfiles
 	}
 
 	document_encode_result encode_document(writable_stream& destination, const decoded_document& document,
-	                                        const image_format format, const document_encode_options& options)
+	                                       const image_format format, const document_encode_options& options)
 	{
 		auto result = encode_document(document, format, options);
 		if (!result.success) return result;
-		if (!destination.resize(result.data.size()) ||
-			!destination.write(0, result.data.data(), result.data.size()) ||
-			!destination.flush())
+		if (!destination.resize(result.data.size()) || !destination.write(0, result.data.data(), result.data.size()) ||
+		    !destination.flush())
 		{
 			result.success = false;
 			result.error = "the encoded document could not be written";

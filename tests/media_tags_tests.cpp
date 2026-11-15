@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the tags media files share - ID3, APE and Vorbis comments - the tag mapping, and dates and places.
 
@@ -46,7 +46,8 @@ namespace
 	}
 
 	// A frame: its header as the version writes it, then its body. iTunes wrote ID3v2.4 sizes plainly.
-	bytes frame(const int version, const std::string_view id, const bytes& body, const unsigned flags = 0, const bool plain_size = false)
+	bytes frame(const int version, const std::string_view id, const bytes& body, const unsigned flags = 0,
+	            const bool plain_size = false)
 	{
 		const auto size = static_cast<std::uint32_t>(body.size());
 		builder b;
@@ -87,8 +88,8 @@ namespace
 		return b.b;
 	}
 
-	bytes picture_body(const int version, const std::string_view format, const unsigned type, const std::string_view description,
-	                   const bytes& image)
+	bytes picture_body(const int version, const std::string_view format, const unsigned type,
+	                   const std::string_view description, const bytes& image)
 	{
 		builder b;
 		b.u8(0).raw(format);
@@ -113,8 +114,8 @@ namespace
 		return b;
 	}
 
-	bytes id3_tag(const int version, const std::vector<bytes>& frames, const std::size_t padding = 0, const unsigned flags = 0,
-	              const bytes& extended = {})
+	bytes id3_tag(const int version, const std::vector<bytes>& frames, const std::size_t padding = 0,
+	              const unsigned flags = 0, const bytes& extended = {})
 	{
 		auto body = join({extended, join(frames)});
 		body.resize(body.size() + padding, 0);
@@ -142,7 +143,8 @@ namespace
 	}
 
 	// An ID3v2.2 or 2.3 tag unsynchronised whole after its header.
-	bytes unsynchronised_tag(const int version, const std::vector<bytes>& frames, const std::size_t padding = 0, const bytes& extended = {})
+	bytes unsynchronised_tag(const int version, const std::vector<bytes>& frames, const std::size_t padding = 0,
+	                         const bytes& extended = {})
 	{
 		auto body = join({extended, join(frames)});
 		body.resize(body.size() + padding, 0);
@@ -164,10 +166,10 @@ namespace
 		{
 			const auto n = std::min<std::size_t>(65535, data.size() - at);
 			b.u8(at + n == data.size() ? 1 : 0).le16(static_cast<unsigned>(n)).le16(static_cast<unsigned>(~n & 0xFFFF));
-			b.raw(bytes(data.begin() + static_cast<std::ptrdiff_t>(at), data.begin() + static_cast<std::ptrdiff_t>(at + n)));
+			b.raw(bytes(data.begin() + static_cast<std::ptrdiff_t>(at),
+			            data.begin() + static_cast<std::ptrdiff_t>(at + n)));
 			at += n;
-		}
-		while (at < data.size());
+		} while (at < data.size());
 
 		std::uint32_t a = 1;
 		std::uint32_t c = 0;
@@ -237,11 +239,12 @@ namespace
 	}
 
 	// Whether text reads as this moment, in this zone.
-	bool moment(const std::string_view text, const int y, const int m, const int d, const int hh, const int mm, const int ss,
-	            const media_date::time_zone zone = media_date::time_zone::unstated, const int offset = 0)
+	bool moment(const std::string_view text, const int y, const int m, const int d, const int hh, const int mm,
+	            const int ss, const media_date::time_zone zone = media_date::time_zone::unstated, const int offset = 0)
 	{
 		const auto date = libfiles::detail::parse_media_date(text);
-		return same_date(date, y, m, d) && same_time(date, hh, mm, ss) && date.zone == zone && date.offset_minutes == offset;
+		return same_date(date, y, m, d) && same_time(date, hh, mm, ss) && date.zone == zone &&
+		       date.offset_minutes == offset;
 	}
 
 	// ---- ID3v1, APE and Vorbis comments --------------------------------------------------------------
@@ -254,8 +257,8 @@ namespace
 	}
 
 	// An ID3v1 tag; a track makes it ID3v1.1.
-	bytes id3v1(const std::string_view title, const std::string_view artist, const std::string_view album, const std::string_view year,
-	            const std::string_view comment, const int track, const unsigned genre)
+	bytes id3v1(const std::string_view title, const std::string_view artist, const std::string_view album,
+	            const std::string_view year, const std::string_view comment, const int track, const unsigned genre)
 	{
 		builder b;
 		b.raw("TAG").raw(fixed(title, 30)).raw(fixed(artist, 30)).raw(fixed(album, 30)).raw(fixed(year, 4));
@@ -303,11 +306,22 @@ namespace
 		return out;
 	}
 
-	bytes flac_picture(const unsigned type, const std::string_view mime, const std::string_view description, const bytes& image)
+	bytes flac_picture(const unsigned type, const std::string_view mime, const std::string_view description,
+	                   const bytes& image)
 	{
-		return builder().be32(type).be32(static_cast<std::uint32_t>(mime.size())).raw(mime)
-		                .be32(static_cast<std::uint32_t>(description.size())).raw(description)
-		                .be32(640).be32(480).be32(24).be32(0).be32(static_cast<std::uint32_t>(image.size())).raw(image).b;
+		return builder()
+		    .be32(type)
+		    .be32(static_cast<std::uint32_t>(mime.size()))
+		    .raw(mime)
+		    .be32(static_cast<std::uint32_t>(description.size()))
+		    .raw(description)
+		    .be32(640)
+		    .be32(480)
+		    .be32(24)
+		    .be32(0)
+		    .be32(static_cast<std::uint32_t>(image.size()))
+		    .raw(image)
+		    .b;
 	}
 
 	bytes vorbis_block(const std::string_view vendor, const std::vector<std::string>& fields)
@@ -318,7 +332,8 @@ namespace
 		return b.b;
 	}
 
-	media_properties apply_all(const tag_family family, const std::vector<std::pair<std::string_view, std::string_view>>& tags,
+	media_properties apply_all(const tag_family family,
+	                           const std::vector<std::pair<std::string_view, std::string_view>>& tags,
 	                           const std::string_view language = {})
 	{
 		media_properties p;
@@ -359,8 +374,12 @@ TEST("media tags read an ID3v2.3 tag's frames as tags, properties, a rating, a p
 		frame(3, "TYER", text("1999")),
 		frame(3, "TDAT", text("0405")),
 		frame(3, "TIME", text("1011")),
-		frame(3, "TXXX", text(0, lit("Rip date\0" "2001-02-03"))),
-		frame(3, "TXXX", text(0, lit("originalyear\0" "1969"))),
+		frame(3, "TXXX",
+	          text(0, lit("Rip date\0"
+	                      "2001-02-03"))),
+		frame(3, "TXXX",
+	          text(0, lit("originalyear\0"
+	                      "1969"))),
 		frame(3, "COMM", builder().u8(0).raw("eng").u8(0).raw("Comments").b),
 		frame(3, "COMM", builder().u8(0).raw("eng").raw("iTunNORM").u8(0).raw(" 0000").b),
 		frame(3, "POPM", builder().raw("someone@example.com").u8(0).u8(64).be32(3).b),
@@ -379,8 +398,11 @@ TEST("media tags read an ID3v2.3 tag's frames as tags, properties, a rating, a p
 	const auto out = read_id3(file, &size);
 
 	CHECK_EQ(size, std::uint64_t{tag.size()});
-	CHECK_STR(keys_of(out), "TIT2 TPE1 TALB TPE2 TCON TRCK TPOS TYER TDAT TIME TXXX:Rip date TXXX:originalyear COMM COMM:iTunNORM "
-	          "POPM:someone@example.com POPM:Windows Media Player 9 Series PRIV:WM/Provider PRIV:XMP PRIV:XMP APIC MCDI WOAR");
+	CHECK_STR(
+		keys_of(out),
+		"TIT2 TPE1 TALB TPE2 TCON TRCK TPOS TYER TDAT TIME TXXX:Rip date TXXX:originalyear COMM COMM:iTunNORM "
+		"POPM:someone@example.com POPM:Windows Media Player 9 Series PRIV:WM/Provider PRIV:XMP PRIV:XMP APIC MCDI "
+		"WOAR");
 	CHECK_STR(value_of(out, "TPE1"), "Counting Crows");
 	CHECK_STR(value_of(out, "TCON"), "(17)Rock");
 	CHECK_STR(value_of(out, "TXXX:Rip date"), "2001-02-03");
@@ -429,7 +451,8 @@ TEST("media tags read an ID3v2.3 tag's frames as tags, properties, a rating, a p
 	// The same through a stream read in small windows.
 	const auto streamed = read_id3_streamed(file, 64);
 	CHECK_STR(keys_of(streamed), keys_of(out));
-	CHECK(streamed.pictures.size() == 1 && !out.pictures.empty() && streamed.pictures[0].location == out.pictures[0].location);
+	CHECK(streamed.pictures.size() == 1 && !out.pictures.empty() &&
+	      streamed.pictures[0].location == out.pictures[0].location);
 }
 
 TEST("media tags read ID3v2.4's encodings, several values, footer and extended header")
@@ -438,13 +461,17 @@ TEST("media tags read ID3v2.4's encodings, several values, footer and extended h
 	const std::vector<bytes> frames = {
 		frame(4, "TIT2", text(3, to_bytes("Zo\xC3\xAB"))),
 		frame(4, "TPE1", text(3, lit("A\0B\0"))),
-		frame(4, "TPE2", text(1, join({utf16("X"), bytes{0, 0}, utf16("Y", true), bytes{0, 0}, utf16("Z", true, false)}))),
+		frame(4, "TPE2",
+	          text(1, join({utf16("X"), bytes{0, 0}, utf16("Y", true), bytes{0, 0}, utf16("Z", true, false)}))),
 		frame(4, "TCON", text(0, lit("17\0Pop\0RX\0(13)"))),
 		frame(4, "TDRC", text("2011-03-13T15:13:49")),
 		frame(4, "TDOR", text("1969-07-01")),
 		frame(4, "TDRL", text("2012")),
 		frame(4, "COMM", builder().u8(0).raw("XXX").u8(0).raw(long_comment).b),
-		frame(4, "TXXX", text(3, lit("CATALOGNUMBER\0" "ABC\0" "DEF"))),
+		frame(4, "TXXX",
+	          text(3, lit("CATALOGNUMBER\0"
+	                      "ABC\0"
+	                      "DEF"))),
 		frame(4, "WXXX", builder().u8(1).raw(utf16("Home")).u8(0).u8(0).raw("http://example.com/").b),
 		frame(4, "TSSE", text("LAME 3.100")),
 	};
@@ -485,7 +512,9 @@ TEST("media tags read ID3v2.2's three-letter frames and PIC")
 		frame(2, "TCO", text("(13)")),
 		frame(2, "TYE", text("1987")),
 		frame(2, "TDA", text("3112")),
-		frame(2, "TXX", text(0, lit("Rip date\0" "x"))),
+		frame(2, "TXX",
+	          text(0, lit("Rip date\0"
+	                      "x"))),
 		frame(2, "COM", builder().u8(0).raw("eng").u8(0).raw("Hello").b),
 		frame(2, "POP", builder().raw("Windows Media Player 9 Series").u8(0).u8(255).b),
 		frame(2, "PRV", builder().raw("XMP").u8(0).raw("<x/>").b),
@@ -563,10 +592,12 @@ TEST("media tags undo a whole ID3v2.2 or 2.3 tag's unsynchronisation, copying it
 	}
 
 	const auto small = image(90, 13);
-	const auto old = unsynchronised_tag(2, {frame(2, "TT2", text(0, bytes{'a', 0xFF, 0xFE})), frame(2, "PIC", picture_body(2, "JPG", 0, "", small))});
+	const auto old = unsynchronised_tag(2, {frame(2, "TT2", text(0, bytes{'a', 0xFF, 0xFE})),
+	                                        frame(2, "PIC", picture_body(2, "JPG", 0, "", small))});
 	const auto v22 = read_id3(old);
 	CHECK_STR(v22.properties.title, "a\xC3\xBF\xC3\xBE");
-	CHECK(v22.pictures.size() == 1 && v22.pictures[0].data == small && v22.pictures[0].mime_type == "image/jpeg" && v22.pictures[0].type == 0);
+	CHECK(v22.pictures.size() == 1 && v22.pictures[0].data == small && v22.pictures[0].mime_type == "image/jpeg" &&
+	      v22.pictures[0].type == 0);
 }
 
 TEST("media tags undo ID3v2.4's frame unsynchronisation, data lengths, groups and compression")
@@ -602,7 +633,8 @@ TEST("media tags undo ID3v2.4's frame unsynchronisation, data lengths, groups an
 
 	if (out.pictures.size() == 3)
 	{
-		CHECK(out.pictures[0].data == cover && out.pictures[0].location.empty() && out.pictures[0].mime_type == "image/png");
+		CHECK(out.pictures[0].data == cover && out.pictures[0].location.empty() &&
+		      out.pictures[0].mime_type == "image/png");
 		CHECK(out.pictures[1].data == cover && out.pictures[1].location.empty());
 		CHECK(out.pictures[2].data.empty() && out.pictures[2].description == "Plain" && out.pictures[2].type == 4);
 		CHECK_EQ(out.pictures[2].location.offset, std::uint64_t{find_bytes(file, located)});
@@ -617,10 +649,12 @@ TEST("media tags undo ID3v2.4's frame unsynchronisation, data lengths, groups an
 	const auto old_title = text("Old compressed");
 	const auto both = text("Both");
 	const std::vector<bytes> old_frames = {
-		frame(3, "TIT2", join({builder().be32(static_cast<std::uint32_t>(old_title.size())).b, zlib_stored(old_title)}), 0x0080),
+		frame(3, "TIT2", join({builder().be32(static_cast<std::uint32_t>(old_title.size())).b, zlib_stored(old_title)}),
+	          0x0080),
 		frame(3, "TPE1", join({bytes{9}, text("Grouped")}), 0x0020),
 		frame(3, "TALB", join({bytes{1}, bytes(10, 0x33)}), 0x0040),
-		frame(3, "TCOM", join({builder().be32(static_cast<std::uint32_t>(both.size())).b, bytes{9}, zlib_stored(both)}), 0x00A0),
+		frame(3, "TCOM", join({builder().be32(static_cast<std::uint32_t>(both.size())).b, bytes{9}, zlib_stored(both)}),
+	          0x00A0),
 		// Damaged compressed data is described, not read.
 		frame(3, "TPE2", join({builder().be32(10).b, bytes{0x78, 0x01, 0x05}}), 0x0080),
 	};
@@ -651,7 +685,8 @@ TEST("media tags read the ID3v2.4 tags iTunes wrote with plain sizes")
 	CHECK(out.properties.comments.size() == 1 && out.properties.comments[0].text.size() == 290);
 
 	// A standard tag damaged partway is not taken for one: it keeps what came before the damage.
-	const auto damaged = join({frame(4, "TIT2", text("Kept")), frame(4, "COMM", builder().u8(0).raw("eng").u8(0).raw(std::string(290, 'n')).b),
+	const auto damaged = join({frame(4, "TIT2", text("Kept")),
+	                           frame(4, "COMM", builder().u8(0).raw("eng").u8(0).raw(std::string(290, 'n')).b),
 	                           to_bytes("not a frame at all")});
 	const auto kept = read_id3(id3_tag(4, {damaged}, 30));
 	CHECK_STR(keys_of(kept), "TIT2 COMM");
@@ -706,7 +741,8 @@ TEST("media tags find no ID3v2 tag where none can be read")
 	// Nor are a tag's frames after an extended header whose size is damaged.
 	for (const auto length : {0u, 1000u})
 	{
-		const auto extended = id3_tag(3, {frame(3, "TIT2", text("Title"))}, 0, 0x40, builder().be32(length).be16(0).be32(0).b);
+		const auto extended = id3_tag(3, {frame(3, "TIT2", text("Title"))}, 0, 0x40,
+		                              builder().be32(length).be16(0).be32(0).b);
 		CHECK(read_id3(extended, &size).tags.empty());
 		CHECK_EQ(size, std::uint64_t{extended.size()});
 	}
@@ -740,9 +776,11 @@ TEST("media tags keep what an ID3v2 tag held before it was cut short or damaged"
 		{
 			const bytes cut(tag.begin(), tag.begin() + static_cast<std::ptrdiff_t>(n));
 			const auto out = read_id3(cut);
-			const auto whole = static_cast<std::size_t>(std::ranges::count_if(ends, [n](const std::size_t e) { return e <= n; }));
+			const auto whole = static_cast<std::size_t>(
+				std::ranges::count_if(ends, [n](const std::size_t e) { return e <= n; }));
 			CHECK_EQ(out.tags.size(), whole);
-			CHECK(std::ranges::all_of(out.pictures, [n](const libfiles::media_picture& p) { return p.location.offset + p.location.size <= n; }));
+			CHECK(std::ranges::all_of(out.pictures, [n](const libfiles::media_picture& p)
+			{ return p.location.offset + p.location.size <= n; }));
 		}
 
 		// A frame whose size claims more than the tag holds ends the frames before it.
@@ -762,16 +800,19 @@ TEST("media tags keep what an ID3v2 tag held before it was cut short or damaged"
 	}
 
 	// Cut short, an unsynchronised tag keeps the frames before the cut too.
-	const auto unsynchronised = unsynchronised_tag(3, {frame(3, "TIT2", text("Title")), frame(3, "APIC", picture_body(3, "image/jpeg", 3, "", cover)),
+	const auto unsynchronised = unsynchronised_tag(3, {frame(3, "TIT2", text("Title")),
+	                                                   frame(3, "APIC", picture_body(3, "image/jpeg", 3, "", cover)),
 	                                                   frame(3, "TALB", text("Album"))});
 	std::size_t previous = 0;
 
 	for (std::size_t n = 0; n <= unsynchronised.size(); ++n)
 	{
-		const auto out = read_id3(bytes(unsynchronised.begin(), unsynchronised.begin() + static_cast<std::ptrdiff_t>(n)));
+		const auto out = read_id3(
+			bytes(unsynchronised.begin(), unsynchronised.begin() + static_cast<std::ptrdiff_t>(n)));
 		CHECK(out.tags.size() >= previous);
 		previous = out.tags.size();
-		CHECK(std::ranges::all_of(out.pictures, [&cover](const libfiles::media_picture& p) { return p.data == cover; }));
+		CHECK(
+			std::ranges::all_of(out.pictures, [&cover](const libfiles::media_picture& p) { return p.data == cover; }));
 	}
 
 	CHECK_EQ(previous, std::size_t{3});
@@ -783,9 +824,7 @@ TEST("media tags keep what an ID3v2 tag held before its file failed to read")
 	class failing final : public libfiles::stream
 	{
 	public:
-		failing(const bytes& b, const std::uint64_t limit) : _b(b), _limit(limit)
-		{
-		}
+		failing(const bytes& b, const std::uint64_t limit) : _b(b), _limit(limit) {}
 
 		std::uint64_t size() override { return _b.size(); }
 
@@ -811,7 +850,8 @@ TEST("media tags keep what an ID3v2 tag held before its file failed to read")
 
 	for (const auto unsynchronised : {false, true})
 	{
-		const auto file = join({unsynchronised ? unsynchronised_tag(3, frames) : id3_tag(3, frames, 20), bytes(100, 0xEE)});
+		const auto file = join(
+			{unsynchronised ? unsynchronised_tag(3, frames) : id3_tag(3, frames, 20), bytes(100, 0xEE)});
 		const auto all = keys_of(read_id3(file));
 		CHECK_STR(all, "TIT2 APIC TALB TPE1");
 
@@ -902,7 +942,9 @@ TEST("media tags read APEv2 and APEv1 tags from their footers, locating cover ar
 	media_scan_result out;
 	CHECK_EQ(libfiles::detail::read_ape_tag(r, file.size() - 128, out), std::uint64_t{tag.size()});
 
-	CHECK_STR(keys_of(out), "Title Artist Album Artist Year Track DISC genre Comment Rating Cover Art (Front) Cover Art (Back) Data Related");
+	CHECK_STR(keys_of(out),
+	          "Title Artist Album Artist Year Track DISC genre Comment Rating Cover Art (Front) Cover Art (Back) "
+	          "Data Related");
 	CHECK_STR(value_of(out, "Artist"), "One; Two");
 	CHECK_STR(value_of(out, "Cover Art (Front)"), "image/jpeg, front cover, 500 bytes");
 	CHECK_STR(value_of(out, "Data"), "10 bytes");
@@ -925,7 +967,8 @@ TEST("media tags read APEv2 and APEv1 tags from their footers, locating cover ar
 	{
 		CHECK_EQ(out.pictures[0].location.offset, std::uint64_t{find_bytes(file, front)});
 		CHECK_EQ(out.pictures[0].location.size, std::uint64_t{500});
-		CHECK(out.pictures[0].mime_type == "image/jpeg" && out.pictures[0].type == 3 && out.pictures[0].description == "cover.jpg");
+		CHECK(out.pictures[0].mime_type == "image/jpeg" && out.pictures[0].type == 3 &&
+		      out.pictures[0].description == "cover.jpg");
 		CHECK_EQ(out.pictures[1].location.offset, std::uint64_t{find_bytes(file, back)});
 		CHECK(out.pictures[1].mime_type.empty() && out.pictures[1].type == 4);
 	}
@@ -977,7 +1020,8 @@ TEST("media tags keep what an APE tag held before its damage")
 		const bytes cut(tag.begin(), tag.begin() + static_cast<std::ptrdiff_t>(n));
 		libfiles::reader r(cut);
 		media_scan_result out;
-		CHECK_EQ(libfiles::detail::read_ape_tag(r, n, out), n == tag.size() ? std::uint64_t{tag.size()} : std::uint64_t{0});
+		CHECK_EQ(libfiles::detail::read_ape_tag(r, n, out),
+		         n == tag.size() ? std::uint64_t{tag.size()} : std::uint64_t{0});
 	}
 
 	// A footer whose size is wrong reads no further than its bytes allow.
@@ -987,7 +1031,8 @@ TEST("media tags keep what an APE tag held before its damage")
 	{
 		auto damaged = tag;
 		const auto size = static_cast<std::uint32_t>(static_cast<int>(tag.size() - 32) + d);
-		for (auto i = 0; i < 4; ++i) damaged[size_at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(size >> (8 * i));
+		for (auto i = 0; i < 4; ++i)
+			damaged[size_at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(size >> (8 * i));
 		libfiles::reader r(damaged);
 		media_scan_result out;
 		libfiles::detail::read_ape_tag(r, damaged.size(), out);
@@ -1028,32 +1073,35 @@ TEST("media tags read Vorbis comments, their pictures and their vendor")
 {
 	const auto front = image(400);
 	const auto legacy = image(120, 9);
-	const auto block = vorbis_block("Xiph.Org libVorbis I 20200704", {
-		"TITLE=Song",
-		"ARTIST=One",
-		"artist=Two",
-		"ALBUMARTIST=Band",
-		"DATE=2004-05-03",
-		"TRACKNUMBER=3",
-		"TRACKTOTAL=12",
-		"DISCNUMBER=1/2",
-		"COMMENT=First",
-		"DESCRIPTION=Second",
-		"ORGANIZATION=Label",
-		"RATING=80",
-		"ORIGINALYEAR=1969",
-		"GENRE=",
-		"NOEQUALS",
-		"=no name",
-		"METADATA_BLOCK_PICTURE=" + base64(flac_picture(3, "image/jpeg", "Front", front)),
-		"COVERART=" + base64(legacy),
-		"COVERARTMIME=image/png",
-		"METADATA_BLOCK_PICTURE=not base64!",
-	});
+	const auto block = vorbis_block("Xiph.Org libVorbis I 20200704",
+	                                {
+										"TITLE=Song",
+										"ARTIST=One",
+										"artist=Two",
+										"ALBUMARTIST=Band",
+										"DATE=2004-05-03",
+										"TRACKNUMBER=3",
+										"TRACKTOTAL=12",
+										"DISCNUMBER=1/2",
+										"COMMENT=First",
+										"DESCRIPTION=Second",
+										"ORGANIZATION=Label",
+										"RATING=80",
+										"ORIGINALYEAR=1969",
+										"GENRE=",
+										"NOEQUALS",
+										"=no name",
+										"METADATA_BLOCK_PICTURE=" +
+											base64(flac_picture(3, "image/jpeg", "Front", front)),
+										"COVERART=" + base64(legacy),
+										"COVERARTMIME=image/png",
+										"METADATA_BLOCK_PICTURE=not base64!",
+									});
 
 	media_scan_result out;
 	CHECK(libfiles::detail::read_vorbis_comments(block, out));
-	CHECK_STR(keys_of(out), "vendor TITLE ARTIST ALBUMARTIST DATE TRACKNUMBER TRACKTOTAL DISCNUMBER COMMENT DESCRIPTION ORGANIZATION "
+	CHECK_STR(keys_of(out),
+	          "vendor TITLE ARTIST ALBUMARTIST DATE TRACKNUMBER TRACKTOTAL DISCNUMBER COMMENT DESCRIPTION ORGANIZATION "
 	          "RATING ORIGINALYEAR METADATA_BLOCK_PICTURE COVERART COVERARTMIME METADATA_BLOCK_PICTURE");
 	CHECK_STR(value_of(out, "vendor"), "Xiph.Org libVorbis I 20200704");
 	CHECK_STR(value_of(out, "ARTIST"), "One; Two");
@@ -1078,7 +1126,8 @@ TEST("media tags read Vorbis comments, their pictures and their vendor")
 	if (out.pictures.size() == 2)
 	{
 		CHECK(out.pictures[0].data == front && out.pictures[0].location.empty());
-		CHECK(out.pictures[0].mime_type == "image/jpeg" && out.pictures[0].type == 3 && out.pictures[0].description == "Front");
+		CHECK(out.pictures[0].mime_type == "image/jpeg" && out.pictures[0].type == 3 &&
+		      out.pictures[0].description == "Front");
 		CHECK(out.pictures[1].data == legacy && out.pictures[1].mime_type == "image/png");
 	}
 
@@ -1097,37 +1146,40 @@ TEST("media tags join a Vorbis field name that repeats into one tag, but not its
 {
 	const auto front = image(64);
 	const auto back = image(48, 5);
-	const auto block = vorbis_block("vendor", {
-		"ARTIST=A",
-		"TITLE=Song",
-		"artist=B",
-		"Artist=",
-		"ARTIST=C",
-		"GENRE=",
-		"KEYWORDS=one,two",
-		"COMMENT=First",
-		"keywords=Two; three",
-		"COMMENT=Second",
-		"DATE=2004-05-03",
-		"DATE=2011",
-		"TRACKNUMBER=3",
-		"TRACKNUMBER=4/9",
-		"RATING=4",
-		"RATING=1",
-		"METADATA_BLOCK_PICTURE=" + base64(flac_picture(3, "image/jpeg", "", front)),
-		"COVERART=" + base64(front),
-		"COVERARTMIME=image/jpeg",
-		"genre=Rock",
-		"METADATA_BLOCK_PICTURE=" + base64(flac_picture(4, "image/png", "", back)),
-		"COVERART=" + base64(back),
-		"COVERARTMIME=image/png",
-	});
+	const auto block = vorbis_block("vendor",
+	                                {
+										"ARTIST=A",
+										"TITLE=Song",
+										"artist=B",
+										"Artist=",
+										"ARTIST=C",
+										"GENRE=",
+										"KEYWORDS=one,two",
+										"COMMENT=First",
+										"keywords=Two; three",
+										"COMMENT=Second",
+										"DATE=2004-05-03",
+										"DATE=2011",
+										"TRACKNUMBER=3",
+										"TRACKNUMBER=4/9",
+										"RATING=4",
+										"RATING=1",
+										"METADATA_BLOCK_PICTURE=" + base64(flac_picture(3, "image/jpeg", "", front)),
+										"COVERART=" + base64(front),
+										"COVERARTMIME=image/jpeg",
+										"genre=Rock",
+										"METADATA_BLOCK_PICTURE=" + base64(flac_picture(4, "image/png", "", back)),
+										"COVERART=" + base64(back),
+										"COVERARTMIME=image/png",
+									});
 
 	media_scan_result out;
 	CHECK(libfiles::detail::read_vorbis_comments(block, out));
 
 	// One tag a name, where it first appears, its values in file order; each picture its own.
-	CHECK_STR(keys_of(out), "vendor ARTIST TITLE GENRE KEYWORDS COMMENT DATE TRACKNUMBER RATING METADATA_BLOCK_PICTURE COVERART COVERARTMIME "
+	CHECK_STR(keys_of(out),
+	          "vendor ARTIST TITLE GENRE KEYWORDS COMMENT DATE TRACKNUMBER RATING METADATA_BLOCK_PICTURE COVERART "
+	          "COVERARTMIME "
 	          "METADATA_BLOCK_PICTURE COVERART");
 	CHECK_STR(value_of(out, "ARTIST"), "A; B; C");
 	CHECK_STR(value_of(out, "GENRE"), "Rock");
@@ -1164,14 +1216,19 @@ TEST("media tags join a Vorbis field name that repeats into one tag, but not its
 
 	// Other containers' values joined from several take the same rule.
 	const auto several = apply_all(tag_family::id3v2, {{"TDRC", "2004; 2005"}, {"TRCK", "3/12; 4"}, {"TPOS", " ; 2"}});
-	CHECK(same_date(several.created, 2004, 0, 0) && several.track == 3 && several.track_count == 12 && several.disc == 0);
+	CHECK(same_date(several.created, 2004, 0, 0) && several.track == 3 && several.track_count == 12 &&
+	      several.disc == 0);
 	CHECK(apply_all(tag_family::ape, {{"Rating", "5; 1"}}).rating == 5);
+	// clang-format off
 	CHECK(apply_all(tag_family::quicktime, {{"\xC2\xA9" "xyz", "+10.0+020.0/; +11.0+021.0/"}}).location.has_value());
+	// clang-format on
 }
 
 TEST("media tags keep what a Vorbis comment block held before its damage")
 {
-	const std::vector<std::string> fields = {"TITLE=Song", "ARTIST=Artist", "METADATA_BLOCK_PICTURE=" + base64(flac_picture(3, "image/png", "", image(50))),
+	const std::vector<std::string> fields = {"TITLE=Song", "ARTIST=Artist",
+	                                         "METADATA_BLOCK_PICTURE=" +
+	                                             base64(flac_picture(3, "image/png", "", image(50))),
 	                                         "ALBUM=Album"};
 	const auto block = vorbis_block("vendor", fields);
 	std::vector<std::size_t> ends;
@@ -1188,7 +1245,8 @@ TEST("media tags keep what a Vorbis comment block held before its damage")
 		media_scan_result out;
 		const auto read = libfiles::detail::read_vorbis_comments(std::span(block).first(n), out);
 		CHECK_EQ(read, n >= 14);
-		const auto whole = static_cast<std::size_t>(std::ranges::count_if(ends, [n](const std::size_t e) { return e <= n; }));
+		const auto whole = static_cast<std::size_t>(
+			std::ranges::count_if(ends, [n](const std::size_t e) { return e <= n; }));
 		CHECK_EQ(out.tags.size(), read ? 1 + whole : 0);
 	}
 
@@ -1233,7 +1291,8 @@ TEST("media tags read FLAC pictures, located in the file or copied")
 	}
 
 	libfiles::media_picture refused;
-	CHECK(!libfiles::detail::read_flac_picture(flac_picture(3, "-->", "", to_bytes("http://example.com/a.jpg")), 0, refused));
+	CHECK(!libfiles::detail::read_flac_picture(flac_picture(3, "-->", "", to_bytes("http://example.com/a.jpg")), 0,
+	                                           refused));
 	CHECK(!libfiles::detail::read_flac_picture(flac_picture(3, "image/png", "", {}), 0, refused));
 
 	auto long_mime = block;
@@ -1247,6 +1306,7 @@ TEST("media tags read FLAC pictures, located in the file or copied")
 
 TEST("media tags map iTunes and QuickTime names")
 {
+	// clang-format off
 	const auto itunes = apply_all(tag_family::itunes, {
 		{"\xC2\xA9" "nam", "Title"}, {"\xC2\xA9" "ART", "Artist"}, {"aART", "Album Artist"}, {"\xC2\xA9" "alb", "Album"},
 		{"\xC2\xA9" "cmt", "Comment"}, {"\xC2\xA9" "day", "2007-11-09T08:00:00Z"}, {"\xC2\xA9" "gen", "Pop"}, {"trkn", "7/12"},
@@ -1254,6 +1314,7 @@ TEST("media tags map iTunes and QuickTime names")
 		{"desc", "Description"}, {"ldes", "Synopsis"}, {"tvsh", "Show"}, {"tvsn", "2"}, {"tves", "5"},
 		{"keyw", "gadget, test; Gadget"}, {"\xC2\xA9" "pub", "Publisher"}, {"rtng", "1"},
 	});
+	// clang-format on
 
 	CHECK_STR(itunes.title, "Title");
 	CHECK_STR(itunes.artist, "Artist");
@@ -1281,20 +1342,25 @@ TEST("media tags map iTunes and QuickTime names")
 	CHECK_STR(apply_all(tag_family::itunes, {{"gnre", "18"}}).genre, "Rock");
 	CHECK(apply_all(tag_family::itunes, {{"gnre", "0"}}).genre.empty());
 	CHECK(apply_all(tag_family::itunes, {{"gnre", "500"}}).genre.empty());
+	// clang-format off
 	CHECK_STR(apply_all(tag_family::itunes, {{"\xC2\xA9" "enc", "First"}, {"\xC2\xA9" "too", "Second"}}).encoder, "Second");
 
 	// Atom names are exact; FFmpeg's own names are not.
 	CHECK(apply_all(tag_family::itunes, {{"\xC2\xA9" "NAM", "x"}, {"AART", "x"}}).title.empty());
+	// clang-format on
 	CHECK_STR(apply_all(tag_family::itunes, {{"Title", "Generic"}}).title, "Generic");
 
+	// clang-format off
 	const auto quicktime = apply_all(tag_family::quicktime, {
 		{"\xC2\xA9" "xyz", "+51.5142-000.0985+012.000/"}, {"\xC2\xA9" "mak", "Apple"}, {"\xC2\xA9" "mod", "iPhone 4"},
 		{"titl", "3GPP title"}, {"auth", "Author"}, {"albm", "3GPP album"}, {"dscp", "3GPP description"}, {"yrrc", "2005"},
 		{"perf", "Performer"}, {"gnre", "Speech"}, {"\xC2\xA9" "swr", "QuickTime 7"}, {"\xC2\xA9" "key", "apple"},
 		{"com.apple.quicktime.displayname", "Not the title"},
 	});
+	// clang-format on
 
-	CHECK(quicktime.location && near(quicktime.location->latitude, 51.5142) && near(quicktime.location->longitude, -0.0985));
+	CHECK(quicktime.location && near(quicktime.location->latitude, 51.5142) &&
+	      near(quicktime.location->longitude, -0.0985));
 	CHECK(quicktime.altitude && near(*quicktime.altitude, 12.0));
 	CHECK_STR(quicktime.camera_make, "Apple");
 	CHECK_STR(quicktime.camera_model, "iPhone 4");
@@ -1308,15 +1374,24 @@ TEST("media tags map iTunes and QuickTime names")
 	CHECK_STR(quicktime.encoder, "QuickTime 7");
 	CHECK_STR(keywords_of(quicktime), "apple");
 
-	const auto keys = apply_all(tag_family::quicktime, {
-		{"com.apple.quicktime.make", "Apple"}, {"com.apple.quicktime.model", "iPhone 12"}, {"com.apple.quicktime.software", "16.1"},
-		{"com.apple.quicktime.creationdate", "2011-03-13T15:13:49+0100"},
-		{"com.apple.quicktime.location.ISO6709", "+51.5142-000.0985/"}, {"com.apple.quicktime.displayname", "Display name"},
-		{"com.apple.quicktime.artist", "Artist"}, {"com.apple.quicktime.author", "Author"}, {"com.apple.quicktime.album", "Album"},
-		{"com.apple.quicktime.comment", "Comment"}, {"com.apple.quicktime.description", "Description"},
-		{"com.apple.quicktime.keywords", "one,two"}, {"com.apple.quicktime.copyright", "Copyright"},
-		{"com.apple.quicktime.genre", "Genre"}, {"com.apple.quicktime.year", "2010"},
-	});
+	const auto keys = apply_all(tag_family::quicktime,
+	                            {
+									{"com.apple.quicktime.make", "Apple"},
+									{"com.apple.quicktime.model", "iPhone 12"},
+									{"com.apple.quicktime.software", "16.1"},
+									{"com.apple.quicktime.creationdate", "2011-03-13T15:13:49+0100"},
+									{"com.apple.quicktime.location.ISO6709", "+51.5142-000.0985/"},
+									{"com.apple.quicktime.displayname", "Display name"},
+									{"com.apple.quicktime.artist", "Artist"},
+									{"com.apple.quicktime.author", "Author"},
+									{"com.apple.quicktime.album", "Album"},
+									{"com.apple.quicktime.comment", "Comment"},
+									{"com.apple.quicktime.description", "Description"},
+									{"com.apple.quicktime.keywords", "one,two"},
+									{"com.apple.quicktime.copyright", "Copyright"},
+									{"com.apple.quicktime.genre", "Genre"},
+									{"com.apple.quicktime.year", "2010"},
+								});
 
 	CHECK_STR(keys.camera_make, "Apple");
 	CHECK_STR(keys.camera_model, "iPhone 12");
@@ -1335,12 +1410,18 @@ TEST("media tags map iTunes and QuickTime names")
 	CHECK_EQ(keys.year, 2010);
 
 	// The display name stands in only for a missing title.
-	CHECK_STR(apply_all(tag_family::quicktime, {{"com.apple.quicktime.title", "Title"}, {"com.apple.quicktime.displayname", "Name"}}).title, "Title");
+	CHECK_STR(apply_all(tag_family::quicktime,
+	                    {{"com.apple.quicktime.title", "Title"}, {"com.apple.quicktime.displayname", "Name"}})
+	              .title,
+	          "Title");
 }
 
 TEST("media tags map ID3v2 frames, resolving genres")
 {
-	const auto genre = [](const std::string_view value) { return apply_all(tag_family::id3v2, {{"TCON", value}}).genre; };
+	const auto genre = [](const std::string_view value)
+	{
+		return apply_all(tag_family::id3v2, {{"TCON", value}}).genre;
+	};
 	CHECK_STR(genre("(17)"), "Rock");
 	CHECK_STR(genre("17"), "Rock");
 	CHECK_STR(genre("(17)Rock"), "Rock");
@@ -1356,12 +1437,14 @@ TEST("media tags map ID3v2 frames, resolving genres")
 	CHECK_STR(genre("(191)"), "Psybient");
 	CHECK_STR(apply_all(tag_family::id3v2, {{"TCO", "(0)"}}).genre, "Blues");
 
+	// clang-format off
 	const auto p = apply_all(tag_family::id3v2, {
 		{"TIT2", "Title"}, {"TPE1", "Artist"}, {"TPE2", "Album Artist"}, {"TALB", "Album"}, {"TCOM", "Composer"},
 		{"TPE3", "Performer"}, {"TPUB", "Publisher"}, {"TCOP", "Copyright"}, {"TENC", "Encoded by"}, {"TSSE", "LAME"},
 		{"TRCK", "5"}, {"TPOS", "2/3"}, {"TDEN", "2012-01-01"}, {"TDRC", "2006-06-20"}, {"TDRL", "2007"}, {"TDOR", "1969"},
 		{"TXXX:Rip date", "2010-01-01"}, {"TXXX:originalyear", "1970"}, {"COMM:iTunNORM", " 0000"}, {"tit2", "lower"},
 	});
+	// clang-format on
 
 	CHECK_STR(p.title, "Title");
 	CHECK_STR(p.artist, "Artist");
@@ -1394,7 +1477,8 @@ TEST("media tags map ID3v2 frames, resolving genres")
 
 	if (comments.comments.size() == 3)
 	{
-		CHECK(comments.comments[0].language == "eng" && comments.comments[1].language.empty() && comments.comments[2].language.empty());
+		CHECK(comments.comments[0].language == "eng" && comments.comments[1].language.empty() &&
+		      comments.comments[2].language.empty());
 	}
 
 	// A POPM frame's rating is chosen by read_id3v2, among them all.
@@ -1404,10 +1488,20 @@ TEST("media tags map ID3v2 frames, resolving genres")
 TEST("media tags map RIFF INFO, AIFF and FLV names")
 {
 	const auto riff = apply_all(tag_family::riff_info, {
-		{"INAM", "Title"}, {"IART", "Artist"}, {"IPRD", "Album"}, {"ICMT", "Comment"}, {"ICRD", "2011-03-13"}, {"IGNR", "Genre"},
-		{"ICOP", "Copyright"}, {"ISFT", "Lavf"}, {"IENG", "Engineer"}, {"ISBJ", "Subject"}, {"IKEY", "one; two"}, {"ITRK", "4"},
-		{"inam", "lower"},
-	});
+														   {"INAM", "Title"},
+														   {"IART", "Artist"},
+														   {"IPRD", "Album"},
+														   {"ICMT", "Comment"},
+														   {"ICRD", "2011-03-13"},
+														   {"IGNR", "Genre"},
+														   {"ICOP", "Copyright"},
+														   {"ISFT", "Lavf"},
+														   {"IENG", "Engineer"},
+														   {"ISBJ", "Subject"},
+														   {"IKEY", "one; two"},
+														   {"ITRK", "4"},
+														   {"inam", "lower"},
+													   });
 
 	CHECK_STR(riff.title, "Title");
 	CHECK_STR(riff.artist, "Artist");
@@ -1427,17 +1521,24 @@ TEST("media tags map RIFF INFO, AIFF and FLV names")
 	CHECK(extra.title == "Title" && extra.comments.size() == 1 && extra.track == 9);
 	CHECK(same_date(apply_all(tag_family::riff_info, {{"IDIT", "Sun Mar 13 15:13:49 2011\n"}}).created, 2011, 3, 13));
 
-	const auto aiff = apply_all(tag_family::aiff, {{"NAME", "Title"}, {"AUTH", "Author"}, {"(c) ", "Copyright"}, {"ANNO", "Note"}});
+	const auto aiff = apply_all(tag_family::aiff,
+	                            {{"NAME", "Title"}, {"AUTH", "Author"}, {"(c) ", "Copyright"}, {"ANNO", "Note"}});
 	CHECK_STR(aiff.title, "Title");
 	CHECK_STR(aiff.artist, "Author");
 	CHECK_STR(aiff.copyright, "Copyright");
 	CHECK(aiff.comments.size() == 1 && aiff.comments[0].text == "Note");
 
 	const auto flv = apply_all(tag_family::flv, {
-		{"Title", "Title"}, {"author", "Author"}, {"comment", "Comment"}, {"description", "Description"}, {"keywords", "a,b"},
-		{"creationdate", "Sun Mar 13 15:13:49 2011\n"}, {"encoder", "Lavf"}, {"metadatacreator", "Yet Another Metadata Injector"},
-		{"album", "Album"},
-	});
+													{"Title", "Title"},
+													{"author", "Author"},
+													{"comment", "Comment"},
+													{"description", "Description"},
+													{"keywords", "a,b"},
+													{"creationdate", "Sun Mar 13 15:13:49 2011\n"},
+													{"encoder", "Lavf"},
+													{"metadatacreator", "Yet Another Metadata Injector"},
+													{"album", "Album"},
+												});
 
 	CHECK_STR(flv.title, "Title");
 	CHECK_STR(flv.artist, "Author");
@@ -1452,13 +1553,29 @@ TEST("media tags map RIFF INFO, AIFF and FLV names")
 TEST("media tags map ASF names")
 {
 	const auto asf = apply_all(tag_family::asf, {
-		{"Title", "Title"}, {"Author", "Author"}, {"Copyright", "Copyright"}, {"Description", "Description"}, {"Rating", "4"},
-		{"WM/AlbumTitle", "Album"}, {"wm/albumartist", "Album Artist"}, {"WM/Composer", "Composer"}, {"WM/Genre", "Genre"},
-		{"WM/Year", "2011"}, {"WM/Track", "4"}, {"WM/PartOfSet", "1/2"}, {"WM/Publisher", "Publisher"},
-		{"WM/EncodedBy", "Encoded by"}, {"WM/ToolName", "Tool"}, {"WM/Conductor", "Conductor"},
-		{"WM/OriginalReleaseYear", "1969"}, {"WM/Category", "New York, NY; London"}, {"WM/Category", "london"},
-		{"WM/SharedUserRating", "75"}, {"WM/Lyrics", "La la"}, {"WM/Mood", "Happy"},
-	});
+													{"Title", "Title"},
+													{"Author", "Author"},
+													{"Copyright", "Copyright"},
+													{"Description", "Description"},
+													{"Rating", "4"},
+													{"WM/AlbumTitle", "Album"},
+													{"wm/albumartist", "Album Artist"},
+													{"WM/Composer", "Composer"},
+													{"WM/Genre", "Genre"},
+													{"WM/Year", "2011"},
+													{"WM/Track", "4"},
+													{"WM/PartOfSet", "1/2"},
+													{"WM/Publisher", "Publisher"},
+													{"WM/EncodedBy", "Encoded by"},
+													{"WM/ToolName", "Tool"},
+													{"WM/Conductor", "Conductor"},
+													{"WM/OriginalReleaseYear", "1969"},
+													{"WM/Category", "New York, NY; London"},
+													{"WM/Category", "london"},
+													{"WM/SharedUserRating", "75"},
+													{"WM/Lyrics", "La la"},
+													{"WM/Mood", "Happy"},
+												});
 
 	CHECK_STR(asf.title, "Title");
 	CHECK_STR(asf.artist, "Author");
@@ -1493,24 +1610,43 @@ TEST("media tags map ASF names")
 TEST("media tags map Matroska, Vorbis and APE names")
 {
 	// What Diffractor's should_scan_matroska expects of tagged.mkv.
-	const auto mkv = apply_all(tag_family::matroska, {
-		{"ENCODER", "diffractor-test"}, {"TITLE", "Matroska Test Title"}, {"ARTIST", "Matroska Test Artist"}, {"GENRE", "TestGenre"},
-		{"COMMENT", "matroska test comment"}, {"RATING", "4"}, {"KEYWORDS", "alpha,beta"},
-	}, "und");
+	const auto mkv = apply_all(tag_family::matroska,
+	                           {
+								   {"ENCODER", "diffractor-test"},
+								   {"TITLE", "Matroska Test Title"},
+								   {"ARTIST", "Matroska Test Artist"},
+								   {"GENRE", "TestGenre"},
+								   {"COMMENT", "matroska test comment"},
+								   {"RATING", "4"},
+								   {"KEYWORDS", "alpha,beta"},
+							   },
+	                           "und");
 
 	CHECK_STR(mkv.title, "Matroska Test Title");
 	CHECK_STR(mkv.artist, "Matroska Test Artist");
 	CHECK_STR(mkv.genre, "TestGenre");
-	CHECK(mkv.comments.size() == 1 && mkv.comments[0].text == "matroska test comment" && mkv.comments[0].language.empty());
+	CHECK(mkv.comments.size() == 1 && mkv.comments[0].text == "matroska test comment" &&
+	      mkv.comments[0].language.empty());
 	CHECK(mkv.rating == 4);
 	CHECK_STR(keywords_of(mkv), "alpha|beta");
 	CHECK_STR(mkv.encoder, "diffractor-test");
 
 	const auto more = apply_all(tag_family::matroska, {
-		{"lead_performer", "Lead"}, {"SUMMARY", "Summary"}, {"SYNOPSIS", "Synopsis"}, {"LABEL", "Label"}, {"COMPOSER", "Composer"},
-		{"DATE_RELEASED", "2001"}, {"DATE_RECORDED", "1999-05-04"}, {"DATE_RELEASED", "2002"}, {"ORIGINAL_DATE", "1969"},
-		{"PART_NUMBER", "3"}, {"TOTAL_PARTS", "9"}, {"ALBUM", "Album"}, {"ALBUM_ARTIST", "Band"}, {"COPYRIGHT", "Copyright"},
-	});
+														  {"lead_performer", "Lead"},
+														  {"SUMMARY", "Summary"},
+														  {"SYNOPSIS", "Synopsis"},
+														  {"LABEL", "Label"},
+														  {"COMPOSER", "Composer"},
+														  {"DATE_RELEASED", "2001"},
+														  {"DATE_RECORDED", "1999-05-04"},
+														  {"DATE_RELEASED", "2002"},
+														  {"ORIGINAL_DATE", "1969"},
+														  {"PART_NUMBER", "3"},
+														  {"TOTAL_PARTS", "9"},
+														  {"ALBUM", "Album"},
+														  {"ALBUM_ARTIST", "Band"},
+														  {"COPYRIGHT", "Copyright"},
+													  });
 
 	CHECK_STR(more.performer, "Lead");
 	CHECK_STR(more.description, "Summary");
@@ -1525,7 +1661,10 @@ TEST("media tags map Matroska, Vorbis and APE names")
 	CHECK_STR(more.copyright, "Copyright");
 
 	// Stars from 0 to 5, a fraction rounded; above 5, a percent.
-	const auto stars = [](const std::string_view value) { return apply_all(tag_family::matroska, {{"RATING", value}}).rating; };
+	const auto stars = [](const std::string_view value)
+	{
+		return apply_all(tag_family::matroska, {{"RATING", value}}).rating;
+	};
 	CHECK(stars("3.6") == 4);
 	CHECK(stars("80") == 4);
 	CHECK(stars("100") == 5);
@@ -1536,10 +1675,18 @@ TEST("media tags map Matroska, Vorbis and APE names")
 	CHECK(!stars("four"));
 
 	const auto vorbis = apply_all(tag_family::vorbis, {
-		{"Album Artist", "Band"}, {"TOTALTRACKS", "11"}, {"TRACKNUMBER", "4"}, {"TOTALDISCS", "2"}, {"DISCNUMBER", "1"},
-		{"ENCODED-BY", "Encoder"}, {"ORIGINALDATE", "1969-07-01"}, {"YEAR", "1999"}, {"Performer", "Performer"},
-		{"label", "Label"}, {"copyright", "Copyright"},
-	});
+														  {"Album Artist", "Band"},
+														  {"TOTALTRACKS", "11"},
+														  {"TRACKNUMBER", "4"},
+														  {"TOTALDISCS", "2"},
+														  {"DISCNUMBER", "1"},
+														  {"ENCODED-BY", "Encoder"},
+														  {"ORIGINALDATE", "1969-07-01"},
+														  {"YEAR", "1999"},
+														  {"Performer", "Performer"},
+														  {"label", "Label"},
+														  {"copyright", "Copyright"},
+													  });
 
 	CHECK_STR(vorbis.album_artist, "Band");
 	CHECK(vorbis.track == 4 && vorbis.track_count == 11 && vorbis.disc == 1 && vorbis.disc_count == 2);
@@ -1551,9 +1698,13 @@ TEST("media tags map Matroska, Vorbis and APE names")
 	CHECK_STR(vorbis.copyright, "Copyright");
 
 	const auto ape = apply_all(tag_family::ape, {
-		{"TITLE", "Title"}, {"albumartist", "Band"}, {"Conductor", "Conductor"}, {"Publisher", "Publisher"}, {"Year", "1999"},
-		{"encoder", "Generic encoder"},
-	});
+													{"TITLE", "Title"},
+													{"albumartist", "Band"},
+													{"Conductor", "Conductor"},
+													{"Publisher", "Publisher"},
+													{"Year", "1999"},
+													{"encoder", "Generic encoder"},
+												});
 
 	CHECK_STR(ape.title, "Title");
 	CHECK_STR(ape.album_artist, "Band");
@@ -1582,15 +1733,19 @@ TEST("media tags share the common rules: trimmed values, later values, comments 
 	CHECK(out.properties.artist.empty());
 	CHECK_EQ(out.properties.comments.size(), std::size_t{2});
 
-	const auto keywords = apply_all(tag_family::matroska, {{"KEYWORDS", " one ,two;; Three,"}, {"KEYWORDS", "TWO, four"}});
+	const auto keywords = apply_all(tag_family::matroska,
+	                                {{"KEYWORDS", " one ,two;; Three,"}, {"KEYWORDS", "TWO, four"}});
 	CHECK_STR(keywords_of(keywords), "one|two|Three|four");
 
 	// A value that is not one keeps the one before it.
-	const auto kept = apply_all(tag_family::vorbis, {{"DATE", "2004"}, {"DATE", "soon"}, {"TRACKNUMBER", "3"}, {"TRACKNUMBER", "three"}});
+	const auto kept = apply_all(tag_family::vorbis,
+	                            {{"DATE", "2004"}, {"DATE", "soon"}, {"TRACKNUMBER", "3"}, {"TRACKNUMBER", "three"}});
 	CHECK(same_date(kept.created, 2004, 0, 0) && kept.track == 3);
 
 	// A later place replaces an earlier one with its altitude.
+	// clang-format off
 	const auto place = apply_all(tag_family::quicktime, {{"\xC2\xA9" "xyz", "+10.0+020.0+5.0/"}, {"\xC2\xA9" "xyz", "+11.0+021.0/"}});
+	// clang-format on
 	CHECK(place.location && near(place.location->latitude, 11.0) && !place.altitude);
 }
 
@@ -1599,11 +1754,13 @@ TEST("media tags file the fixtures' MP4 and QuickTime tags as Diffractor filed F
 	// StPauls.MOV: udta atoms, some with a language, and the keys of its 'mdta' handler.
 	media_scan_result st_pauls;
 	using libfiles::detail::add_tag;
+	// clang-format off
 	add_tag(st_pauls, tag_family::quicktime, "\xC2\xA9" "mod", "iPhone 3GS", "eng");
 	add_tag(st_pauls, tag_family::quicktime, "\xC2\xA9" "swr", "4.3", "eng");
 	add_tag(st_pauls, tag_family::quicktime, "\xC2\xA9" "day", "2011-03-13T15:13:49+0000", "eng");
 	add_tag(st_pauls, tag_family::quicktime, "\xC2\xA9" "xyz", "+51.5142-000.0985+027.885/", "eng");
 	add_tag(st_pauls, tag_family::quicktime, "\xC2\xA9" "mak", "Apple", "eng");
+	// clang-format on
 	add_tag(st_pauls, tag_family::quicktime, "com.apple.quicktime.make", "Apple");
 	add_tag(st_pauls, tag_family::quicktime, "com.apple.quicktime.creationdate", "2011-03-13T15:13:49+0000");
 	add_tag(st_pauls, tag_family::quicktime, "com.apple.quicktime.location.ISO6709", "+51.5142-000.0985+027.885/");
@@ -1621,12 +1778,14 @@ TEST("media tags file the fixtures' MP4 and QuickTime tags as Diffractor filed F
 	CHECK(p.altitude && near(*p.altitude, 27.885));
 
 	// indy.mp4 and This Year's Love.m4a: iTunes atoms.
+	// clang-format off
 	const auto indy = apply_all(tag_family::itunes, {
 		{"\xC2\xA9" "nam", "Raiders of the Lost Ark"}, {"\xC2\xA9" "ART", "Harrison Ford"},
 		{"\xC2\xA9" "wrt", "Lawrence Kasdan|George Lucas|Philip Kaufman"}, {"\xC2\xA9" "day", "1981-06-12"},
 		{"\xC2\xA9" "too", "Lavf61.3.104"}, {"\xC2\xA9" "cmt", "Re-Encoded"}, {"\xC2\xA9" "gen", "Action &Adventure"},
 		{"desc", "Indiana Jones"}, {"ldes", "When Dr. Indiana Jones"}, {"tves", "1"}, {"tvsn", "1"}, {"stik", "9"}, {"hdvd", "49"},
 	});
+	// clang-format on
 
 	CHECK_STR(indy.title, "Raiders of the Lost Ark");
 	CHECK_STR(indy.artist, "Harrison Ford");
@@ -1642,12 +1801,15 @@ TEST("media tags file the fixtures' MP4 and QuickTime tags as Diffractor filed F
 	CHECK(indy.media_kind == 9);
 	CHECK(!apply_all(tag_family::itunes, {{"tvsh", "Show"}}).media_kind);
 
+	// clang-format off
 	const auto love = apply_all(tag_family::itunes, {
 		{"\xC2\xA9" "nam", "This Year's Love"}, {"aART", "David Gray"}, {"\xC2\xA9" "day", "2007-11-09T08:00:00Z"},
 		{"cprt", "\xE2\x84\x97 2007 Iht Records Ltd"}, {"trkn", "7"}, {"pgap", "0"},
 	});
+	// clang-format on
 
-	CHECK(same_date(love.created, 2007, 11, 9) && same_time(love.created, 8, 0, 0) && love.created.zone == media_date::time_zone::utc);
+	CHECK(same_date(love.created, 2007, 11, 9) && same_time(love.created, 8, 0, 0) &&
+	      love.created.zone == media_date::time_zone::utc);
 	CHECK_STR(love.copyright, "\xE2\x84\x97 2007 Iht Records Ltd");
 	CHECK(love.track == 7 && love.track_count == 0);
 }
@@ -1669,7 +1831,8 @@ TEST("media tags bound what a crafted tag makes them hold or compare")
 	CHECK(genre.starts_with("Blues; Classic Rock; ") && genre.ends_with("; Psybient"));
 
 	media_properties comments;
-	for (auto i = 0; i < 5000; ++i) libfiles::detail::apply_tag(comments, tag_family::vorbis, "COMMENT", std::to_string(i));
+	for (auto i = 0; i < 5000; ++i)
+		libfiles::detail::apply_tag(comments, tag_family::vorbis, "COMMENT", std::to_string(i));
 	CHECK_EQ(comments.comments.size(), std::size_t{4096});
 }
 
@@ -1683,7 +1846,6 @@ TEST("media tags read dates in the forms tags write them")
 		const auto date = parse_media_date(text);
 		return same_date(date, y, m, d) && !date.has_time;
 	};
-
 
 	CHECK(day("2011", 2011, 0, 0));
 	CHECK(day("2011-03", 2011, 3, 0));
@@ -1722,6 +1884,7 @@ TEST("media tags read dates in the forms tags write them")
 	CHECK(moment("Sunday March  3 05:13:49 2011", 2011, 3, 3, 5, 13, 49));
 	CHECK(moment("Sun Mar 13 15:13:49 GMT 2011", 2011, 3, 13, 15, 13, 49, zone::utc));
 
+	// clang-format off
 	for (const auto invalid : {"", "   ", "0000", "99", "20111", "2011-", "2011-13-01", "2011-00-05", "2011-04-31", "2001-02-29",
 	                           "1900-02-29", "2011-03-13T", "2011-03-13T24:00", "2011-03-13T15:60", "2011-03-13T15:13:60",
 	                           "2011-03-13T15:13:49+15:00", "2011-03-13T15:13:49+01:60", "2011-03-13T15:13:49+1", "2011-03-13Z",
@@ -1729,6 +1892,7 @@ TEST("media tags read dates in the forms tags write them")
 	                           "Sun Foo 13 15:13:49 2011", "Sun Mar 32 15:13:49 2011", "Sun Mar 13 25:13:49 2011", "Sun Mar 13 15:13:49",
 	                           "Sun Mar 13 15:13:49 PST 2011", "Sun Mar 13 15:13 49 2011", "Sun Mar 13 15:13:49 11", "Feb 29 00:00:00 2001",
 	                           "soon"})
+	// clang-format on
 	{
 		const auto date = parse_media_date(invalid);
 		if (date.valid()) test::fail(__FILE__, __LINE__, std::string("read as a date: ") + invalid);
@@ -1765,13 +1929,14 @@ TEST("media tags read ISO 6709 places")
 	CHECK(place("+51.5142-000.0985+027.885/London", 51.5142, -0.0985));
 	CHECK(parse_iso6709("+51.5142-000.0985+027.885/London", &altitude) && near(altitude, 27.885));
 
-	for (const auto invalid : {"", "+00.0000+000.0000/", "+00-000/", "+91.0000+000.0000/", "-90.5+000.0/", "+45.0000+181.0000/",
-	                           "+5160.0+00000.0/", "+513060.0-0000554.6/", "51.5142-000.0985/", "+51.5142/", "+515-000/",
-	                           "+51.5142-0000.0985/", "+51.5142-000.0985garbage", "+51.5142-000.0985+abc/", "+51.5142-000.0985 /",
-	                           "London"})
+	for (const auto invalid :
+	     {"", "+00.0000+000.0000/", "+00-000/", "+91.0000+000.0000/", "-90.5+000.0/", "+45.0000+181.0000/",
+	      "+5160.0+00000.0/", "+513060.0-0000554.6/", "51.5142-000.0985/", "+51.5142/", "+515-000/",
+	      "+51.5142-0000.0985/", "+51.5142-000.0985garbage", "+51.5142-000.0985+abc/", "+51.5142-000.0985 /", "London"})
 	{
 		auto untouched = std::numeric_limits<double>::quiet_NaN();
-		if (parse_iso6709(invalid, &untouched)) test::fail(__FILE__, __LINE__, std::string("read as a place: ") + invalid);
+		if (parse_iso6709(invalid, &untouched))
+			test::fail(__FILE__, __LINE__, std::string("read as a place: ") + invalid);
 		CHECK(std::isnan(untouched));
 	}
 }

@@ -1,5 +1,5 @@
 // Copyright (C) 1998-2026 Zac Walker.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native TIFF pages, palettes, strips, tiles and metadata through libtiff.
 
@@ -29,15 +29,18 @@ namespace libfiles::detail
 		{
 			auto& source = *static_cast<tiff_input*>(handle);
 			if (requested <= 0) return 0;
-			const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(
-				requested, source.decode.input.size() - source.position));
+			const auto count = static_cast<std::size_t>(
+				std::min<std::uint64_t>(requested, source.decode.input.size() - source.position));
 			try
 			{
 				source.decode.input.read(source.position, bytes, count);
 				source.position += count;
 				return static_cast<tmsize_t>(count);
 			}
-			catch (const read_error&) { return 0; }
+			catch (const read_error&)
+			{
+				return 0;
+			}
 			catch (const std::bad_alloc&)
 			{
 				source.decode.result.resource_limit = true;
@@ -75,7 +78,10 @@ namespace libfiles::detail
 			{
 				decode.result.warnings.emplace_back(std::string(module ? module : "TIFF") + ": " + text);
 			}
-			catch (const std::bad_alloc&) { decode.result.resource_limit = true; }
+			catch (const std::bad_alloc&)
+			{
+				decode.result.resource_limit = true;
+			}
 			return 1;
 		}
 
@@ -96,27 +102,29 @@ namespace libfiles::detail
 	{
 		decode.working_bytes(1);
 		tiff_input source{decode};
-		std::unique_ptr<TIFFOpenOptions, decltype(&TIFFOpenOptionsFree)> options(
-			TIFFOpenOptionsAlloc(), TIFFOpenOptionsFree);
+		std::unique_ptr<TIFFOpenOptions, decltype(&TIFFOpenOptionsFree)> options(TIFFOpenOptionsAlloc(),
+		                                                                         TIFFOpenOptionsFree);
 		if (!options) throw std::bad_alloc();
 		TIFFOpenOptionsSetErrorHandlerExtR(options.get(), tiff_message, &decode);
 		TIFFOpenOptionsSetWarningHandlerExtR(options.get(), tiff_message, &decode);
-		TIFFOpenOptionsSetMaxSingleMemAlloc(options.get(), static_cast<tmsize_t>(std::min<std::uint64_t>(
-			decode.options.maximum_working_bytes, std::numeric_limits<tmsize_t>::max())));
-		std::unique_ptr<TIFF, decltype(&TIFFClose)> owner(
-			TIFFClientOpenExt("MemSource", "r", &source, tiff_read,
-				[](thandle_t, void*, tmsize_t) -> tmsize_t { return 0; },
-				tiff_seek, [](thandle_t) { return 0; },
-				[](thandle_t handle) -> toff_t { return static_cast<tiff_input*>(handle)->decode.input.size(); },
-				[](thandle_t, void**, toff_t*) { return 0; },
-				[](thandle_t, void*, toff_t) {}, options.get()), TIFFClose);
+		TIFFOpenOptionsSetMaxSingleMemAlloc(options.get(),
+		                                    static_cast<tmsize_t>(
+												std::min<std::uint64_t>(decode.options.maximum_working_bytes,
+		                                                                std::numeric_limits<tmsize_t>::max())));
+		std::unique_ptr<TIFF, decltype(&TIFFClose)> owner(TIFFClientOpenExt("MemSource", "r", &source, tiff_read,
+		                                                                    [](thandle_t, void*, tmsize_t) -> tmsize_t
+		{ return 0; }, tiff_seek, [](thandle_t) { return 0; }, [](thandle_t handle) -> toff_t
+		{ return static_cast<tiff_input*>(handle)->decode.input.size(); }, [](thandle_t, void**, toff_t*)
+		{ return 0; }, [](thandle_t, void*, toff_t) {}, options.get()),
+		                                                  TIFFClose);
 		if (!owner) decode.fail("the TIFF header could not be read");
 		auto* file = owner.get();
 		const auto next_page = [&]
 		{
 			if (TIFFLastDirectory(file)) return false;
 			if (TIFFReadDirectory(file)) return true;
-			decode.result.warnings.emplace_back("a later TIFF page could not be read; complete pages before it were kept");
+			decode.result.warnings.emplace_back(
+				"a later TIFF page could not be read; complete pages before it were kept");
 			return false;
 		};
 		std::vector<std::uint8_t> tile_buffer, strip, row;
@@ -136,7 +144,8 @@ namespace libfiles::detail
 			if (!width || !height || width > INT32_MAX || height > INT32_MAX || !bits || !samples)
 			{
 				if (!info.frames) decode.fail("invalid TIFF dimensions or sample layout");
-				decode.result.warnings.emplace_back("a later TIFF page has an invalid layout; complete pages were kept");
+				decode.result.warnings.emplace_back(
+					"a later TIFF page has an invalid layout; complete pages were kept");
 				break;
 			}
 			if (!info.frames)
@@ -151,12 +160,14 @@ namespace libfiles::detail
 			TIFFGetFieldDefaulted(file, TIFFTAG_ORIENTATION, &orientation);
 			TIFFGetField(file, TIFFTAG_EXTRASAMPLES, &extras, &extra_types);
 			const bool has_alpha = extras && extra_types &&
-				(extra_types[0] == EXTRASAMPLE_ASSOCALPHA || extra_types[0] == EXTRASAMPLE_UNASSALPHA);
+			                       (extra_types[0] == EXTRASAMPLE_ASSOCALPHA ||
+			                        extra_types[0] == EXTRASAMPLE_UNASSALPHA);
 			const bool rgba = TIFFIsTiled(file) || bits > 8 || planar == PLANARCONFIG_SEPARATE ||
-				orientation != ORIENTATION_TOPLEFT || photometric == PHOTOMETRIC_SEPARATED ||
-				photometric == PHOTOMETRIC_YCBCR ||
-				((photometric == PHOTOMETRIC_MINISWHITE || photometric == PHOTOMETRIC_MINISBLACK) && samples > 1) ||
-				(extras && extra_types && extra_types[0] == EXTRASAMPLE_ASSOCALPHA);
+			                  orientation != ORIENTATION_TOPLEFT || photometric == PHOTOMETRIC_SEPARATED ||
+			                  photometric == PHOTOMETRIC_YCBCR ||
+			                  ((photometric == PHOTOMETRIC_MINISWHITE || photometric == PHOTOMETRIC_MINISBLACK) &&
+			                   samples > 1) ||
+			                  (extras && extra_types && extra_types[0] == EXTRASAMPLE_ASSOCALPHA);
 			std::uint32_t length = 0;
 			void* data = nullptr;
 			bool complete_exif = false;
@@ -176,8 +187,8 @@ namespace libfiles::detail
 			std::uint64_t metadata_directory = 0;
 			char* date_time = nullptr;
 			if (!info.frames && (TIFFGetField(file, TIFFTAG_EXIFIFD, &metadata_directory) ||
-				TIFFGetField(file, TIFFTAG_GPSIFD, &metadata_directory) ||
-				TIFFGetField(file, TIFFTAG_DATETIME, &date_time)))
+			                     TIFFGetField(file, TIFFTAG_GPSIFD, &metadata_directory) ||
+			                     TIFFGetField(file, TIFFTAG_DATETIME, &date_time)))
 			{
 				try
 				{
@@ -193,8 +204,8 @@ namespace libfiles::detail
 				}
 				catch (const format_error& error)
 				{
-					decode.result.warnings.emplace_back(
-						std::string("TIFF metadata could not be preserved: ") + error.what());
+					decode.result.warnings.emplace_back(std::string("TIFF metadata could not be preserved: ") +
+					                                    error.what());
 				}
 			}
 			if (!complete_exif)
@@ -206,12 +217,10 @@ namespace libfiles::detail
 				if (TIFFGetField(file, TIFFTAG_IMAGEDESCRIPTION, &text) && text) fields.description = text;
 				if (TIFFGetField(file, TIFFTAG_ARTIST, &text) && text) fields.artist = text;
 				if (TIFFGetField(file, TIFFTAG_COPYRIGHT, &text) && text) fields.copyright = text;
-				if (!fields.camera_make.empty() || !fields.camera_model.empty() ||
-					!fields.description.empty() || !fields.artist.empty() ||
-					!fields.copyright.empty() || (orientation > 1 && orientation <= 8))
+				if (!fields.camera_make.empty() || !fields.camera_model.empty() || !fields.description.empty() ||
+				    !fields.artist.empty() || !fields.copyright.empty() || (orientation > 1 && orientation <= 8))
 				{
-					if (orientation >= 1 && orientation <= 8)
-						fields.orientation = orientation;
+					if (orientation >= 1 && orientation <= 8) fields.orientation = orientation;
 					decode.output.metadata(document_metadata::exif, make_exif(fields));
 				}
 			}
@@ -223,14 +232,16 @@ namespace libfiles::detail
 				const auto* profile = static_cast<const std::uint8_t*>(data);
 				const bool rgb = icc_declares_rgb({profile, length});
 				decode.output.metadata(rgb ? document_metadata::icc : document_metadata::source_icc, {profile, length});
-				if (!rgb) decode.result.warnings.emplace_back(
-					"The source TIFF colour profile is retained as opaque metadata, not attached to RGB pixels.");
+				if (!rgb)
+					decode.result.warnings.emplace_back(
+						"The source TIFF colour profile is retained as opaque metadata, not attached to RGB pixels.");
 			}
 			document_frame frame;
 			frame.width = width;
 			frame.height = height;
 			frame.storage = (rgba || (has_alpha && !decode.options.legacy_tiff_storage))
-				? document_storage::bgra32 : storage_from_bits(samples * bits);
+			                    ? document_storage::bgra32
+			                    : storage_from_bits(samples * bits);
 			std::array<std::uint32_t, 256> palette{};
 			const auto entries = palette_entries(frame.storage);
 			for (std::size_t i = 0; i < entries; ++i)
@@ -241,9 +252,10 @@ namespace libfiles::detail
 			{
 				const bool rgb = photometric == PHOTOMETRIC_RGB && bits == 8 && (samples == 3 || samples == 4);
 				const bool indexed = photometric == PHOTOMETRIC_PALETTE && samples == 1 &&
-					(bits == 1 || bits == 2 || bits == 4 || bits == 8);
+				                     (bits == 1 || bits == 2 || bits == 4 || bits == 8);
 				const bool lab = (photometric == PHOTOMETRIC_CIELAB || photometric == PHOTOMETRIC_ICCLAB ||
-					photometric == PHOTOMETRIC_ITULAB) && bits == 8 && samples == 3;
+				                  photometric == PHOTOMETRIC_ITULAB) &&
+				                 bits == 8 && samples == 3;
 				if (!rgb && !indexed && !lab) decode.fail("unsupported TIFF sample layout");
 			}
 			if (!rgba && photometric == PHOTOMETRIC_PALETTE)
@@ -256,8 +268,12 @@ namespace libfiles::detail
 					for (unsigned i = 0; i < colors; ++i) wide |= red[i] >= 256 || green[i] >= 256 || blue[i] >= 256;
 					for (std::size_t i = 0; i < entries; ++i)
 					{
-						const auto convert = [wide](const unsigned value) { return wide ? value * 255 / 65535 : value; };
-						palette[i] = 0xff000000u | (convert(red[i]) << 16) | (convert(green[i]) << 8) | convert(blue[i]);
+						const auto convert = [wide](const unsigned value)
+						{
+							return wide ? value * 255 / 65535 : value;
+						};
+						palette[i] = 0xff000000u | (convert(red[i]) << 16) | (convert(green[i]) << 8) |
+						             convert(blue[i]);
 					}
 				}
 			}
@@ -270,7 +286,7 @@ namespace libfiles::detail
 			std::uint16_t unit = RESUNIT_NONE;
 			TIFFGetField(file, TIFFTAG_RESOLUTIONUNIT, &unit);
 			if (TIFFGetField(file, TIFFTAG_XRESOLUTION, &x) && TIFFGetField(file, TIFFTAG_YRESOLUTION, &y) &&
-				(unit == RESUNIT_INCH || unit == RESUNIT_CENTIMETER))
+			    (unit == RESUNIT_INCH || unit == RESUNIT_CENTIMETER))
 			{
 				info.has_resolution = true;
 				info.pixels_per_meter_x = density(x, unit, decode);
@@ -298,7 +314,8 @@ namespace libfiles::detail
 					tile_buffer.resize(static_cast<std::size_t>(tile_bytes));
 					if (!TIFFReadBufferSetup(file, tile_buffer.data(), tile_bytes)) throw std::bad_alloc();
 				}
-				const auto complete = TIFFReadRGBAImageOriented(file, width, height, raster.data(), ORIENTATION_TOPLEFT, 1);
+				const auto complete = TIFFReadRGBAImageOriented(file, width, height, raster.data(), ORIENTATION_TOPLEFT,
+				                                                1);
 				if (exact_tiles && !TIFFReadBufferSetup(file, nullptr, tile_bytes)) throw std::bad_alloc();
 				if (!complete) decode.fail("the TIFF raster could not be decoded");
 				for (unsigned line = 0; line < height; ++line)
@@ -313,7 +330,7 @@ namespace libfiles::detail
 							return alpha == 0 ? 0u : std::min(255u, (sample * 255 + alpha / 2) / alpha);
 						};
 						pixels[column] = (alpha << 24) | (straight(TIFFGetR(value)) << 16) |
-							(straight(TIFFGetG(value)) << 8) | straight(TIFFGetB(value));
+						                 (straight(TIFFGetG(value)) << 8) | straight(TIFFGetB(value));
 					}
 					decode.row(line, {reinterpret_cast<const std::uint8_t*>(pixels), stride});
 					decode.output.progress(line + 1, height);
@@ -327,10 +344,12 @@ namespace libfiles::detail
 				const auto strip_size = TIFFStripSize(file);
 				const auto scanline = TIFFScanlineSize(file);
 				if (!rows_per_strip || strip_size <= 0 || scanline <= 0 ||
-					static_cast<std::uint64_t>(strip_size) > decode.options.maximum_working_bytes / 4)
+				    static_cast<std::uint64_t>(strip_size) > decode.options.maximum_working_bytes / 4)
 					decode.fail("invalid TIFF strip or scanline size");
 				const auto rows = std::min(rows_per_strip, height);
-				const auto read_bytes = std::max<std::uint64_t>(static_cast<std::uint64_t>(rows) * scanline, strip_size) + stride;
+				const auto read_bytes = std::max<std::uint64_t>(static_cast<std::uint64_t>(rows) * scanline,
+				                                                strip_size) +
+				                        stride;
 				const auto row_bytes = std::max<std::uint64_t>(stride, static_cast<std::uint64_t>(width) * 4);
 				decode.working_bytes(read_bytes + row_bytes);
 				strip.resize(static_cast<std::size_t>(read_bytes));
@@ -342,7 +361,8 @@ namespace libfiles::detail
 					if (wanted > static_cast<std::uint64_t>(std::numeric_limits<tmsize_t>::max()))
 						decode.fail("a TIFF strip exceeds the codec's size limit");
 					const auto expected = static_cast<tmsize_t>(wanted);
-					if (TIFFReadEncodedStrip(file, TIFFComputeStrip(file, first, 0), strip.data(), expected) != expected)
+					if (TIFFReadEncodedStrip(file, TIFFComputeStrip(file, first, 0), strip.data(), expected) !=
+					    expected)
 						decode.fail("the TIFF strip is incomplete");
 					for (unsigned line = 0; line < count; ++line)
 					{
@@ -369,16 +389,15 @@ namespace libfiles::detail
 							decode.row(first + line, row);
 						}
 						else if (photometric == PHOTOMETRIC_CIELAB || photometric == PHOTOMETRIC_ICCLAB ||
-							photometric == PHOTOMETRIC_ITULAB)
+						         photometric == PHOTOMETRIC_ITULAB)
 						{
 							if (bits != 8 || samples != 3) decode.fail("unsupported TIFF Lab sample layout");
 							for (unsigned column = 0; column < width; ++column)
-								native_lab_to_bgr(pixels[column * 3], pixels[column * 3 + 1],
-									pixels[column * 3 + 2], row.data() + column * 3);
+								native_lab_to_bgr(pixels[column * 3], pixels[column * 3 + 1], pixels[column * 3 + 2],
+								                  row.data() + column * 3);
 							decode.row(first + line, row);
 						}
-						else if (photometric == PHOTOMETRIC_PALETTE)
-							decode.row(first + line, {pixels, stride});
+						else if (photometric == PHOTOMETRIC_PALETTE) decode.row(first + line, {pixels, stride});
 						else decode.fail("unsupported TIFF photometric interpretation");
 					}
 					first += count;
@@ -386,8 +405,7 @@ namespace libfiles::detail
 			}
 			decode.end();
 			if (!next_page()) break;
-		}
-		while (true);
+		} while (true);
 		if (decode.result.resource_limit) decode.fail("not enough memory to decode the TIFF image");
 	}
 }

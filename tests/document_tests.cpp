@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native storage, row boundaries, refusal and malformed image handling.
 
@@ -78,10 +78,8 @@ TEST("native WPG levels preserve RGB rows and reject incomplete rasters")
 			test_build::builder file;
 			file.le32(0x435057ff).le32(18).le16(0x1600).le16(level);
 			file.b.insert(file.b.end(), {1, 0, 0, 0, 0, 0});
-			if (level == 1)
-				file.b.insert(file.b.end(), {0x0b, static_cast<std::uint8_t>(10 + raster.size())});
-			else
-				file.b.insert(file.b.end(), {0, 0x0e, 0, static_cast<std::uint8_t>(6 + raster.size())});
+			if (level == 1) file.b.insert(file.b.end(), {0x0b, static_cast<std::uint8_t>(10 + raster.size())});
+			else file.b.insert(file.b.end(), {0, 0x0e, 0, static_cast<std::uint8_t>(6 + raster.size())});
 			file.le16(3).le16(2);
 			if (level == 1) file.le16(24).le16(0).le16(0);
 			else file.b.insert(file.b.end(), {8, static_cast<std::uint8_t>(compression)});
@@ -92,9 +90,8 @@ TEST("native WPG levels preserve RGB rows and reject incomplete rasters")
 			CHECK(result.success && result.info.frames == 1);
 			CHECK(sink.frames.size() == 1);
 			if (sink.frames.size() != 1) continue;
-			CHECK(sink.frames[0].pixels == std::vector<std::uint8_t>({
-				3, 2, 1, 6, 5, 4, 9, 8, 7, 0, 0, 0,
-				13, 12, 11, 16, 15, 14, 19, 18, 17, 0, 0, 0}));
+			CHECK(sink.frames[0].pixels == std::vector<std::uint8_t>({3,  2,  1,  6,  5,  4,  9,  8,  7,  0, 0, 0,
+			                                                          13, 12, 11, 16, 15, 14, 19, 18, 17, 0, 0, 0}));
 			for (std::size_t length = 0; length < file.b.size(); ++length)
 			{
 				libfiles::reader cut(std::span<const std::uint8_t>(file.b.data(), length));
@@ -173,10 +170,22 @@ TEST("native BMP honors row order zero pixel offsets and zero resolution")
 	for (const int height : {2, -2})
 	{
 		test_build::builder file;
-		file.raw("BM").le32(1).le32(0).le32(0).le32(40).le32(3).le32(static_cast<std::uint32_t>(height))
-			.le16(1).le16(24).le32(0).le32(24).le32(0).le32(0).le32(0).le32(0);
-		file.b.insert(file.b.end(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0,
-			10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 0, 0});
+		file.raw("BM")
+			.le32(1)
+			.le32(0)
+			.le32(0)
+			.le32(40)
+			.le32(3)
+			.le32(static_cast<std::uint32_t>(height))
+			.le16(1)
+			.le16(24)
+			.le32(0)
+			.le32(24)
+			.le32(0)
+			.le32(0)
+			.le32(0)
+			.le32(0);
+		file.b.insert(file.b.end(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 0, 0});
 		libfiles::reader input(file.b);
 		captured_document sink;
 		const auto result = libfiles::decode_document(input, libfiles::image_format::bmp, sink);
@@ -202,8 +211,8 @@ namespace
 {
 	std::vector<std::uint8_t> native_gif()
 	{
-		std::vector<std::uint8_t> bytes{'G', 'I', 'F', '8', '9', 'a', 3, 0, 2, 0, 0x81, 0, 0,
-			0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255};
+		std::vector<std::uint8_t> bytes{'G', 'I', 'F', '8', '9', 'a', 3, 0,   2, 0, 0x81, 0,  0,
+		                                0,   0,   0,   255, 0,   0,   0, 255, 0, 0, 0,    255};
 		for (const unsigned index : {1u, 2u})
 		{
 			bytes.insert(bytes.end(), {0x2c, 0, 0, 0, 0, 3, 0, 2, 0, 0, 2});
@@ -217,7 +226,11 @@ namespace
 					raster.back() |= static_cast<std::uint8_t>(((code >> bit) & 1) << (bits % 8));
 				}
 			};
-			for (int i = 0; i < 6; ++i) { emit(4); emit(index); }
+			for (int i = 0; i < 6; ++i)
+			{
+				emit(4);
+				emit(index);
+			}
 			emit(5);
 			bytes.push_back(static_cast<std::uint8_t>(raster.size()));
 			bytes.insert(bytes.end(), raster.begin(), raster.end());
@@ -346,8 +359,9 @@ TEST("a document decoded whole keeps each frame's rows and palette, and a copy s
 
 TEST("copy_bgra reads every storage as BGRA, indexed through its palette and the rest opaque but bgra32")
 {
-	const auto read = [](const libfiles::document_storage storage, const std::vector<std::uint8_t>& row, const std::uint32_t width,
-	                     const std::vector<std::uint32_t>& palette = {}, const std::optional<std::uint32_t> transparent = {})
+	const auto read = [](const libfiles::document_storage storage, const std::vector<std::uint8_t>& row,
+	                     const std::uint32_t width, const std::vector<std::uint32_t>& palette = {},
+	                     const std::optional<std::uint32_t> transparent = {})
 	{
 		auto padded = row;
 		padded.resize((row.size() + 3) / 4 * 4);
@@ -366,7 +380,8 @@ TEST("copy_bgra reads every storage as BGRA, indexed through its palette and the
 
 	using s = libfiles::document_storage;
 	const std::vector<std::uint32_t> four = {0xff000001, 0xff000002, 0xff000003, 0x80000004};
-	CHECK(read(s::indexed2, {0xe4}, 4, four) == std::vector<std::uint32_t>({0x80000004, 0xff000003, 0xff000002, 0xff000001}));
+	CHECK(read(s::indexed2, {0xe4}, 4, four) ==
+	      std::vector<std::uint32_t>({0x80000004, 0xff000003, 0xff000002, 0xff000001}));
 	std::vector<std::uint32_t> sixteen(16, 0xff000000);
 	sixteen[1] = 0xff111111;
 	sixteen[15] = 0xffffffff;

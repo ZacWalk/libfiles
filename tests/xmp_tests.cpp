@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests of the XMP data model: parsing and its recovery from malformed packets, the
 // toolkit's normalizations and aliases, the property API, iteration order and serialization.
@@ -20,7 +20,8 @@ namespace
 {
 	std::string packet(const std::string_view body, const std::string_view extra_ns = {})
 	{
-		std::string result = "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		std::string result =
+			"<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
 			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
 			"<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
 			"xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:exif=\"http://ns.adobe.com/exif/1.0/\" "
@@ -90,8 +91,10 @@ TEST("xmp parses element and attribute properties")
 
 TEST("xmp reads a packet without x:xmpmeta or a wrapper")
 {
-	const auto m = parsed("<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		"<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/'><xmp:Rating>2</xmp:Rating></rdf:Description></rdf:RDF>");
+	const auto m = parsed(
+		"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		"<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/'><xmp:Rating>2</xmp:Rating></rdf:Description>"
+		"</rdf:RDF>");
 	CHECK_STR(get(m, ns::xmp, "Rating"), "2");
 }
 
@@ -117,7 +120,8 @@ TEST("xmp leaves an object empty for text with no RDF")
 	CHECK(parsed("not xml at all").empty());
 	CHECK(parsed("<x:xmpmeta xmlns:x='adobe:ns:meta/'/>").empty());
 	CHECK(parsed("<?xpacket begin=''?><x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF "
-		"xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description/></rdf:RDF></x:xmpmeta>").empty());
+	             "xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description/></rdf:RDF></x:xmpmeta>")
+	          .empty());
 }
 
 TEST("xmp stops at junk after the root but keeps the root")
@@ -151,7 +155,7 @@ TEST("xmp keeps what precedes nesting no writer makes, rather than run out of st
 TEST("xmp turns simple Dublin Core values into arrays")
 {
 	const auto m = parsed(packet("<dc:title>Lisbon</dc:title><dc:subject>tram</dc:subject><dc:creator>Ana</dc:creator>"
-		"<dc:rights/>"));
+	                             "<dc:rights/>"));
 
 	xmp::option_bits options = 0;
 	CHECK(m.get_property(ns::dc, "title", nullptr, &options));
@@ -181,7 +185,7 @@ TEST("xmp keeps an empty subject bag as an explicit empty list")
 TEST("xmp moves explicit aliases to their actual properties")
 {
 	const auto m = parsed(packet("<tiff:Artist>Ann</tiff:Artist><photoshop:Caption>Quay</photoshop:Caption>"
-		"<exif:DateTimeDigitized>2020-01-02T03:04:05</exif:DateTimeDigitized>"));
+	                             "<exif:DateTimeDigitized>2020-01-02T03:04:05</exif:DateTimeDigitized>"));
 
 	CHECK_STR(get(m, ns::dc, "creator[1]"), "Ann");
 	CHECK_STR(x_default(m, ns::dc, "description"), "Quay");
@@ -198,7 +202,7 @@ TEST("xmp moves explicit aliases to their actual properties")
 TEST("xmp drops an alias whose actual property exists")
 {
 	const auto m = parsed(packet("<xmp:CreateDate>2021-05-05</xmp:CreateDate>"
-		"<exif:DateTimeDigitized>1999-09-09</exif:DateTimeDigitized>"));
+	                             "<exif:DateTimeDigitized>1999-09-09</exif:DateTimeDigitized>"));
 	CHECK_STR(get(m, ns::xmp, "CreateDate"), "2021-05-05");
 	CHECK_STR(get(m, ns::exif, "DateTimeDigitized"), "2021-05-05");
 }
@@ -223,7 +227,7 @@ TEST("xmp writes through an alias")
 TEST("xmp chooses localized text as the toolkit does")
 {
 	const auto m = parsed(packet("<dc:title><rdf:Alt><rdf:li xml:lang='fr'>Quai</rdf:li>"
-		"<rdf:li xml:lang='en-us'>Quay</rdf:li></rdf:Alt></dc:title>"));
+	                             "<rdf:li xml:lang='en-us'>Quay</rdf:li></rdf:Alt></dc:title>"));
 
 	std::string lang, value;
 	CHECK(m.get_localized_text(ns::dc, "title", "", "x-default", &lang, &value));
@@ -238,7 +242,7 @@ TEST("xmp chooses localized text as the toolkit does")
 TEST("xmp puts x-default first and mirrors a two-item array")
 {
 	const auto m = parsed(packet("<dc:title><rdf:Alt><rdf:li xml:lang='de'>Kai</rdf:li>"
-		"<rdf:li xml:lang='x-default'>Quay</rdf:li></rdf:Alt></dc:title>"));
+	                             "<rdf:li xml:lang='x-default'>Quay</rdf:li></rdf:Alt></dc:title>"));
 
 	CHECK_STR(get(m, ns::dc, "title[1]/?xml:lang"), "x-default");
 	CHECK_STR(get(m, ns::dc, "title[1]"), "Quay");
@@ -315,11 +319,11 @@ TEST("xmp deletes a property and an emptied schema")
 TEST("xmp iterates schemas, properties, qualifiers and children in order")
 {
 	const auto m = parsed(packet("<dc:title><rdf:Alt><rdf:li xml:lang='x-default'>T</rdf:li></rdf:Alt></dc:title>"
-		"<dc:subject><rdf:Bag><rdf:li>a</rdf:li><rdf:li>b</rdf:li></rdf:Bag></dc:subject>"
-		"<exif:Flash rdf:parseType='Resource'><exif:Fired>True</exif:Fired></exif:Flash>"));
+	                             "<dc:subject><rdf:Bag><rdf:li>a</rdf:li><rdf:li>b</rdf:li></rdf:Bag></dc:subject>"
+	                             "<exif:Flash rdf:parseType='Resource'><exif:Fired>True</exif:Fired></exif:Flash>"));
 
 	CHECK_STR(dump(m), "dc:title;dc:title[1]=T;dc:title[1]/?xml:lang=x-default;dc:subject;dc:subject[1]=a;"
-		"dc:subject[2]=b;exif:Flash;exif:Flash/exif:Fired=True;");
+	                   "dc:subject[2]=b;exif:Flash;exif:Flash/exif:Fired=True;");
 
 	const auto props = m.properties();
 	CHECK(!props.empty() && props.front().path.empty() && xmp::is_schema(props.front().options));
@@ -328,10 +332,9 @@ TEST("xmp iterates schemas, properties, qualifiers and children in order")
 
 TEST("xmp names nodes by the registered prefix")
 {
-	const auto m = parsed(
-		"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		"<rdf:Description xmlns:d='http://purl.org/dc/elements/1.1/'><d:format>image/jpeg</d:format>"
-		"</rdf:Description></rdf:RDF>");
+	const auto m = parsed("<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+	                      "<rdf:Description xmlns:d='http://purl.org/dc/elements/1.1/'><d:format>image/jpeg</d:format>"
+	                      "</rdf:Description></rdf:RDF>");
 	CHECK_STR(dump(m), "dc:format=image/jpeg;");
 }
 
@@ -356,6 +359,7 @@ TEST("xmp numbers a prefix declared for many namespaces as before, without probi
 	CHECK_STR(xmp::register_namespace("urn:libfiles-probe:taken", "lfprobe_3_"), "lfprobe_3_:");
 
 	std::vector<std::string> prefixes;
+	prefixes.reserve(50000);
 	for (auto n = 0; n < 50000; ++n)
 	{
 		prefixes.push_back(xmp::register_namespace(std::format("urn:libfiles-probe:{}", n), "lfprobe"));
@@ -372,7 +376,7 @@ TEST("xmp numbers a prefix declared for many namespaces as before, without probi
 TEST("xmp reads qualified values written with rdf:value")
 {
 	const auto m = parsed(packet("<dc:format rdf:parseType='Resource'><rdf:value>image/png</rdf:value>"
-		"<xmp:Label>q</xmp:Label></dc:format>"));
+	                             "<xmp:Label>q</xmp:Label></dc:format>"));
 	CHECK_STR(get(m, ns::dc, "format"), "image/png");
 	CHECK_STR(get(m, ns::dc, "format/?xmp:Label"), "q");
 }
@@ -380,7 +384,7 @@ TEST("xmp reads qualified values written with rdf:value")
 TEST("xmp reads structs written as nested descriptions and as attributes")
 {
 	const auto nested = parsed(packet("<exif:Flash><rdf:Description><exif:Fired>False</exif:Fired>"
-		"<exif:Mode>2</exif:Mode></rdf:Description></exif:Flash>"));
+	                                  "<exif:Mode>2</exif:Mode></rdf:Description></exif:Flash>"));
 	CHECK_STR(get(nested, ns::exif, "Flash/exif:Fired"), "False");
 	CHECK_STR(get(nested, ns::exif, "Flash/exif:Mode"), "2");
 
@@ -420,7 +424,7 @@ TEST("xmp decodes UTF-16 input")
 		else if (c >= 0xE0)
 		{
 			cp = ((c & 0x0F) << 12) | ((static_cast<unsigned char>(utf8[i + 1]) & 0x3F) << 6) |
-				(static_cast<unsigned char>(utf8[i + 2]) & 0x3F);
+			     (static_cast<unsigned char>(utf8[i + 2]) & 0x3F);
 			i += 2;
 		}
 		utf16 += static_cast<char>(cp & 0xFF);
@@ -440,14 +444,15 @@ TEST("xmp decodes references, CDATA and line ends")
 TEST("xmp skips a DOCTYPE")
 {
 	const auto m = parsed("<?xml version='1.0'?><!DOCTYPE x [<!ELEMENT x ANY>]>"
-		"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		"<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>");
+	                      "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+	                      "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>");
 	CHECK_STR(get(m, ns::xmp, "Rating"), "1");
 }
 
 TEST("xmp prefers the x:xmpmeta root among several")
 {
-	const auto m = parsed("<doc><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+	const auto m = parsed(
+		"<doc><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
 		"<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"
 		"<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
 		"<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='2'/></rdf:RDF></x:xmpmeta></doc>");
@@ -457,16 +462,17 @@ TEST("xmp prefers the x:xmpmeta root among several")
 TEST("xmp applies the toolkit's touch-ups")
 {
 	const auto m = parsed(packet("<exif:UserComment>note</exif:UserComment>"
-		"<exif:DateTimeOriginal>2019-03-04T10:00:00</exif:DateTimeOriginal>"
-		"<exif:GPSTimeStamp>T12:30:00Z</exif:GPSTimeStamp>"
-		"<xmpDM:copyright>(c) Ann</xmpDM:copyright>"));
+	                             "<exif:DateTimeOriginal>2019-03-04T10:00:00</exif:DateTimeOriginal>"
+	                             "<exif:GPSTimeStamp>T12:30:00Z</exif:GPSTimeStamp>"
+	                             "<xmpDM:copyright>(c) Ann</xmpDM:copyright>"));
 
 	CHECK_STR(x_default(m, ns::exif, "UserComment"), "note");
 	CHECK_STR(get(m, ns::exif, "GPSTimeStamp"), "2019-03-04T12:30:00Z");
 	CHECK_STR(x_default(m, ns::dc, "rights"), "\n\n(c) Ann");
 	CHECK(!m.exists(ns::dm, "copyright"));
 
-	const auto uuid = parsed("<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+	const auto uuid = parsed(
+		"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
 		"<rdf:Description rdf:about='uuid:1234' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>");
 	CHECK_STR(get(uuid, ns::xmp_mm, "InstanceID"), "uuid:1234");
 	CHECK_STR(uuid.about(), "");
@@ -475,7 +481,7 @@ TEST("xmp applies the toolkit's touch-ups")
 TEST("xmp normalizes language tags")
 {
 	const auto m = parsed(packet("<dc:title><rdf:Alt><rdf:li xml:lang='EN-gb-OXENDICT'>Colour</rdf:li></rdf:Alt>"
-		"</dc:title>"));
+	                             "</dc:title>"));
 	CHECK_STR(get(m, ns::dc, "title[1]/?xml:lang"), "en-GB-oxendict");
 }
 
@@ -511,10 +517,12 @@ TEST("xmp serializes in the toolkit's layout")
 
 TEST("xmp round-trips structs, qualifiers and URIs")
 {
-	const auto original = parsed(packet("<exif:Flash rdf:parseType='Resource'><exif:Fired>True</exif:Fired>"
+	const auto original = parsed(packet(
+		"<exif:Flash rdf:parseType='Resource'><exif:Fired>True</exif:Fired>"
 		"<exif:Mode>2</exif:Mode></exif:Flash><dc:format rdf:parseType='Resource'><rdf:value>image/png</rdf:value>"
 		"<xmp:Label>q</xmp:Label></dc:format><xmp:BaseURL rdf:resource='http://example.com/a?b&amp;c'/>"
-		"<dc:description><rdf:Alt><rdf:li xml:lang='x-default'>line one\nline two</rdf:li></rdf:Alt></dc:description>"));
+		"<dc:description><rdf:Alt><rdf:li xml:lang='x-default'>line one\nline two</rdf:li></rdf:Alt>"
+		"</dc:description>"));
 
 	for (const auto compact : {false, true})
 	{
@@ -526,7 +534,9 @@ TEST("xmp round-trips structs, qualifiers and URIs")
 TEST("xmp keeps a value's control characters escaped")
 {
 	xmp::meta m;
-	m.set_property(ns::xmp, "Label", "a\tb\x01" "c");
+	m.set_property(ns::xmp, "Label",
+	               "a\tb\x01"
+	               "c");
 	CHECK_STR(get(m, ns::xmp, "Label"), "a\tb c");
 	CHECK(m.serialize().find("a&#x9;b c") != std::string::npos);
 }
@@ -535,7 +545,8 @@ TEST("xmp keeps a value's control characters escaped")
 // escapes. Written back raw they broke the Description's start tag, and every property went with it.
 TEST("xmp writes its about name and namespace URIs escaped")
 {
-	const std::string text = "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+	const std::string text =
+		"<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
 		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
 		"<rdf:Description rdf:about=\"a?b=1&amp;c=&quot;2&quot;&lt;\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" "
 		"xmlns:lfesc=\"urn:libfiles-escape?x=1&amp;y=&quot;2&quot;\">"

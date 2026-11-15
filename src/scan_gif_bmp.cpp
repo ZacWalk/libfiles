@@ -1,9 +1,10 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The GIF and BMP scanners. GIF's logical screen gives the dimensions, and its block chain
-// is walked for the "XMP DataXMP" application extension. BMP has only its info header to read.
+// is walked for the "XMP DataXMP" application extension and for a second image, which makes it an
+// animation. BMP has only its info header to read.
 
 #include "scan_internal.h"
 
@@ -27,12 +28,14 @@ namespace libfiles::detail
 		constexpr std::uint8_t gif_extension = 0x21;
 		constexpr std::uint8_t gif_trailer = 0x3B;
 
-		// Walks the GIF block chain looking for the XMP extension. Every read is guarded against the
-		// end of the file, and the caller treats a throw from here as "no XMP" rather than a failed
-		// scan: the dimensions are already read by then, and a truncated GIF must not lose them.
+		// Walks the GIF block chain looking for the XMP extension, and for a second image, which makes the GIF an
+		// animation. Every read is guarded against the end of the file, and the caller treats a throw from here as
+		// "no XMP" rather than a failed scan: the dimensions are already read by then, and a truncated GIF must not
+		// lose them.
 		void scan_gif_blocks(reader& r, scan_result& result, std::uint64_t offset)
 		{
 			const auto size = r.size();
+			auto images = 0;
 
 			while (offset + 1 < size)
 			{
@@ -44,6 +47,9 @@ namespace libfiles::detail
 					constexpr std::size_t image_desc_len = 9;
 
 					if (offset + image_desc_len > size) break;
+
+					// A decode gives the first image alone, whether the rest are frames or tiles of one picture.
+					if (++images > 1) result.animated = true;
 
 					// Left, top, width and height, two bytes each, then the packed fields.
 					const auto fields = r.u8(offset + 8);
@@ -78,12 +84,11 @@ namespace libfiles::detail
 
 					const auto label = r.u8(offset);
 					auto sub_block_size = r.u8(offset + 1);
-					auto skip_block = true;
 
 					offset += 2;
 
 					if (label == 0xFF && sub_block_size == gif_app_id_len && offset + gif_app_id_len < size &&
-						std::memcmp(r.view(offset, gif_app_id_len).data(), "XMP DataXMP", gif_app_id_len) == 0)
+					    std::memcmp(r.view(offset, gif_app_id_len).data(), "XMP DataXMP", gif_app_id_len) == 0)
 					{
 						offset += gif_app_id_len;
 						const auto first_byte = r.u8(offset);
@@ -101,16 +106,24 @@ namespace libfiles::detail
 							if (offset < search_end)
 							{
 								const auto packet = r.read(start, static_cast<std::size_t>(offset - start - 1));
-								const std::string_view text(reinterpret_cast<const char*>(packet.data()), packet.size());
+								const std::string_view text(reinterpret_cast<const char*>(packet.data()),
+								                            packet.size());
 								constexpr std::string_view end_tag = "</x:xmpmeta>";
 
 								// Trim anything after the closing tag. find() cannot report a partial match,
 								// so a payload shorter than the tag keeps its full length.
 								const auto pos = text.find(end_tag);
-								const auto xmp_size = pos == std::string_view::npos ? packet.size() : pos + end_tag.size();
+								const auto xmp_size = pos == std::string_view::npos ? packet.size()
+								                                                    : pos + end_tag.size();
 
-								result.metadata.xmp.assign(packet.begin(), packet.begin() + static_cast<std::ptrdiff_t>(xmp_size));
+								result.metadata.xmp.assign(packet.begin(),
+								                           packet.begin() + static_cast<std::ptrdiff_t>(xmp_size));
 							}
+
+							// The packet and its magic trailer read as a chain of sub-blocks that ends where the
+							// extension does - which is how a GIF reader steps over them - from its first byte.
+							offset = start + 1;
+							sub_block_size = first_byte;
 						}
 						else
 						{
@@ -137,18 +150,15 @@ namespace libfiles::detail
 								offset += 1;
 							}
 						}
-
-						skip_block = false;
 					}
 
-					if (skip_block)
+					// What is left of the extension is stepped over - all of one the scan does not read, the rest of an
+					// XMP packet's chain - so the walk goes on to the frames after it.
+					while (sub_block_size != 0 && offset + sub_block_size < size)
 					{
-						while (sub_block_size != 0 && offset + sub_block_size < size)
-						{
-							offset += sub_block_size;
-							sub_block_size = r.u8(offset);
-							offset += 1;
-						}
+						offset += sub_block_size;
+						sub_block_size = r.u8(offset);
+						offset += 1;
 					}
 				}
 				else
@@ -168,7 +178,7 @@ namespace libfiles::detail
 		const auto header = r.view(0, header_len);
 
 		if (std::memcmp(header.data(), "GIF87a", gif_header_len) != 0 &&
-			std::memcmp(header.data(), "GIF89a", gif_header_len) != 0)
+		    std::memcmp(header.data(), "GIF89a", gif_header_len) != 0)
 		{
 			throw format_error("no gif header");
 		}
@@ -221,8 +231,8 @@ namespace libfiles::detail
 		const auto height = std::llabs(static_cast<std::int32_t>(load_le32(info + 8)));
 		const auto bit_count = load_le16(info + 14);
 
-		if (header_size < info_header_len || width <= 0 || height <= 0 ||
-			width > max_image_dimension || height > max_image_dimension)
+		if (header_size < info_header_len || width <= 0 || height <= 0 || width > max_image_dimension ||
+		    height > max_image_dimension)
 		{
 			return result;
 		}
@@ -232,7 +242,8 @@ namespace libfiles::detail
 		result.pixel_format = std::format("RGB{}", bit_count);
 
 		// A pixel of up to 8 bits is a palette index; one of 16 packs 5 or 6 bits a sample, as its masks say.
-		if (bit_count >= 1 && bit_count <= 8) result.picture = {chroma_format::rgb, static_cast<std::uint8_t>(bit_count), false, true};
+		if (bit_count >= 1 && bit_count <= 8)
+			result.picture = {chroma_format::rgb, static_cast<std::uint8_t>(bit_count), false, true};
 		else if (bit_count == 24 || bit_count == 32) result.picture = {chroma_format::rgb, 8};
 		else if (bit_count == 16) result.picture.chroma = chroma_format::rgb;
 

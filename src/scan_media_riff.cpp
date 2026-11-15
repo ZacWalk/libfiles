@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning RIFF media: AVI, with OpenDML's extensions, and WAV, with RF64 and BW64. The forms and
 // their chunks are walked by riff_internal.h as the writer walks them, so the packet is the one read_packet
@@ -65,10 +65,8 @@ namespace libfiles::detail
 
 		// The stream tags FFmpeg reads from a stream's header list besides strn: an older writer's lower-case
 		// INFO names.
-		constexpr std::uint32_t stream_tag_ids[] = {
-			fourcc("isbj"), fourcc("inam"), fourcc("iart"), fourcc("icop"), fourcc("icmt"), fourcc("ignr"), fourcc("ipod"),
-			fourcc("isof")
-		};
+		constexpr std::uint32_t stream_tag_ids[] = {fourcc("isbj"), fourcc("inam"), fourcc("iart"), fourcc("icop"),
+		                                            fourcc("icmt"), fourcc("ignr"), fourcc("ipod"), fourcc("isof")};
 
 		// The most a scan reads of a text chunk or an INFO item; a longer one is skipped.
 		constexpr std::uint64_t max_text = 1u << 20;
@@ -103,7 +101,8 @@ namespace libfiles::detail
 			return c.payload() < stop ? std::min(c.size, stop - c.payload()) : 0;
 		}
 
-		std::vector<std::uint8_t> read_payload(reader& r, const chunk& c, const std::uint64_t end, const std::uint64_t limit)
+		std::vector<std::uint8_t> read_payload(reader& r, const chunk& c, const std::uint64_t end,
+		                                       const std::uint64_t limit)
 		{
 			return r.read(c.payload(), static_cast<std::size_t>(std::min(available(r, c, end), limit)));
 		}
@@ -163,9 +162,7 @@ namespace libfiles::detail
 		               media_scan_result& out)
 		{
 			for_each_info_item(r, pos, end, items_left, [&out](const std::uint32_t id, const std::string& text)
-			{
-				add_tag(out, tag_family::riff_info, fourcc_text(id), text);
-			});
+			{ add_tag(out, tag_family::riff_info, fourcc_text(id), text); });
 		}
 
 		// The ID3v2 tag in an 'id3 ' or 'ID3 ' chunk. A damaged tag keeps what was read of it.
@@ -236,8 +233,9 @@ namespace libfiles::detail
 
 			for (const auto& f : l.forms)
 			{
-				auto& form_row = add_row(rows, chunk_name(f.header), std::format("offset {}, {} bytes{}", f.header.start, f.header.size,
-				                                                                 f.end != f.data_end() ? ", cut short" : ""));
+				auto& form_row = add_row(rows, chunk_name(f.header),
+				                         std::format("offset {}, {} bytes{}", f.header.start, f.header.size,
+				                                     f.end != f.data_end() ? ", cut short" : ""));
 				form_row.depth = 1;
 				form_row.id = std::format("riff.form.{}", f.header.start);
 
@@ -250,7 +248,8 @@ namespace libfiles::detail
 					}
 
 					auto value = std::format("offset {}, {} bytes", c.start, c.size);
-					if (const auto description = chunk_description(c); !description.empty()) value = std::format("{}, {}", description, value);
+					if (const auto description = chunk_description(c); !description.empty())
+						value = std::format("{}, {}", description, value);
 					if (!fits(c, f.end)) value += ", cut short";
 
 					auto& row = add_row(rows, chunk_name(c), std::move(value));
@@ -300,8 +299,8 @@ namespace libfiles::detail
 		// start of their first chunk.
 		bool described_by_bitstream(const std::string_view codec)
 		{
-			return codec == "h264" || codec == "hevc" || codec == "mjpeg" || codec == "dv" || codec == "mpeg1" || codec == "mpeg2" ||
-				codec == "mpeg4" || codec == "vp9" || codec == "av1";
+			return codec == "h264" || codec == "hevc" || codec == "mjpeg" || codec == "dv" || codec == "mpeg1" ||
+			       codec == "mpeg2" || codec == "mpeg4" || codec == "vp9" || codec == "av1";
 		}
 
 		// The first sequence parameter set among NAL units with start codes.
@@ -324,9 +323,7 @@ namespace libfiles::detail
 		class avi_scan
 		{
 		public:
-			avi_scan(reader& r, media_scan_result& out) : _r(r), _out(out)
-			{
-			}
+			avi_scan(reader& r, media_scan_result& out) : _r(r), _out(out) {}
 
 			bool has_movie_data() const { return _movie_data; }
 
@@ -345,14 +342,10 @@ namespace libfiles::detail
 
 					switch (c.type)
 					{
-					case info_type: early_info(c.payload() + 4, list_end);
-						return;
-					case ncdt_type: nikon_tags(c.payload() + 4, list_end);
-						return;
-					case hdrl_type: _header_list = true;
-						break;
-					case odml_type: _open_dml = true;
-						break;
+					case info_type: early_info(c.payload() + 4, list_end); return;
+					case ncdt_type: nikon_tags(c.payload() + 4, list_end); return;
+					case hdrl_type: _header_list = true; break;
+					case odml_type: _open_dml = true; break;
 					default: break;
 					}
 
@@ -369,26 +362,22 @@ namespace libfiles::detail
 
 				switch (c.id)
 				{
-				case avih_id: main_header(c, end);
-					break;
-				case strh_id: stream_header(c, end);
-					break;
-				case strf_id: stream_format(c, end);
-					break;
+				case avih_id: main_header(c, end); break;
+				case strh_id: stream_header(c, end); break;
+				case strf_id: stream_format(c, end); break;
 				case strd_id:
-					if (_current != none && _streams[_current].data.empty()) _streams[_current].data = read_payload(_r, c, end, max_format);
+					if (_current != none && _streams[_current].data.empty())
+						_streams[_current].data = read_payload(_r, c, end, max_format);
 					break;
 				case strn_id:
 					if (_current != none) _streams[_current].stream.title = trim_text(read_text(_r, c, end));
 					break;
-				case vprp_id: video_properties(c, end);
-					break;
+				case vprp_id: video_properties(c, end); break;
 				case dmlh_id:
 					_open_dml = true;
 					if (available(_r, c, end) >= 4) _dml_frames = _r.le32(c.payload());
 					break;
-				case idit_id: original_date(c, end);
-					break;
+				case idit_id: original_date(c, end); break;
 				default:
 					if (_current != none && std::ranges::find(stream_tag_ids, c.id) != std::end(stream_tag_ids))
 					{
@@ -416,9 +405,7 @@ namespace libfiles::detail
 
 				for_each_info_item(_r, c.payload() + 4, c.payload() + available(_r, c, end), _info_items_left,
 				                   [this](const std::uint32_t id, std::string text)
-				{
-					_late_info.emplace_back(id, std::move(text));
-				});
+				{ _late_info.emplace_back(id, std::move(text)); });
 			}
 
 			// The result's streams, duration and tags from what the walk read. stopped is true when the walk
@@ -432,12 +419,15 @@ namespace libfiles::detail
 				// wins: it is the one the writer edits, and an edit must show.
 				for (const auto& [id, text] : _late_info)
 				{
-					if (std::ranges::find(_early_info, id) == _early_info.end()) add_tag(_out, tag_family::riff_info, fourcc_text(id), text);
+					if (std::ranges::find(_early_info, id) == _early_info.end())
+						add_tag(_out, tag_family::riff_info, fourcc_text(id), text);
 				}
 
 				// A file cut short plays for the part of it that is there, as FFmpeg reckons it.
 				const auto declared_end = l.first().data_end();
-				const auto present = declared_end > _r.size() ? static_cast<double>(_r.size()) / static_cast<double>(declared_end) : 1.0;
+				const auto present = declared_end > _r.size()
+				                         ? static_cast<double>(_r.size()) / static_cast<double>(declared_end)
+				                         : 1.0;
 
 				std::uint64_t id = 0;
 				auto first_video = true;
@@ -487,7 +477,8 @@ namespace libfiles::detail
 					}
 
 					if (s.scale != 0 && s.rate != 0) m.duration = frames * s.scale / s.rate * present;
-					else if (m.kind == media_stream_kind::video && _main.frame_period != 0) m.duration = frames * _main.frame_period / 1e6 * present;
+					else if (m.kind == media_stream_kind::video && _main.frame_period != 0)
+						m.duration = frames * _main.frame_period / 1e6 * present;
 
 					if (m.kind == media_stream_kind::video) longest_video = std::max(longest_video, m.duration);
 					if (m.kind == media_stream_kind::audio) longest_audio = std::max(longest_audio, m.duration);
@@ -532,17 +523,20 @@ namespace libfiles::detail
 
 				if (_movie_data)
 				{
-					add_structure_row(rows, "Movie data", std::format("offset {}, {} bytes{}", _movi_start, _movi_end - _movi_start,
-					                                                  stopped ? ", its size unstated" : ""));
+					add_structure_row(rows, "Movie data",
+					                  std::format("offset {}, {} bytes{}", _movi_start, _movi_end - _movi_start,
+					                              stopped ? ", its size unstated" : ""));
 				}
 
 				add_structure_section(rows, "Streams", "avi.streams");
 
 				for (const auto& s : _streams)
 				{
-					add_structure_row(rows, std::format("Stream {}", s.number),
-					                  std::format("'{}', handler '{}', scale {}, rate {}, start {}, length {}, sample size {}", fourcc_text(s.type),
-					                              fourcc_text(s.handler), s.scale, s.rate, s.start, s.length, s.sample_size));
+					add_structure_row(
+						rows, std::format("Stream {}", s.number),
+						std::format("'{}', handler '{}', scale {}, rate {}, start {}, length {}, sample size {}",
+					                fourcc_text(s.type), fourcc_text(s.handler), s.scale, s.rate, s.start, s.length,
+					                s.sample_size));
 				}
 
 				add_chunk_rows(rows, l);
@@ -567,7 +561,8 @@ namespace libfiles::detail
 			// are kept from any list after the movie data.
 			void early_info(const std::uint64_t pos, const std::uint64_t end)
 			{
-				for_each_info_item(_r, pos, end, _info_items_left, [this](const std::uint32_t id, const std::string& text)
+				for_each_info_item(_r, pos, end, _info_items_left,
+				                   [this](const std::uint32_t id, const std::string& text)
 				{
 					if (!trim_text(text).empty()) _early_info.push_back(id);
 					add_tag(_out, tag_family::riff_info, fourcc_text(id), text);
@@ -598,17 +593,15 @@ namespace libfiles::detail
 
 				if (bytes.size() >= 56)
 				{
-					for (std::size_t i = 0; i < 4; ++i) s.frame[i] = static_cast<std::int16_t>(load_le16(h + 48 + 2 * i));
+					for (std::size_t i = 0; i < 4; ++i)
+						s.frame[i] = static_cast<std::int16_t>(load_le16(h + 48 + 2 * i));
 				}
 
 				switch (s.type)
 				{
-				case vids_type: s.stream.kind = media_stream_kind::video;
-					break;
-				case auds_type: s.stream.kind = media_stream_kind::audio;
-					break;
-				case txts_type: s.stream.kind = media_stream_kind::subtitle;
-					break;
+				case vids_type: s.stream.kind = media_stream_kind::video; break;
+				case auds_type: s.stream.kind = media_stream_kind::audio; break;
+				case txts_type: s.stream.kind = media_stream_kind::subtitle; break;
 				case iavs_type:
 				case ivas_type:
 					// DV interleaved with its own audio, described by the DV frames alone.
@@ -616,8 +609,7 @@ namespace libfiles::detail
 					s.stream.codec = "dv";
 					s.stream.codec_tag = fourcc_text(s.handler);
 					break;
-				default: s.stream.kind = media_stream_kind::data;
-					break;
+				default: s.stream.kind = media_stream_kind::data; break;
 				}
 
 				_current = _streams.size() - 1;
@@ -637,7 +629,8 @@ namespace libfiles::detail
 					read_bitmap_info(bytes, s.stream);
 
 					// DivX subtitles are pictures, in a video stream header.
-					if (s.stream.codec_tag == "DXSB" || s.stream.codec_tag == "DXSA") s.stream.kind = media_stream_kind::subtitle;
+					if (s.stream.codec_tag == "DXSB" || s.stream.codec_tag == "DXSA")
+						s.stream.kind = media_stream_kind::subtitle;
 					s.format = std::move(bytes);
 				}
 				else if (s.type == auds_type)
@@ -707,7 +700,10 @@ namespace libfiles::detail
 						const auto size = std::min<std::uint64_t>(_r.le16(at + 2), stop - at - 4);
 						at += 4;
 
-						const auto key = tag == 0x03 ? "Make" : tag == 0x04 ? "Model" : tag == 0x13 ? "DateTimeOriginal" : "";
+						const auto key = tag == 0x03   ? "Make"
+						                 : tag == 0x04 ? "Model"
+						                 : tag == 0x13 ? "DateTimeOriginal"
+						                               : "";
 
 						if (*key)
 						{
@@ -746,12 +742,14 @@ namespace libfiles::detail
 				const auto text = [](const entry& e)
 				{
 					const auto raw = e.ascii();
-					return std::string(trim_text(text_from_unknown({reinterpret_cast<const std::uint8_t*>(raw.data()), raw.size()})));
+					return std::string(
+						trim_text(text_from_unknown({reinterpret_cast<const std::uint8_t*>(raw.data()), raw.size()})));
 				};
 
 				for_each_entry(exif, 0, directory_kind::exif, [&](const entry& e)
 				{
-					if (e.tag == 0x8769 && (e.type == type_long || e.type == type_short)) exif_directory = e.type == type_long ? e.field_u32() : e.field_u16();
+					if (e.tag == 0x8769 && (e.type == type_long || e.type == type_short))
+						exif_directory = e.type == type_long ? e.field_u32() : e.field_u16();
 					if (e.type != type_ascii) return;
 					if (e.tag == 0x010F) make = text(e);
 					if (e.tag == 0x0110) model = text(e);
@@ -773,7 +771,9 @@ namespace libfiles::detail
 
 				if (_out.properties.camera_make.empty()) _out.properties.camera_make = make;
 				if (_out.properties.camera_model.empty()) _out.properties.camera_model = model;
-				if (const auto date = parse_media_date(original.empty() ? modified : original); date.valid() && !_exif_created.valid()) _exif_created = date;
+				if (const auto date = parse_media_date(original.empty() ? modified : original);
+				    date.valid() && !_exif_created.valid())
+					_exif_created = date;
 			}
 
 			// The codec headers of each video stream whose bitstream alone describes its picture: from the
@@ -784,7 +784,9 @@ namespace libfiles::detail
 
 				for (auto& s : _streams)
 				{
-					if (s.stream.kind != media_stream_kind::video || !described_by_bitstream(s.stream.codec) || configuration(s)) continue;
+					if (s.stream.kind != media_stream_kind::video || !described_by_bitstream(s.stream.codec) ||
+					    configuration(s))
+						continue;
 					s.peeks = max_peeks;
 					++wanted;
 				}
@@ -792,7 +794,8 @@ namespace libfiles::detail
 				if (wanted == 0) return;
 
 				std::size_t visited = 0;
-				const auto limit = _movi_end - _movi_start > max_peek_distance ? _movi_start + max_peek_distance : _movi_end;
+				const auto limit = _movi_end - _movi_start > max_peek_distance ? _movi_start + max_peek_distance
+				                                                               : _movi_end;
 				first_chunks(_movi_start, limit, 0, visited, wanted);
 			}
 
@@ -817,11 +820,14 @@ namespace libfiles::detail
 				video_header h;
 				auto ok = false;
 
-				if (codec == "h264") ok = config[0] == 1 ? parse_avc_config(config, h) : parse_annexb_sps(config, false, h);
-				else if (codec == "hevc") ok = config[0] == 1 ? parse_hevc_config(config, h) : parse_annexb_sps(config, true, h);
+				if (codec == "h264")
+					ok = config[0] == 1 ? parse_avc_config(config, h) : parse_annexb_sps(config, false, h);
+				else if (codec == "hevc")
+					ok = config[0] == 1 ? parse_hevc_config(config, h) : parse_annexb_sps(config, true, h);
 				else if (codec == "mpeg4") ok = parse_mpeg4_video(config, h);
 				else if (codec == "mpeg1" || codec == "mpeg2") ok = parse_mpeg12_video(config, h);
-				else if (codec == "av1") ok = config[0] & 0x80 ? parse_av1_config(config, h) : parse_av1_sequence(config, h);
+				else if (codec == "av1")
+					ok = config[0] & 0x80 ? parse_av1_config(config, h) : parse_av1_sequence(config, h);
 
 				if (ok) s.header = h;
 				return ok;
@@ -839,7 +845,8 @@ namespace libfiles::detail
 
 			// Walks movi from its start - into the 'rec ' lists that group chunks - reading the chunks of the
 			// streams that want their bitstream. False ends the walk.
-			bool first_chunks(const std::uint64_t pos, const std::uint64_t limit, const int depth, std::size_t& visited, std::size_t& wanted)
+			bool first_chunks(const std::uint64_t pos, const std::uint64_t limit, const int depth, std::size_t& visited,
+			                  std::size_t& wanted)
 			{
 				auto go_on = true;
 
@@ -954,12 +961,17 @@ namespace libfiles::detail
 			if (bytes.size() < 338) return;
 
 			const std::span<const std::uint8_t> b(bytes);
-			const auto field = [b](const std::size_t at, const std::size_t length) { return text_from_unknown(b.subspan(at, length)); };
+			const auto field = [b](const std::size_t at, const std::size_t length)
+			{
+				return text_from_unknown(b.subspan(at, length));
+			};
 
-			const auto file_as = [&out](const std::string_view key, const std::string& value, const std::string_view info_key)
+			const auto file_as =
+				[&out](const std::string_view key, const std::string& value, const std::string_view info_key)
 			{
 				keep_tag(out.tags, key, value);
-				if (const auto text = trim_text(value); !text.empty()) apply_tag(out.properties, tag_family::riff_info, info_key, text);
+				if (const auto text = trim_text(value); !text.empty())
+					apply_tag(out.properties, tag_family::riff_info, info_key, text);
 			};
 
 			file_as("Description", field(0, 256), "ICMT");
@@ -1017,7 +1029,8 @@ namespace libfiles::detail
 				return true;
 			}
 
-			if (c.id == list_id && (c.type == movi_type || (c.size < 4 && end - c.start >= 12 && r.le32(c.start + 8) == movi_type)))
+			if (c.id == list_id &&
+			    (c.type == movi_type || (c.size < 4 && end - c.start >= 12 && r.le32(c.start + 8) == movi_type)))
 			{
 				avi.movie_data(c, end);
 
@@ -1063,7 +1076,8 @@ namespace libfiles::detail
 				if (!format)
 				{
 					format = true;
-					format_read = read_wave_format(read_payload(r, c, end, max_format), stream, &avg_bytes_per_second, &block_align);
+					format_read = read_wave_format(read_payload(r, c, end, max_format), stream, &avg_bytes_per_second,
+					                               &block_align);
 				}
 				break;
 			case data_id:
@@ -1095,10 +1109,8 @@ namespace libfiles::detail
 					read_info(r, c.payload() + 4, c.payload() + available(r, c, end), info_items_left, out);
 				break;
 			case id3_id:
-			case id3_upper_id: read_id3_chunk(r, c, budget, out);
-				break;
-			case bext_id: read_bext(r, c, end, out, created);
-				break;
+			case id3_upper_id: read_id3_chunk(r, c, budget, out); break;
+			case bext_id: read_bext(r, c, end, out, created); break;
 			case disp_id:
 				// The writer's: CF_TEXT, a title, the last of which it edits.
 				if (available(r, c, end) >= 4 && r.le32(c.payload()) == 1)
@@ -1107,8 +1119,7 @@ namespace libfiles::detail
 					keep_tag(out.tags, "DISP", display_title);
 				}
 				break;
-			case ixml_id: keep_tag(out.tags, "iXML", read_text(r, c, end));
-				break;
+			case ixml_id: keep_tag(out.tags, "iXML", read_text(r, c, end)); break;
 			default: break;
 			}
 
@@ -1124,10 +1135,12 @@ namespace libfiles::detail
 
 		// Samples of one size, whose count the data's size gives: PCM, and G.711's A-law and mu-law. Its rate in
 		// bytes is the block's size at the sample rate, when the block holds what the samples say it should.
-		const auto constant = !codec.empty() && (codec == "pcm" || codec == codec_from_wave_tag(0x0006) || codec == codec_from_wave_tag(0x0007));
+		const auto constant = !codec.empty() && (codec == "pcm" || codec == codec_from_wave_tag(0x0006) ||
+		                                         codec == codec_from_wave_tag(0x0007));
 		std::uint64_t bytes_per_second = avg_bytes_per_second;
 
-		if (constant && a.sample_rate != 0 && a.bits_per_sample != 0 && block_align != 0 && block_align == a.channels * ((a.bits_per_sample + 7u) / 8u))
+		if (constant && a.sample_rate != 0 && a.bits_per_sample != 0 && block_align != 0 &&
+		    block_align == a.channels * ((a.bits_per_sample + 7u) / 8u))
 		{
 			bytes_per_second = std::uint64_t{block_align} * a.sample_rate;
 		}
@@ -1137,8 +1150,10 @@ namespace libfiles::detail
 		if (l.sizes && l.sizes->samples != 0) samples = l.sizes->samples;
 		else if (fact && *fact != size_in_ds64) samples = *fact;
 
-		if (!constant && samples != 0 && a.sample_rate != 0) stream.duration = static_cast<double>(samples) / a.sample_rate;
-		else if (bytes_per_second != 0) stream.duration = static_cast<double>(data_bytes) / static_cast<double>(bytes_per_second);
+		if (!constant && samples != 0 && a.sample_rate != 0)
+			stream.duration = static_cast<double>(samples) / a.sample_rate;
+		else if (bytes_per_second != 0)
+			stream.duration = static_cast<double>(data_bytes) / static_cast<double>(bytes_per_second);
 
 		if (stream.bit_rate == 0) stream.bit_rate = bytes_per_second * 8;
 		stream.id = 0;
@@ -1169,8 +1184,9 @@ namespace libfiles::detail
 
 			if (l.sizes)
 			{
-				add_structure_row(rows, "64-bit sizes", std::format("RIFF {} bytes, data {} bytes, {} samples", l.sizes->riff, l.sizes->data,
-				                                                    l.sizes->samples));
+				add_structure_row(rows, "64-bit sizes",
+				                  std::format("RIFF {} bytes, data {} bytes, {} samples", l.sizes->riff, l.sizes->data,
+				                              l.sizes->samples));
 			}
 
 			add_structure_row(rows, "Format tag", s.codec_tag);
@@ -1178,9 +1194,11 @@ namespace libfiles::detail
 			add_structure_row(rows, "Sample rate", std::format("{} Hz", s.audio.sample_rate));
 			add_structure_row(rows, "Average bytes per second", std::to_string(avg_bytes_per_second));
 			add_structure_row(rows, "Block align", std::to_string(block_align));
-			if (s.audio.bits_per_sample != 0) add_structure_row(rows, "Bits per sample", std::to_string(s.audio.bits_per_sample));
+			if (s.audio.bits_per_sample != 0)
+				add_structure_row(rows, "Bits per sample", std::to_string(s.audio.bits_per_sample));
 			if (fact) add_structure_row(rows, "Samples, as fact counts them", std::to_string(*fact));
-			add_structure_row(rows, "Audio data", std::format("{} bytes{}", data_bytes, stopped ? ", its size unstated" : ""));
+			add_structure_row(rows, "Audio data",
+			                  std::format("{} bytes{}", data_bytes, stopped ? ", its size unstated" : ""));
 			add_chunk_rows(rows, l);
 			finish_structure_sections(rows);
 		}

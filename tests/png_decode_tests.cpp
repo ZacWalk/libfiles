@@ -1,23 +1,31 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding PNGs: each colour type and bit depth brought to straight-alpha BGRA, tRNS,
-// 16-bit scaling, gamma, interlacing, the orientation from an eXIf before or after the image data, and
-// what decode_file() reports for a file cut short, damaged or refused. The files are written by libpng, with
-// the chunks it will not place spliced in.
+// 16-bit scaling, gamma, an iCCP profile's colours mapped to sRGB, a cICP chunk making the picture HDR to the
+// scan as to the decode, interlacing, the orientation from an eXIf before or after the image data, and what
+// decode_file() reports for a file cut short, damaged or refused. The files are written by libpng, with the
+// chunks it will not place spliced in.
 
 #include "test.h"
 
 #ifdef LIBFILES_PNG
 
 #include "builders.h"
+#include "icc_corpus.h"
 #include "libfiles/decode.h"
 #include "libfiles/document.h"
+#include "libfiles/hdr.h"
+#include "libfiles/scan.h"
 
 #include <png.h>
 
 #include <array>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -58,6 +66,7 @@ namespace
 		std::optional<png_color_16> transparent;
 		double gamma = 0;
 		bool srgb = false;
+		std::vector<std::uint8_t> icc;
 	};
 
 	// A PNG of rows, as libpng writes one.
@@ -84,7 +93,12 @@ namespace
 		if (s.srgb) png_set_sRGB_gAMA_and_cHRM(png, info, PNG_sRGB_INTENT_PERCEPTUAL);
 		else if (s.gamma > 0) png_set_gAMA(png, info, s.gamma);
 
+		if (!s.icc.empty())
+			png_set_iCCP(png, info, "icc", PNG_COMPRESSION_TYPE_BASE, s.icc.data(),
+			             static_cast<png_uint_32>(s.icc.size()));
+
 		std::vector<png_bytep> pointers;
+		pointers.reserve(rows.size());
 		for (const auto& row : rows) pointers.push_back(const_cast<png_bytep>(row.data()));
 
 		png_write_info(png, info);
@@ -121,8 +135,7 @@ namespace
 	// A little-endian TIFF stream with one entry: the orientation.
 	bytes orientation_exif(const std::uint16_t value)
 	{
-		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0)
-		                .le32(0).b;
+		return builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(value).le16(0).le32(0).b;
 	}
 
 	using pixel = std::array<std::uint8_t, 4>;
@@ -144,13 +157,19 @@ namespace
 		libfiles::frame_info told;
 		std::size_t exif_told = 0;
 
+		std::size_t pixel_bytes() const
+		{
+			return told.format == libfiles::pixel_format::rgba16 || told.format == libfiles::pixel_format::rgbx16 ? 8
+			                                                                                                      : 4;
+		}
+
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
 			++calls;
 			told = frame;
 			exif_told = frame.exif.size();
 			if (refuse) return {};
-			stride = std::size_t{4} * frame.width + 12;
+			stride = pixel_bytes() * frame.width + 12;
 			memory.assign(stride * frame.height, 0xAB);
 			return {memory.data(), stride};
 		}
@@ -161,19 +180,45 @@ namespace
 			return {p[0], p[1], p[2], p[3]};
 		}
 
+		std::array<std::uint16_t, 4> wide_at(const std::size_t x, const std::size_t y) const
+		{
+			std::array<std::uint16_t, 4> channels{};
+			std::memcpy(channels.data(), memory.data() + y * stride + x * 8, 8);
+			return channels;
+		}
+
 		bool padding_kept() const
 		{
 			for (std::size_t y = 0; y < told.height; ++y)
-				for (auto x = std::size_t{4} * told.width; x < stride; ++x)
+				for (auto x = pixel_bytes() * told.width; x < stride; ++x)
 					if (memory[y * stride + x] != 0xAB) return false;
 			return true;
 		}
 	};
 
-	libfiles::decode_result decode_file(const bytes& file, png_sink& sink)
+	libfiles::decode_result decode_file(const bytes& file, png_sink& sink, const libfiles::decode_options& options = {})
 	{
 		libfiles::reader r{std::span<const std::uint8_t>(file)};
-		return libfiles::decode(r, sink);
+		return libfiles::decode(r, sink, options);
+	}
+
+	// Sixteen-bit channels, red first, spelled so a test macro does not take their commas for its own.
+	std::array<std::uint16_t, 4> wide(const std::uint16_t r, const std::uint16_t g, const std::uint16_t b,
+	                                  const std::uint16_t a)
+	{
+		return {r, g, b, a};
+	}
+
+	// A row of 16-bit samples as a PNG stores them, big-endian.
+	bytes big_endian_row(const std::vector<std::uint16_t>& samples)
+	{
+		bytes row;
+		for (const auto v : samples)
+		{
+			row.push_back(static_cast<std::uint8_t>(v >> 8));
+			row.push_back(static_cast<std::uint8_t>(v));
+		}
+		return row;
 	}
 
 	bytes rgb_row(const std::uint32_t width, const std::uint32_t y)
@@ -191,6 +236,7 @@ namespace
 	std::vector<bytes> rgb_rows(const std::uint32_t width, const std::uint32_t height)
 	{
 		std::vector<bytes> rows;
+		rows.reserve(height);
 		for (std::uint32_t y = 0; y < height; ++y) rows.push_back(rgb_row(width, y));
 		return rows;
 	}
@@ -248,14 +294,17 @@ TEST("native PNG keeps packed palettes alpha and interlaced rows")
 TEST("native PNG reports a damaged IHDR through its result instead of unwinding C frames")
 {
 	png_spec spec;
-	auto file = write_png(spec, {{10, 20, 30, 40, 50, 60, 70, 80, 90},
-		{90, 80, 70, 60, 50, 40, 30, 20, 10}});
+	auto file = write_png(spec, {{10, 20, 30, 40, 50, 60, 70, 80, 90}, {90, 80, 70, 60, 50, 40, 30, 20, 10}});
 	CHECK(file.size() > 32);
 	if (file.size() <= 32) return;
 	file[29] ^= 1;
 	struct no_pixels final : libfiles::document_sink
 	{
-		bool begin_frame(const libfiles::document_frame&) override { CHECK(false); return false; }
+		bool begin_frame(const libfiles::document_frame&) override
+		{
+			CHECK(false);
+			return false;
+		}
 		void row(std::uint32_t, std::span<const std::uint8_t>) override { CHECK(false); }
 	} sink;
 	libfiles::reader input(file);
@@ -284,7 +333,8 @@ TEST("Should decode an RGB PNG to opaque BGRA")
 	auto exact = true;
 	for (std::uint32_t y = 0; y < 2; ++y)
 		for (std::uint32_t x = 0; x < 3; ++x)
-			exact &= sink.at(x, y) == pixel{7, static_cast<std::uint8_t>(y * 100), static_cast<std::uint8_t>(x * 80), 0xFF};
+			exact &= sink.at(x, y) ==
+			         pixel{7, static_cast<std::uint8_t>(y * 100), static_cast<std::uint8_t>(x * 80), 0xFF};
 	CHECK(exact);
 	CHECK(sink.padding_kept());
 }
@@ -391,6 +441,164 @@ TEST("Should scale 16 bits a channel to 8")
 	CHECK(sink.at(1, 0) == px(200, 77, 0, 255));
 }
 
+TEST("Should keep sixteen bits a channel for a caller that takes them")
+{
+	png_spec spec;
+	spec.bit_depth = 16;
+	spec.width = 2;
+	spec.height = 1;
+
+	libfiles::decode_options options;
+	options.allow_16bit = true;
+
+	png_sink sink;
+	CHECK(
+		decode_file(write_png(spec, {big_endian_row({0x1234, 0xABCD, 0x0102, 0xFFFF, 0x0000, 0x8000})}), sink, options)
+			.success);
+	CHECK(sink.told.format == libfiles::pixel_format::rgbx16);
+	CHECK(sink.wide_at(0, 0) == wide(0x1234, 0xABCD, 0x0102, 0xFFFF));
+	CHECK(sink.wide_at(1, 0) == wide(0xFFFF, 0x0000, 0x8000, 0xFFFF));
+	CHECK(sink.padding_kept());
+
+	png_spec alpha = spec;
+	alpha.color_type = PNG_COLOR_TYPE_RGB_ALPHA;
+	alpha.width = 1;
+	png_sink alpha_sink;
+	CHECK(
+		decode_file(write_png(alpha, {big_endian_row({0x1234, 0xABCD, 0x0102, 0x4001})}), alpha_sink, options).success);
+	CHECK(alpha_sink.told.format == libfiles::pixel_format::rgba16);
+	CHECK(alpha_sink.wide_at(0, 0) == wide(0x1234, 0xABCD, 0x0102, 0x4001));
+
+	// Eight bits stay eight, whatever the caller takes.
+	png_spec eight;
+	eight.width = 1;
+	eight.height = 1;
+	png_sink byte_sink;
+	CHECK(decode_file(write_png(eight, {{10, 20, 30}}), byte_sink, options).success);
+	CHECK(byte_sink.told.format == libfiles::pixel_format::bgra8);
+	CHECK(byte_sink.at(0, 0) == px(30, 20, 10, 255));
+}
+
+// An HDR still shown as an SDR display shows it: a neutral at 50 nits of PQ - below where BT.2390 rolls
+// highlights off - comes out at 50 / 203 of SDR white, sRGB-encoded, and HLG's reference white at a quarter
+// of white's light. Drawn as it is, the signal would be read as sRGB and show dim and washed out.
+TEST("Should map a PNG its cICP chunk marks PQ or HLG to SDR")
+{
+	png_spec spec;
+	spec.bit_depth = 16;
+	spec.width = 2;
+	spec.height = 1;
+
+	const auto with_cicp = [](const bytes& file, const std::uint8_t transfer)
+	{
+		return splice(file, find_chunk(file, "IDAT"), "cICP", {9, transfer, 0, 1});
+	};
+
+	// The neutral, and BT.2020's red, which lies outside BT.709 and is fitted rather than clipped.
+	const auto pq = with_cicp(write_png(spec, {big_endian_row({28854, 28854, 28854, 32768, 0, 0})}), 16);
+	png_sink sink;
+	const auto mapped = decode_file(pq, sink);
+	CHECK(mapped.success);
+	CHECK(mapped.frame.tone_mapped);
+
+	const auto grey = sink.at(0, 0);
+	CHECK(std::abs(grey[2] - 136) <= 1 && std::abs(grey[1] - 136) <= 1 && std::abs(grey[0] - 136) <= 1);
+	const auto red = sink.at(1, 0);
+	CHECK(red[2] > red[1] + 100 && red[2] > red[0] + 100);
+
+	libfiles::decode_options options;
+	options.allow_16bit = true;
+	png_sink wide_sink;
+	CHECK(decode_file(pq, wide_sink, options).success);
+	CHECK(wide_sink.told.format == libfiles::pixel_format::rgbx16);
+	CHECK(std::abs(wide_sink.wide_at(0, 0)[1] - 34959) <= 200);
+
+	const auto hlg = with_cicp(write_png(spec, {big_endian_row({49151, 49151, 49151, 65535, 65535, 65535})}), 18);
+	png_sink hlg_sink;
+	CHECK(decode_file(hlg, hlg_sink).frame.tone_mapped);
+	CHECK(std::abs(hlg_sink.at(0, 0)[1] - 141) <= 1);
+	CHECK(hlg_sink.at(1, 0) == px(255, 255, 255, 255));
+
+	// A cICP chunk naming an SDR transfer changes nothing.
+	png_sink sdr_sink;
+	const auto sdr = decode_file(with_cicp(write_png(spec, {big_endian_row({28854, 28854, 28854, 0, 0, 0})}), 13),
+	                             sdr_sink);
+	CHECK(!sdr.frame.tone_mapped);
+	CHECK(sdr_sink.at(0, 0) == px(112, 112, 112, 255));
+}
+
+// Kept for a caller that keeps HDR, the picture is its signal as the file stores it, at sixteen bits whatever else the
+// caller takes, described by its cICP, cLLI and mDCV chunks; and map_hdr_to_sdr maps it as the decode itself would.
+TEST("Should keep a PNG's HDR signal and what its chunks say of it, for a caller that keeps HDR")
+{
+	png_spec spec;
+	spec.bit_depth = 16;
+	spec.width = 2;
+	spec.height = 1;
+
+	auto pq = write_png(spec, {big_endian_row({28854, 28854, 28854, 32768, 0, 0})});
+	pq = splice(pq, find_chunk(pq, "IDAT"), "cICP", {9, 16, 0, 1});
+	pq = splice(pq, find_chunk(pq, "IDAT"), "cLLI", builder().be32(10000000).be32(4000000).b);
+	pq = splice(pq, find_chunk(pq, "IDAT"), "mDCV",
+	            builder()
+	                .be16(34000)
+	                .be16(16000)
+	                .be16(13250)
+	                .be16(34500)
+	                .be16(7500)
+	                .be16(3000)
+	                .be16(15635)
+	                .be16(16450)
+	                .be32(10000000)
+	                .be32(50)
+	                .b);
+
+	libfiles::decode_options keep;
+	keep.keep_hdr = true;
+	png_sink kept;
+	const auto signal = decode_file(pq, kept, keep);
+	CHECK(signal.success);
+	CHECK(!signal.frame.tone_mapped);
+	CHECK(kept.told.format == libfiles::pixel_format::rgbx16);
+	CHECK(kept.wide_at(0, 0) == wide(28854, 28854, 28854, 0xFFFF));
+	CHECK(kept.wide_at(1, 0) == wide(32768, 0, 0, 0xFFFF));
+
+	CHECK(signal.frame.hdr.has_value());
+	const auto& hdr = *signal.frame.hdr;
+	CHECK(hdr.transfer == libfiles::hdr_transfer::pq);
+	CHECK_EQ(hdr.colour_primaries, 9);
+	CHECK(hdr.primaries == *libfiles::chromaticities_of(9));
+	CHECK(std::abs(hdr.max_cll - 1000.0) < 1e-6 && std::abs(hdr.max_fall - 400.0) < 1e-6);
+	CHECK(hdr.mastering.has_value());
+	CHECK(std::abs(hdr.mastering->primaries.red_x - 0.68) < 1e-6 &&
+	      std::abs(hdr.mastering->primaries.white_y - 0.329) < 1e-6);
+	CHECK(std::abs(hdr.mastering->max_luminance - 1000.0) < 1e-6 &&
+	      std::abs(hdr.mastering->min_luminance - 0.005) < 1e-6);
+	CHECK(std::abs(hdr.peak_nits() - 1000.0) < 1e-6);
+
+	// Mapped, it says the same of itself.
+	png_sink mapped;
+	const auto shown = decode_file(pq, mapped);
+	CHECK(shown.frame.tone_mapped && shown.frame.hdr == signal.frame.hdr);
+
+	std::vector<std::uint8_t> sdr(8, 0);
+	const libfiles::image_view view{kept.memory.data(), kept.stride, 2, 1, libfiles::pixel_format::rgbx16};
+	CHECK(libfiles::map_hdr_to_sdr(view, hdr, libfiles::pixel_format::bgrx8, {sdr.data(), 8}));
+	for (std::size_t x = 0; x < 2; ++x)
+		for (std::size_t c = 0; c < 3; ++c) CHECK_EQ(sdr[x * 4 + c], mapped.at(x, 0)[c]);
+
+	// An eight-bit HDR PNG is widened to the signal its bytes stand for.
+	png_spec eight;
+	eight.width = 1;
+	eight.height = 1;
+	const auto bytes_png = write_png(eight, {{128, 64, 255}});
+	const auto narrow = splice(bytes_png, find_chunk(bytes_png, "IDAT"), "cICP", {9, 18, 0, 1});
+	png_sink widened;
+	const auto hlg = decode_file(narrow, widened, keep);
+	CHECK(hlg.success && hlg.frame.hdr && hlg.frame.hdr->transfer == libfiles::hdr_transfer::hlg);
+	CHECK(widened.wide_at(0, 0) == wide(128 * 257, 64 * 257, 255 * 257, 0xFFFF));
+}
+
 TEST("Should correct a PNG's own gamma for an sRGB display, unless it says it is sRGB")
 {
 	png_spec spec;
@@ -408,6 +616,92 @@ TEST("Should correct a PNG's own gamma for an sRGB display, unless it says it is
 	png_sink srgb;
 	CHECK(decode_file(write_png(spec, {{128}}), srgb).success);
 	CHECK(srgb.at(0, 0) == px(128, 128, 128, 255));
+}
+
+TEST("Should map a PNG's colours to sRGB by its iCCP profile when asked, in place of its gamma")
+{
+	png_spec spec;
+	spec.width = 2;
+	spec.height = 1;
+	spec.icc = icc_corpus::display_p3();
+	// Linear, so the gamma alone would lighten the picture: the profile's own curve takes its place.
+	spec.gamma = 1.0;
+	// Display P3's (187, 105, 62) is sRGB's (200, 100, 50); P3's red is past sRGB's, and clips to it.
+	const auto file = write_png(spec, {{187, 105, 62, 255, 0, 0}});
+
+	libfiles::decode_options options;
+	options.map_to_srgb = true;
+	png_sink mapped;
+	const auto result = decode_file(file, mapped, options);
+	CHECK(result.success && result.frame.profile_mapped);
+	const auto first = mapped.at(0, 0);
+	CHECK(std::abs(first[0] - 50) <= 2 && std::abs(first[1] - 100) <= 2 && std::abs(first[2] - 200) <= 2);
+	CHECK(mapped.at(1, 0) == px(0, 0, 255, 255));
+	CHECK(mapped.padding_kept());
+
+	// Without the option the profile changes nothing: the gamma corrects the picture as it would without it.
+	png_sink plain;
+	CHECK(!decode_file(file, plain).frame.profile_mapped);
+	spec.icc.clear();
+	png_sink gamma_alone;
+	CHECK(decode_file(write_png(spec, {{187, 105, 62, 255, 0, 0}}), gamma_alone).success);
+	CHECK(plain.memory == gamma_alone.memory);
+	CHECK(plain.at(0, 0) != mapped.at(0, 0));
+}
+
+TEST("Should say a PNG is HDR by the cICP chunk libpng keeps, as its decode finds it")
+{
+	const auto plain = write_png({}, rgb_rows(3, 2));
+	const auto at_idat = find_chunk(plain, "IDAT");
+
+	png_spec palette_spec;
+	palette_spec.color_type = PNG_COLOR_TYPE_PALETTE;
+	palette_spec.width = 3;
+	palette_spec.height = 1;
+	palette_spec.palette = {{10, 20, 30}, {40, 50, 60}};
+	const auto palette = write_png(palette_spec, {{1, 0, 1}});
+
+	// BT.2020 primaries, full range, and the transfer and matrix given.
+	const auto cicp = [](const std::uint8_t transfer, const std::uint8_t matrix) -> bytes
+	{
+		return {9, transfer, matrix, 1};
+	};
+	const auto whole_then = splice(plain, at_idat, "cICP", cicp(16, 0));
+
+	struct variant
+	{
+		const char* name;
+		bytes file;
+		bool hdr;
+	};
+
+	const variant variants[] = {
+		{"no cICP", plain, false},
+		{"PQ", splice(plain, at_idat, "cICP", cicp(16, 0)), true},
+		{"HLG", splice(plain, at_idat, "cICP", cicp(18, 0)), true},
+		{"sRGB's transfer", splice(plain, at_idat, "cICP", cicp(13, 0)), false},
+		{"a matrix other than RGB's", splice(plain, at_idat, "cICP", cicp(16, 1)), false},
+		{"a damaged CRC", splice(plain, at_idat, "cICP", cicp(16, 0), true), false},
+		{"a damaged one, then a whole one", splice(whole_then, at_idat, "cICP", cicp(16, 0), true), true},
+		{"after PLTE", splice(palette, find_chunk(palette, "IDAT"), "cICP", cicp(16, 0)), false},
+		{"before PLTE", splice(palette, find_chunk(palette, "PLTE"), "cICP", cicp(16, 0)), true},
+	};
+
+	for (const auto& v : variants)
+	{
+		libfiles::reader r{std::span<const std::uint8_t>(v.file)};
+		const auto scanned = libfiles::scan(r);
+		png_sink sink;
+		const auto decoded = decode_file(v.file, sink);
+
+		if (!scanned.success || !decoded.success || scanned.hdr != v.hdr || decoded.frame.hdr.has_value() != v.hdr)
+			std::printf("  %s: scanned %d, decoded %d, expected %d\n", v.name, scanned.hdr ? 1 : 0,
+			            decoded.frame.hdr.has_value() ? 1 : 0, v.hdr ? 1 : 0);
+
+		CHECK(scanned.success && decoded.success);
+		CHECK(scanned.hdr == v.hdr);
+		CHECK(decoded.frame.hdr.has_value() == v.hdr);
+	}
 }
 
 TEST("Should decode an interlaced PNG whole, saying libpng warned")

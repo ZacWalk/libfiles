@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native, indexed and multi-page image decoding into the caller's row stream, or whole into
 // memory; and any document's rows as BGRA.
@@ -16,8 +16,17 @@ namespace libfiles
 {
 	enum class document_storage : std::uint8_t
 	{
-		indexed1, indexed2, indexed4, indexed8, indexed8_alpha, gray8,
-		bgr555, bgr565, bgr24, bgrx32, bgra32
+		indexed1,
+		indexed2,
+		indexed4,
+		indexed8,
+		indexed8_alpha,
+		gray8,
+		bgr555,
+		bgr565,
+		bgr24,
+		bgrx32,
+		bgra32
 	};
 
 	std::uint32_t storage_bits(document_storage format) noexcept;
@@ -41,7 +50,14 @@ namespace libfiles
 
 	enum class document_metadata : std::uint8_t
 	{
-		exif, iptc, xmp, icc, source_icc, photoshop, comment, author,
+		exif,
+		iptc,
+		xmp,
+		icc,
+		source_icc,
+		photoshop,
+		comment,
+		author,
 		// A tEXt or uncompressed iTXt chunk: its four-byte name followed by its PNG payload.
 		// Retains arbitrary keywords, language and translated keyword, not just Author/Comment.
 		png_text

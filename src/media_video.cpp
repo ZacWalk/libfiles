@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The video codec headers the media scanners read - H.264 and HEVC parameter sets and the
 // records MP4 keeps them in, AV1 sequence headers, VP8 and VP9 frame headers and the VP codec record,
@@ -54,9 +54,11 @@ namespace libfiles::detail
 		}
 
 		// H.273 code points as FFmpeg keeps them: a reserved or unassigned value says nothing.
-		void set_colour(video_header& h, const std::uint32_t primaries, const std::uint32_t transfer, const std::uint32_t matrix)
+		void set_colour(video_header& h, const std::uint32_t primaries, const std::uint32_t transfer,
+		                const std::uint32_t matrix)
 		{
-			h.color_primaries = static_cast<std::uint8_t>(primaries == 1 || (primaries >= 4 && primaries <= 12) || primaries == 22 ? primaries : 2);
+			h.color_primaries = static_cast<std::uint8_t>(
+				primaries == 1 || (primaries >= 4 && primaries <= 12) || primaries == 22 ? primaries : 2);
 			h.transfer = static_cast<std::uint8_t>(transfer == 1 || (transfer >= 4 && transfer <= 18) ? transfer : 2);
 			h.matrix = static_cast<std::uint8_t>(matrix <= 17 && matrix != 3 ? matrix : 2);
 		}
@@ -123,8 +125,8 @@ namespace libfiles::detail
 
 		// Table E-1, which both codecs share: the pixel shapes aspect_ratio_idc names.
 		constexpr std::uint8_t sample_aspects[17][2] = {
-			{0, 0}, {1, 1}, {12, 11}, {10, 11}, {16, 11}, {40, 33}, {24, 11}, {20, 11}, {32, 11},
-			{80, 33}, {18, 11}, {15, 11}, {64, 33}, {160, 99}, {4, 3}, {3, 2}, {2, 1},
+			{0, 0},   {1, 1},   {12, 11}, {10, 11}, {16, 11},  {40, 33}, {24, 11}, {20, 11}, {32, 11},
+			{80, 33}, {18, 11}, {15, 11}, {64, 33}, {160, 99}, {4, 3},   {3, 2},   {2, 1},
 		};
 
 		constexpr std::uint32_t extended_sar = 255;
@@ -189,7 +191,8 @@ namespace libfiles::detail
 
 		// The profiles whose SPS states its chroma format, depths and scaling matrices; 144 is the High
 		// 4:4:4 profile the 2007 edition replaced with 244.
-		constexpr std::uint32_t h264_high_profiles[] = {100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135, 144};
+		constexpr std::uint32_t h264_high_profiles[] = {100, 110, 122, 244, 44,  83,  86,
+		                                                118, 128, 138, 139, 134, 135, 144};
 
 		std::string h264_profile(const std::uint32_t idc, const std::uint32_t constraints)
 		{
@@ -721,11 +724,13 @@ namespace libfiles::detail
 
 		// profile_and_level_indication's profile, by its high four bits, as FFmpeg names them.
 		constexpr const char* mpeg4_profiles[16] = {
+			// clang-format off
 			"Simple Profile", "Simple Scalable Profile", "Core Profile", "Main Profile", "N-bit Profile",
 			"Scalable Texture Profile", "Simple Face Animation Profile", "Basic Animated Texture Profile",
 			"Hybrid Profile", "Advanced Real Time Simple Profile", "Core Scalable Profile",
 			"Advanced Coding Profile", "Advanced Core Profile", "Advanced Scalable Texture Profile",
 			"Simple Studio Profile", "Advanced Simple Profile",
+			// clang-format on
 		};
 
 		// aspect_ratio_info's pixel shapes, 1 to 5; 15 is a stated pair.
@@ -774,7 +779,8 @@ namespace libfiles::detail
 			set_colour(h, primaries, transfer, matrix);
 		}
 
-		bool read_video_object_layer(const std::span<const std::uint8_t> body, const unsigned object_verid, video_header h, video_header& out)
+		bool read_video_object_layer(const std::span<const std::uint8_t> body, const unsigned object_verid,
+		                             video_header h, video_header& out)
 		{
 			bit_reader b(body);
 			b.skip(1);
@@ -891,15 +897,15 @@ namespace libfiles::detail
 		// frame_rate_code's eight rates, then the five FFmpeg also reads for Xing's and libmpeg3's
 		// streams.
 		constexpr std::uint32_t mpeg_frame_rates[14][2] = {
-			{0, 0}, {24000, 1001}, {24, 1}, {25, 1}, {30000, 1001}, {30, 1}, {50, 1}, {60000, 1001},
-			{60, 1}, {15, 1}, {5, 1}, {10, 1}, {12, 1}, {15, 1},
+			{0, 0},        {24000, 1001}, {24, 1}, {25, 1}, {30000, 1001}, {30, 1}, {50, 1},
+			{60000, 1001}, {60, 1},       {15, 1}, {5, 1},  {10, 1},       {12, 1}, {15, 1},
 		};
 
 		// MPEG-1 states a pixel's height over its width to four places; these are FFmpeg's fractions
 		// of them, width to height.
 		constexpr std::uint16_t mpeg1_pixel_aspects[15][2] = {
-			{0, 0}, {1, 1}, {49, 33}, {64, 45}, {239, 182}, {36, 29}, {32, 27}, {169, 151}, {178, 163},
-			{54, 53}, {196, 201}, {187, 200}, {200, 219}, {127, 147}, {134, 161},
+			{0, 0},     {1, 1},   {49, 33},   {64, 45},   {239, 182}, {36, 29},   {32, 27},   {169, 151},
+			{178, 163}, {54, 53}, {196, 201}, {187, 200}, {200, 219}, {127, 147}, {134, 161},
 		};
 
 		// MPEG-2 states the display's shape instead: square pixels, 4:3, 16:9 and 2.21:1.
@@ -937,15 +943,18 @@ namespace libfiles::detail
 			}
 		}
 
-		void set_mpeg_frame_rate(video_header& h, const std::uint32_t code, const std::uint32_t numerator, const std::uint32_t denominator)
+		void set_mpeg_frame_rate(video_header& h, const std::uint32_t code, const std::uint32_t numerator,
+		                         const std::uint32_t denominator)
 		{
 			if (code == 0 || code >= std::size(mpeg_frame_rates)) return;
-			h.frame_rate = static_cast<double>(mpeg_frame_rates[code][0]) * numerator / (static_cast<double>(mpeg_frame_rates[code][1]) * denominator);
+			h.frame_rate = static_cast<double>(mpeg_frame_rates[code][0]) * numerator /
+			               (static_cast<double>(mpeg_frame_rates[code][1]) * denominator);
 		}
 
 		// The colour a sequence display extension describes, when one follows the sequence extension
 		// among its extensions and user data.
-		void read_sequence_display_extension(const std::span<const std::uint8_t> data, const std::size_t from, video_header& h)
+		void read_sequence_display_extension(const std::span<const std::uint8_t> data, const std::size_t from,
+		                                     video_header& h)
 		{
 			for (auto at = find_start_code(data, from); at + 4 <= data.size(); at = find_start_code(data, at + 4))
 			{
@@ -988,7 +997,8 @@ namespace libfiles::detail
 			const auto v = luma & 15;
 			const auto chroma_h = blue >> 4;
 			const auto chroma_v = blue & 15;
-			if (blue != red || chroma_h == 0 || chroma_v == 0 || h % chroma_h != 0 || v % chroma_v != 0) return chroma_format::unknown;
+			if (blue != red || chroma_h == 0 || chroma_v == 0 || h % chroma_h != 0 || v % chroma_v != 0)
+				return chroma_format::unknown;
 
 			switch ((h / chroma_h) << 4 | v / chroma_v)
 			{
@@ -1012,7 +1022,8 @@ namespace libfiles::detail
 			bool itu601 = false;
 		};
 
-		bool read_jpeg_frame_header(const std::uint8_t marker, const std::span<const std::uint8_t> frame, const jpeg_markers& markers, video_header& out)
+		bool read_jpeg_frame_header(const std::uint8_t marker, const std::span<const std::uint8_t> frame,
+		                            const jpeg_markers& markers, video_header& out)
 		{
 			if (frame.size() < 6) return false;
 
@@ -1057,16 +1068,11 @@ namespace libfiles::detail
 
 			switch (marker)
 			{
-			case 0xC0: h.profile = "Baseline";
-				break;
-			case 0xC1: h.profile = "Sequential";
-				break;
-			case 0xC2: h.profile = "Progressive";
-				break;
-			case 0xC3: h.profile = "Lossless";
-				break;
-			default:
-				break;
+			case 0xC0: h.profile = "Baseline"; break;
+			case 0xC1: h.profile = "Sequential"; break;
+			case 0xC2: h.profile = "Progressive"; break;
+			case 0xC3: h.profile = "Lossless"; break;
+			default: break;
 			}
 
 			out = std::move(h);
@@ -1136,7 +1142,8 @@ namespace libfiles::detail
 
 			for (std::size_t i = 0; i < unit.size(); ++i)
 			{
-				if (unit.size() >= 4 && i >= 2 && unit[i] == 3 && unit[i - 1] == 0 && unit[i - 2] == 0 && i + 1 < unit.size() && unit[i + 1] < 4)
+				if (unit.size() >= 4 && i >= 2 && unit[i] == 3 && unit[i - 1] == 0 && unit[i - 2] == 0 &&
+				    i + 1 < unit.size() && unit[i + 1] < 4)
 				{
 					out.push_back(unit[i + 1]);
 					++i;
@@ -1212,7 +1219,8 @@ namespace libfiles::detail
 					{
 						const auto numerator = b.u(8);
 						const auto divisor = b.u(4);
-						if (numerator > 0 && numerator < 8 && divisor > 0 && divisor < 3) rate = vc1_rates[numerator - 1] * 1000.0 / vc1_divisors[divisor - 1];
+						if (numerator > 0 && numerator < 8 && divisor > 0 && divisor < 3)
+							rate = vc1_rates[numerator - 1] * 1000.0 / vc1_divisors[divisor - 1];
 					}
 
 					if (!b.overrun() && rate > 0) h.frame_rate = rate;
@@ -1331,12 +1339,15 @@ namespace libfiles::detail
 				}
 
 				// FFmpeg also drops a shape that would leave the picture no pixel wide or high.
-				const auto scaled = aspect_width < aspect_height ? std::uint64_t{width} * aspect_width / aspect_height : std::uint64_t{height} * aspect_height / aspect_width;
+				const auto scaled = aspect_width < aspect_height ? std::uint64_t{width} * aspect_width / aspect_height
+				                                                 : std::uint64_t{height} * aspect_height / aspect_width;
 				const auto measured = !s.aspect_from_display || (width <= s.coded_width && height <= s.coded_height);
-				if (measured && (aspect_width == aspect_height || scaled > 0)) set_pixel_aspect(h, aspect_width, aspect_height);
+				if (measured && (aspect_width == aspect_height || scaled > 0))
+					set_pixel_aspect(h, aspect_width, aspect_height);
 			}
 
-			if (s.primaries == 1 || s.primaries == 5 || s.primaries == 6) h.color_primaries = static_cast<std::uint8_t>(s.primaries);
+			if (s.primaries == 1 || s.primaries == 5 || s.primaries == 6)
+				h.color_primaries = static_cast<std::uint8_t>(s.primaries);
 			if (s.transfer == 1 || s.transfer == 7) h.transfer = static_cast<std::uint8_t>(s.transfer);
 			if (s.matrix == 1 || s.matrix == 6 || s.matrix == 7) h.matrix = static_cast<std::uint8_t>(s.matrix);
 		}
@@ -1447,7 +1458,8 @@ namespace libfiles::detail
 		const auto coded_height = height_in_map_units * 16 * field_lines;
 		const auto crop_x = unit_x * (crop_left + crop_right);
 		const auto crop_y = unit_y * (crop_top + crop_bottom);
-		if (crop_x >= coded_width || crop_y >= coded_height || !valid_size(coded_width - crop_x, coded_height - crop_y)) return false;
+		if (crop_x >= coded_width || crop_y >= coded_height || !valid_size(coded_width - crop_x, coded_height - crop_y))
+			return false;
 
 		set_size(h, coded_width - crop_x, coded_height - crop_y);
 		h.chroma = chroma_from_idc(chroma_format_idc);
@@ -1543,7 +1555,8 @@ namespace libfiles::detail
 		const auto luma_depth = b.ue();
 		const auto chroma_depth = b.ue();
 		if (b.overrun() || luma_depth > 8 || chroma_depth > 8) return false;
-		if (crop_x >= coded_width || crop_y >= coded_height || !valid_size(coded_width - crop_x, coded_height - crop_y)) return false;
+		if (crop_x >= coded_width || crop_y >= coded_height || !valid_size(coded_width - crop_x, coded_height - crop_y))
+			return false;
 
 		set_size(h, coded_width - crop_x, coded_height - crop_y);
 		h.chroma = chroma_from_idc(chroma_format_idc);
@@ -1629,7 +1642,10 @@ namespace libfiles::detail
 			if ((header & 0x02) != 0 && !read_leb128(obus, start, size)) return false;
 
 			const std::uint64_t available = obus.size() - start;
-			if (type == 1) return read_sequence_header_obu(obus.subspan(start, static_cast<std::size_t>(std::min(size, available))), out);
+			if (type == 1)
+				return read_sequence_header_obu(obus.subspan(start,
+				                                             static_cast<std::size_t>(std::min(size, available))),
+				                                out);
 			if (size > available) return false;
 
 			at = start + static_cast<std::size_t>(size);
@@ -1680,7 +1696,9 @@ namespace libfiles::detail
 		h.profile = numbered_profile(profile);
 		h.bit_depth = static_cast<std::uint8_t>(depth);
 		// 0 and 1 are both 4:2:0, the chroma sited differently.
-		h.chroma = subsampling < 2 ? chroma_format::yuv420 : subsampling == 2 ? chroma_format::yuv422 : chroma_format::yuv444;
+		h.chroma = subsampling < 2    ? chroma_format::yuv420
+		           : subsampling == 2 ? chroma_format::yuv422
+		                              : chroma_format::yuv444;
 		h.full_range = (config[2] & 1) != 0;
 		set_colour(h, config[3], config[4], config[5]);
 		rgb_if_identity(h);
@@ -1760,7 +1778,8 @@ namespace libfiles::detail
 	bool parse_vp8_frame(const std::span<const std::uint8_t> frame, video_header& out)
 	{
 		// The frame tag, whose low bit is clear for a key frame, then a key frame's start code.
-		if (frame.size() < 10 || (frame[0] & 1) != 0 || frame[3] != 0x9D || frame[4] != 0x01 || frame[5] != 0x2A) return false;
+		if (frame.size() < 10 || (frame[0] & 1) != 0 || frame[3] != 0x9D || frame[4] != 0x01 || frame[5] != 0x2A)
+			return false;
 
 		// The top two bits of each are an upscaling a player may apply, not the coded size.
 		const auto width = load_le16(frame.data() + 6) & 0x3FFFu;
@@ -1844,7 +1863,8 @@ namespace libfiles::detail
 			if (width == 0 || height == 0) return false;
 
 			set_size(h, width, height);
-			if (aspect < std::size(mpeg1_pixel_aspects)) set_pixel_aspect(h, mpeg1_pixel_aspects[aspect][0], mpeg1_pixel_aspects[aspect][1]);
+			if (aspect < std::size(mpeg1_pixel_aspects))
+				set_pixel_aspect(h, mpeg1_pixel_aspects[aspect][0], mpeg1_pixel_aspects[aspect][1]);
 			set_mpeg_frame_rate(h, rate_code, 1, 1);
 			out = std::move(h);
 			return true;
@@ -1917,7 +1937,8 @@ namespace libfiles::detail
 			if (is_frame_header(marker)) return read_jpeg_frame_header(marker, segment, markers, out);
 
 			if (marker == 0xE0 && segment.size() >= 5 && starts_with(segment, "AVI1")) markers.polarity = segment[4];
-			else if (marker == 0xEE && segment.size() >= 12 && starts_with(segment, "Adobe")) markers.adobe_transform = segment[11];
+			else if (marker == 0xEE && segment.size() >= 12 && starts_with(segment, "Adobe"))
+				markers.adobe_transform = segment[11];
 			else if (marker == 0xFE && starts_with(segment, "CS=ITU601")) markers.itu601 = true;
 		}
 	}
@@ -1925,7 +1946,9 @@ namespace libfiles::detail
 	bool parse_theora_header(const std::span<const std::uint8_t> data, video_header& out)
 	{
 		// The identification header of Theora 3.2, the only version the specification reads.
-		if (data.size() < 42 || data[0] != 0x80 || !starts_with(data.subspan(1), "theora") || data[7] != 3 || data[8] != 2) return false;
+		if (data.size() < 42 || data[0] != 0x80 || !starts_with(data.subspan(1), "theora") || data[7] != 3 ||
+		    data[8] != 2)
+			return false;
 
 		bit_reader b(data.subspan(10));
 		const auto frame_width = b.u(16) * 16;
@@ -1944,15 +1967,19 @@ namespace libfiles::detail
 		const auto pixel_format = b.u(2);
 
 		// The picture lies within the frame of whole macroblocks; pixel format 1 is reserved.
-		if (width > frame_width || height > frame_height || x > frame_width - width || y > frame_height - height) return false;
+		if (width > frame_width || height > frame_height || x > frame_width - width || y > frame_height - height)
+			return false;
 		if (pixel_format == 1 || !valid_size(width, height)) return false;
 
 		video_header h;
 		set_size(h, width, height);
 		h.bit_depth = 8;
-		h.chroma = pixel_format == 0 ? chroma_format::yuv420 : pixel_format == 2 ? chroma_format::yuv422 : chroma_format::yuv444;
+		h.chroma = pixel_format == 0   ? chroma_format::yuv420
+		           : pixel_format == 2 ? chroma_format::yuv422
+		                               : chroma_format::yuv444;
 		set_pixel_aspect(h, aspect_numerator, aspect_denominator);
-		if (rate_numerator != 0 && rate_denominator != 0) h.frame_rate = static_cast<double>(rate_numerator) / rate_denominator;
+		if (rate_numerator != 0 && rate_denominator != 0)
+			h.frame_rate = static_cast<double>(rate_numerator) / rate_denominator;
 
 		// Rec. 470M and 470BG, as FFmpeg reads them: their primaries, BT.601's matrix and BT.709's
 		// transfer.
@@ -1970,7 +1997,8 @@ namespace libfiles::detail
 	bool parse_dv_frame(const std::span<const std::uint8_t> data, video_header& out)
 	{
 		// The header block: section type 0, the first DIF sequence, block 0; and the bit after DSF clear.
-		if (data.size() < 5 || (data[0] & 0xE0) != 0 || (data[1] & 0xF0) != 0 || data[2] != 0 || (data[3] & 0x40) != 0) return false;
+		if (data.size() < 5 || (data[0] & 0xE0) != 0 || (data[1] & 0xF0) != 0 || data[2] != 0 || (data[3] & 0x40) != 0)
+			return false;
 
 		// DSF: the 625/50 system. APT: 0 for IEC 61834, the consumer format; SMPTE 314M and 370M
 		// otherwise.
@@ -1999,12 +2027,13 @@ namespace libfiles::detail
 			set_size(h, 720, fifty ? 576 : 480);
 			h.chroma = fifty && (consumer || signal_type == 1) ? chroma_format::yuv420 : chroma_format::yuv411;
 			break;
-		case 4: set_size(h, 720, fifty ? 576 : 480);
-			break;
-		case 0x14: set_size(h, fifty ? 1440 : 1280, 1080);
+		case 4: set_size(h, 720, fifty ? 576 : 480); break;
+		case 0x14:
+			set_size(h, fifty ? 1440 : 1280, 1080);
 			h.interlaced = true;
 			break;
-		case 0x18: set_size(h, 960, 720);
+		case 0x18:
+			set_size(h, 960, 720);
 			h.frame_rate = fifty ? 50.0 : 60000.0 / 1001;
 			break;
 		default: return false;
@@ -2015,7 +2044,10 @@ namespace libfiles::detail
 			// DISP: 2 is 16:9, and so is 7 in the consumer format. Each gives FFmpeg's pixel shape for
 			// 525/60, 625/50, 1080i at 60 Hz or the other HD formats, a 4:3 display's and then a 16:9
 			// one's. IL marks an interlaced picture, which the HD formats state by their size.
-			constexpr std::uint32_t pixel_aspects[4][4] = {{8, 9, 32, 27}, {16, 15, 64, 45}, {1, 1, 3, 2}, {1, 1, 4, 3}};
+			constexpr std::uint32_t pixel_aspects[4][4] = {{8, 9, 32, 27},
+			                                               {16, 15, 64, 45},
+			                                               {1, 1, 3, 2},
+			                                               {1, 1, 4, 3}};
 			const auto display = data[control_pack + 2] & 7;
 			const auto wide = display == 2 || (consumer && display == 7);
 			const auto& shapes = pixel_aspects[!hd ? (fifty ? 1 : 0) : signal_type == 0x14 && !fifty ? 2 : 3];
@@ -2037,7 +2069,8 @@ namespace libfiles::detail
 		// codes, which FFmpeg looks for anywhere in a record of 16 bytes or more, and which open one after
 		// at most a byte; STRUCT_C is 4 bytes, 8 with a sprite, and perhaps a version byte.
 		const auto first = find_vc1_start_code(data, 0);
-		const auto opens_with_sequence = first < data.size() && first <= 1 && data[first + 3] == vc1_sequence_header_code;
+		const auto opens_with_sequence = first < data.size() && first <= 1 &&
+		                                 data[first + 3] == vc1_sequence_header_code;
 
 		if (first < data.size() && (data.size() >= vc1_least_record || opens_with_sequence))
 		{
@@ -2087,7 +2120,8 @@ namespace libfiles::detail
 		return true;
 	}
 
-	void for_each_annexb_nal(const std::span<const std::uint8_t> data, const std::function<bool(std::span<const std::uint8_t>)>& visit)
+	void for_each_annexb_nal(const std::span<const std::uint8_t> data,
+	                         const std::function<bool(std::span<const std::uint8_t>)>& visit)
 	{
 		for (auto at = find_start_code(data, 0); at < data.size();)
 		{

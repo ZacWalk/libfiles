@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Bounds-checked, positional reading for the format parsers. Over memory it borrows the
 // bytes. Over a stream it reads through one block-aligned window, so a parser walking a file's

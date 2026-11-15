@@ -1,8 +1,8 @@
-# libheif, for libfiles' HEIF and AVIF decoder and for its consumers, fetched as the release archive at
-# its SHA-256 (cmake/dd-dependencies.json) and built by this recipe as libfiles::heif, with its JPEG,
-# libde265, dav1d and uncompressed decoders and libde265 and dav1d beside it. The source list and the
-# version header its own build generates, in cmake/libheif/, are Diffractor's, which shipped them; the
-# fetched tree is upstream's own, unmodified. CMakeLists.txt includes this when LIBFILES_HEIF is on.
+# libheif, for libfiles' HEIF and AVIF decoder and AVIF encoder and for its consumers, fetched as the release archive
+# at its SHA-256 (cmake/dd-dependencies.json) and built by this recipe as libfiles::heif, with its JPEG, libde265,
+# dav1d and uncompressed decoders, its libaom and uncompressed encoders, and libde265, dav1d and libaom beside it. The
+# source list and the version header its own build generates, in cmake/libheif/, are Diffractor's, which shipped
+# them; the fetched tree is upstream's own, unmodified. CMakeLists.txt includes this when LIBFILES_HEIF is on.
 #
 # Its FFmpeg decoder is not built here: libfiles does not take on FFmpeg. An application that has FFmpeg
 # builds plugins/decoder_ffmpeg.cc from this tree - FetchContent_GetProperties(libheif) gives its
@@ -14,6 +14,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../.dd/dependencies.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/jpeg.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/de265.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/dav1d.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/aom.cmake")
 
 dd_dependency_arguments("${CMAKE_CURRENT_LIST_DIR}/dd-dependencies.json" libheif _lf_heif_acquisition)
 FetchContent_Declare(libheif ${_lf_heif_acquisition} SOURCE_SUBDIR "no-cmake-project")
@@ -58,7 +59,7 @@ set(_lf_heif_sources
     image-items/overlay.cc image-items/tiled.cc image-items/unc_image.cc image-items/vvc.cc
     image/image_description.cc image/pixelimage.cc init.cc logging.cc mini.cc nclx.cc omaf_boxes.cc
     plugin_registry.cc plugins/decoder_dav1d.cc plugins/decoder_jpeg.cc plugins/decoder_libde265.cc
-    plugins/decoder_uncompressed.cc plugins/encoder_mask.cc plugins/encoder_uncompressed.cc
+    plugins/decoder_uncompressed.cc plugins/encoder_aom.cc plugins/encoder_mask.cc plugins/encoder_uncompressed.cc
     plugins/nalu_utils.cc region.cc security_limits.cc sequences/chunk.cc sequences/seq_boxes.cc
     sequences/track_metadata.cc sequences/track_visual.cc sequences/track.cc text.cc api)
 list(TRANSFORM _lf_heif_sources PREPEND "${_lf_heif_src}/")
@@ -68,11 +69,11 @@ add_library(libfiles::heif ALIAS libfiles-heif)
 
 target_include_directories(libfiles-heif PUBLIC "${CMAKE_CURRENT_LIST_DIR}/libheif" "${_lf_heif_src}/api")
 target_include_directories(libfiles-heif PRIVATE "${_lf_heif_src}")
-target_link_libraries(libfiles-heif PUBLIC libfiles::de265 libfiles::dav1d libfiles::jpeg)
+target_link_libraries(libfiles-heif PUBLIC libfiles::de265 libfiles::dav1d libfiles::jpeg PRIVATE libfiles::aom)
 
 target_compile_definitions(libfiles-heif PUBLIC LIBHEIF_STATIC_BUILD)
 target_compile_definitions(libfiles-heif PRIVATE
-    HAVE_JPEG_DECODER HAVE_DAV1D HAVE_LIBDE265 WITH_UNCOMPRESSED_CODEC HAVE_BIT
+    HAVE_JPEG_DECODER HAVE_DAV1D HAVE_LIBDE265 HAVE_AOM_ENCODER WITH_UNCOMPRESSED_CODEC HAVE_BIT
     ENABLE_MULTITHREADING_SUPPORT=1 ENABLE_PARALLEL_TILE_DECODING=1 IS_BIG_ENDIAN=0 _CRT_NONSTDC_NO_DEPRECATE)
 
 if(WIN32)

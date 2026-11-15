@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the MPEG transport and program stream scanners share: PES packet headers and their
 // 33-bit timestamps, the stream types and descriptors both name codecs by, reading each elementary
@@ -32,15 +32,16 @@ namespace libfiles::detail
 	inline constexpr std::uint64_t mpeg_tail_bytes = 8u * 1024u * 1024u;
 	// The tail is read backwards in growing steps, ending at these distances from the end, until every
 	// audio and video stream has a last timestamp.
-	inline constexpr std::uint64_t mpeg_tail_steps[] = {256u * 1024u, 1024u * 1024u, 4u * 1024u * 1024u, mpeg_tail_bytes};
+	inline constexpr std::uint64_t mpeg_tail_steps[] = {256u * 1024u, 1024u * 1024u, 4u * 1024u * 1024u,
+	                                                    mpeg_tail_bytes};
 
 	// A 33-bit timestamp from the five bytes a PES header or an MPEG-1 pack header keeps it in. The
 	// marker bits are not checked: FFmpeg reads a timestamp whatever they hold.
 	inline std::uint64_t read_mpeg_timestamp(const std::uint8_t* const p) noexcept
 	{
 		return static_cast<std::uint64_t>(p[0] >> 1 & 7) << 30 | static_cast<std::uint64_t>(p[1]) << 22 |
-			static_cast<std::uint64_t>(p[2] >> 1) << 15 | static_cast<std::uint64_t>(p[3]) << 7 |
-			static_cast<std::uint64_t>(p[4] >> 1);
+		       static_cast<std::uint64_t>(p[2] >> 1) << 15 | static_cast<std::uint64_t>(p[3]) << 7 |
+		       static_cast<std::uint64_t>(p[4] >> 1);
 	}
 
 	// The CRC-32 of MPEG-2 systems' sections: 0 over a whole section, its own CRC included, when the
@@ -115,9 +116,9 @@ namespace libfiles::detail
 	inline constexpr std::uint32_t mpeg_registration(const char (&s)[5]) noexcept
 	{
 		return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) << 24 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 16 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 8 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3]));
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 16 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 8 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3]));
 	}
 
 	// A PMT's or program stream map's stream_type. A program registered as Blu-ray's ("HDMV" or "HDPR")
@@ -214,8 +215,7 @@ namespace libfiles::detail
 	{
 	public:
 		timestamp_line(const std::uint64_t wrap, const std::uint64_t ticks_per_second) :
-			_wrap(wrap),
-			_before(60 * ticks_per_second)
+			_wrap(wrap), _before(60 * ticks_per_second)
 		{
 		}
 

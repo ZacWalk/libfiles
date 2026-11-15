@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for writing ISO base media and QuickTime files. Every update here is applied as a live
 // file would be, in place, and the media bytes are checked to be exactly where they were.
@@ -145,7 +145,7 @@ namespace
 	{
 		const auto at = find(before, std::string(media.begin(), media.end()));
 		return at != std::string::npos && after.size() >= at + media.size() &&
-			std::memcmp(after.data() + at, media.data(), media.size()) == 0;
+		       std::memcmp(after.data() + at, media.data(), media.size()) == 0;
 	}
 
 	// Checks that wherever the update is interrupted, the file reads whole, its media where it was and
@@ -187,8 +187,8 @@ TEST("an mp4 is told apart from a photo in the same container")
 	CHECK(libfiles::detect_file_format(movie) == libfiles::file_format::mp4);
 	CHECK(libfiles::detect_file_format(make_movie({.brand = "qt  "})) == libfiles::file_format::mp4);
 	CHECK(libfiles::detect_file_format(make_movie({.brand = "crx "})) == libfiles::file_format::unknown);
-	CHECK(libfiles::detect_file_format(make_movie({.brand = "heic"})) == libfiles::file_format::unknown);
-	CHECK(libfiles::detect_file_format(make_movie({.brand = "avif"})) == libfiles::file_format::unknown);
+	CHECK(libfiles::detect_file_format(make_movie({.brand = "heic"})) == libfiles::file_format::heif);
+	CHECK(libfiles::detect_file_format(make_movie({.brand = "avif"})) == libfiles::file_format::heif);
 }
 
 TEST("an mp4 gains its packet in a box appended at the end")
@@ -246,8 +246,9 @@ TEST("an mp4 packet always follows the movie box, where FFmpeg reads it")
 
 	// A packet another tool put before the movie box, where FFmpeg cannot see it, is moved after it.
 	const auto packet = rated(1).serialize({});
-	const auto uuid_box = box("uuid", join({bytes{0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91,
-	                                              0xE3, 0xAF, 0xAC}, bytes(packet.begin(), packet.end())}));
+	const auto uuid_box = box("uuid", join({bytes{0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99,
+	                                              0x94, 0x91, 0xE3, 0xAF, 0xAC},
+	                                        bytes(packet.begin(), packet.end())}));
 	const auto plain = make_movie({});
 	const auto ftyp_size = libfiles::detail::load_be32(plain.data());
 	auto before_movie = bytes(plain.begin(), plain.begin() + ftyp_size);
@@ -372,7 +373,8 @@ TEST("an mp4 update frees what an interrupted one left behind")
 	libfiles::write_in_place(live, plan);
 
 	auto interrupted = original;
-	for (const auto& w : live.writes) if (w.flushes_before == 0) recording_stream::apply(interrupted, w);
+	for (const auto& w : live.writes)
+		if (w.flushes_before == 0) recording_stream::apply(interrupted, w);
 	CHECK_EQ(count_of(top_level(interrupted), "moov"), 2u);
 	CHECK_EQ(rating_of(interrupted), 4);
 

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the properties model: each block - EXIF, IPTC, XMP - read into the same properties by
 // its table with what it states, the values in them read as Diffractor read them, the rule blocks are
@@ -76,6 +76,7 @@ namespace
 	std::vector<date_source> sources(const libfiles::properties& p)
 	{
 		std::vector<date_source> out;
+		out.reserve(p.dates.size());
 		for (const auto& d : p.dates) out.push_back(d.source);
 		return out;
 	}
@@ -196,8 +197,8 @@ TEST("EXIF reads into properties by the table, with what it states")
 	// GPS stamp, in UTC, to the whole second.
 	auto original = zoned(at(day(2020, 5, 6), 7, 8, 9), 120);
 	original.nanoseconds = 120'000'000;
-	CHECK(sources(p) == (std::vector{date_source::exif_original, date_source::exif_digitized, date_source::exif_modified,
-		                     date_source::exif_gps}));
+	CHECK(sources(p) == (std::vector{date_source::exif_original, date_source::exif_digitized,
+	                                 date_source::exif_modified, date_source::exif_gps}));
 	CHECK(p.dates[0].when == original);
 	CHECK(p.dates[3].when == utc(at(day(2020, 5, 6), 5, 7, 9)));
 	CHECK(p.created == original);
@@ -205,8 +206,8 @@ TEST("EXIF reads into properties by the table, with what it states")
 	CHECK(p.modified == at(day(2021, 1, 2), 3, 4, 5));
 	CHECK_EQ(p.year, 2020);
 
-	for (const auto stated : {property::title, property::keywords, property::rating, property::location, property::altitude,
-	                          property::speed, property::orientation})
+	for (const auto stated : {property::title, property::keywords, property::rating, property::location,
+	                          property::altitude, property::speed, property::orientation})
 	{
 		CHECK(p.states(stated));
 	}
@@ -367,8 +368,8 @@ TEST("XMP reads into properties by the table, a property present stating it even
 
 	// Each date with its tag and the zone its text ends in; Date Created, then the packet's own creation
 	// date, which is the date digitized - and which exif:DateTimeDigitized, its alias, reads too.
-	CHECK(sources(p) == (std::vector{date_source::xmp_photoshop_created, date_source::xmp_create, date_source::xmp_modify,
-		                     date_source::xmp_exif_digitized}));
+	CHECK(sources(p) == (std::vector{date_source::xmp_photoshop_created, date_source::xmp_create,
+	                                 date_source::xmp_modify, date_source::xmp_exif_digitized}));
 	CHECK(p.created == zoned(at(day(2018, 3, 3), 1, 2, 3), 60));
 	CHECK(p.digitized == utc(at(day(2018, 3, 4), 5, 6, 7)));
 	CHECK(p.modified == day(2018, 3, 5));
@@ -384,7 +385,8 @@ TEST("XMP reads into properties by the table, a property present stating it even
 	CHECK_STR(p.camera_make, "Make");
 	CHECK_STR(p.camera_model, "Model");
 	CHECK(p.orientation == 6);
-	CHECK(p.location && near(p.location->latitude, 51.5 + 0.5 / 60) && near(p.location->longitude, -(7.0 / 60 + 30.0 / 3600)));
+	CHECK(p.location && near(p.location->latitude, 51.5 + 0.5 / 60) &&
+	      near(p.location->longitude, -(7.0 / 60 + 30.0 / 3600)));
 	CHECK(!p.altitude);
 	CHECK(near(p.f_number, 2.8) && near(p.exposure_time, 0.004) && near(p.focal_length, 50.0));
 	CHECK_EQ(p.focal_length_35mm, 75);
@@ -415,7 +417,8 @@ TEST("XMP reads into properties by the table, a property present stating it even
 
 	// A packet's bytes, after the signature a JPEG segment gives them.
 	const std::string text = std::string("http://ns.adobe.com/xap/1.0/\0", 29) + m.serialize();
-	const auto from_bytes = libfiles::properties_from_xmp(std::span(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
+	const auto from_bytes = libfiles::properties_from_xmp(
+		std::span(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
 	CHECK_STR(from_bytes.artist, "Performer");
 	CHECK(libfiles::properties_from_xmp(std::span<const std::uint8_t>{}) == libfiles::properties{});
 }
@@ -443,7 +446,8 @@ TEST("A packet's property in another form than its schema gives reads as none, a
 	// As a file holds them: an alias of an alt-text item given a struct, which parsing moves into the array as
 	// it is, as the toolkit moves it.
 	libfiles::xmp::meta parsed;
-	parsed.parse(R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+	parsed.parse(
+		R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
 		R"(<rdf:Description rdf:about="" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" photoshop:City="Lyon">)"
 		R"(<photoshop:Caption rdf:parseType="Resource"><photoshop:Credit>inside</photoshop:Credit></photoshop:Caption>)"
 		R"(</rdf:Description></rdf:RDF></x:xmpmeta>)");
@@ -525,7 +529,8 @@ TEST("A block read over others replaces what it states, joins what it joins, and
 	packet.set_property(ns::photoshop, "DateCreated", "2012-01-01T00:00:00");
 	packet.append_array_item(ns::dc, "subject", libfiles::xmp::value_is_array, "packet");
 	libfiles::overlay(photo, libfiles::properties_from_xmp(packet));
-	CHECK(sources(photo) == (std::vector{date_source::exif_original, date_source::iptc_created, date_source::xmp_photoshop_created}));
+	CHECK(sources(photo) ==
+	      (std::vector{date_source::exif_original, date_source::iptc_created, date_source::xmp_photoshop_created}));
 	CHECK(photo.created == at(day(2010, 1, 2), 3, 4, 5));
 	CHECK_EQ(photo.year, 2010);
 	CHECK(photo.keywords == (std::vector<std::string>{"packet"}));

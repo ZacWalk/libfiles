@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The shared namespace table, the toolkit's standard aliases, path expansion, and the
 // primitives that find, create and remove nodes. Every rule here follows the XMP Toolkit, because
@@ -139,8 +139,7 @@ namespace libfiles::xmp::detail
 					do
 					{
 						unique = base + '_' + std::to_string(++suffix) + "_:";
-					}
-					while (prefix_to_uri.contains(unique));
+					} while (prefix_to_uri.contains(unique));
 				}
 
 				uri_to_prefix.emplace(std::string(uri), unique);
@@ -281,15 +280,16 @@ namespace libfiles::xmp::detail
 
 			if (index == static_cast<long long>(array->children.size()) && create)
 			{
-				array->children.push_back(std::make_unique<node>(array, std::string(array_item_name), std::string(),
-				                                                 new_implicit_node));
+				array->children.push_back(
+					std::make_unique<node>(array, std::string(array_item_name), std::string(), new_implicit_node));
 			}
 
 			if (index >= static_cast<long long>(array->children.size())) return -1;
 			return static_cast<int>(index);
 		}
 
-		int lookup_field_selector(const node* array, const std::string_view field_name, const std::string_view field_value)
+		int lookup_field_selector(const node* array, const std::string_view field_name,
+		                          const std::string_view field_value)
 		{
 			for (std::size_t i = 0; i < array->children.size(); ++i)
 			{
@@ -346,8 +346,9 @@ namespace libfiles::xmp::detail
 					position->parent = parent;
 					position->is_qualifier = false;
 					position->index = static_cast<std::size_t>(
-						std::find_if(parent->children.begin(), parent->children.end(),
-						             [next](const auto& c) { return c.get() == next; }) - parent->children.begin());
+						std::find_if(parent->children.begin(), parent->children.end(), [next](const auto& c) {
+						return c.get() == next;
+					}) - parent->children.begin());
 				}
 			}
 			else if (kind == qualifier_step)
@@ -358,8 +359,9 @@ namespace libfiles::xmp::detail
 					position->parent = parent;
 					position->is_qualifier = true;
 					position->index = static_cast<std::size_t>(
-						std::find_if(parent->qualifiers.begin(), parent->qualifiers.end(),
-						             [next](const auto& c) { return c.get() == next; }) - parent->qualifiers.begin());
+						std::find_if(parent->qualifiers.begin(), parent->qualifiers.end(), [next](const auto& c) {
+						return c.get() == next;
+					}) - parent->qualifiers.begin());
 				}
 			}
 			else
@@ -400,7 +402,8 @@ namespace libfiles::xmp::detail
 					// creates the item.
 					auto item = std::make_unique<node>(parent, std::string(array_item_name), std::string(),
 					                                   has_qualifiers | has_lang | new_implicit_node);
-					item->qualifiers.push_back(std::make_unique<node>(item.get(), "xml:lang", "x-default", is_qualifier));
+					item->qualifiers.push_back(
+						std::make_unique<node>(item.get(), "xml:lang", "x-default", is_qualifier));
 					next = item.get();
 					parent->children.insert(parent->children.begin(), std::move(item));
 					index = 0;
@@ -425,7 +428,7 @@ namespace libfiles::xmp::detail
 		void check_implicit_struct(node* n, const expanded_path& path, const std::size_t step_index)
 		{
 			if (step_index < path.size() && (n->options & composite_mask) == 0 &&
-				kind_of(path[step_index]) == struct_field_step)
+			    kind_of(path[step_index]) == struct_field_step)
 			{
 				n->options |= value_is_struct;
 			}
@@ -520,7 +523,9 @@ namespace libfiles::xmp::detail
 
 			if (path[step_begin] != '[')
 			{
-				while (step_end < path.size() && path[step_end] != '/' && path[step_end] != '[' && path[step_end] != '*') ++step_end;
+				while (step_end < path.size() && path[step_end] != '/' && path[step_end] != '[' &&
+				       path[step_end] != '*')
+					++step_end;
 				qual_name = path.substr(step_begin, step_end - step_begin);
 				kind = struct_field_step;
 			}
@@ -531,7 +536,8 @@ namespace libfiles::xmp::detail
 				if (step_end < path.size() && path[step_end] >= '0' && path[step_end] <= '9')
 				{
 					while (step_end < path.size() && path[step_end] >= '0' && path[step_end] <= '9') ++step_end;
-					if (step_end >= path.size() || path[step_end] != ']') throw error("Missing ']' for integer array index");
+					if (step_end >= path.size() || path[step_end] != ']')
+						throw error("Missing ']' for integer array index");
 					kind = array_index_step;
 				}
 				else
@@ -541,7 +547,8 @@ namespace libfiles::xmp::detail
 
 					if (path[step_end] == ']')
 					{
-						if (path.substr(step_begin, step_end - step_begin) != "[last()") throw error("Invalid non-numeric array index");
+						if (path.substr(step_begin, step_end - step_begin) != "[last()")
+							throw error("Invalid non-numeric array index");
 						kind = array_last_step;
 					}
 					else
@@ -583,7 +590,8 @@ namespace libfiles::xmp::detail
 				if (c == 0 || c == std::string_view::npos) throw error("Ill-formed qualified name");
 				verify_simple_name(name.substr(0, c));
 				verify_simple_name(name.substr(c + 1));
-				if (!registry_uri(name.substr(0, c + 1), nullptr)) throw error("Unknown namespace prefix for qualified name");
+				if (!registry_uri(name.substr(0, c + 1), nullptr))
+					throw error("Unknown namespace prefix for qualified name");
 			};
 
 			if (kind == struct_field_step)
@@ -664,8 +672,8 @@ namespace libfiles::xmp::detail
 
 		std::string prefix;
 		registry_prefix(uri, &prefix);
-		tree->children.push_back(std::make_unique<node>(tree, std::string(uri), std::move(prefix),
-		                                                schema_node | new_implicit_node));
+		tree->children.push_back(
+			std::make_unique<node>(tree, std::string(uri), std::move(prefix), schema_node | new_implicit_node));
 		return tree->children.back().get();
 	}
 
@@ -673,7 +681,8 @@ namespace libfiles::xmp::detail
 	{
 		if (!(parent->options & (schema_node | value_is_struct)))
 		{
-			if (!(parent->options & new_implicit_node)) throw error("Named children only allowed for schemas and structs");
+			if (!(parent->options & new_implicit_node))
+				throw error("Named children only allowed for schemas and structs");
 			if (parent->options & value_is_array) throw error("Named children not allowed for arrays");
 			if (!create) throw error("Parent is new implicit node, but createNodes is false");
 			parent->options |= value_is_struct;
@@ -766,9 +775,9 @@ namespace libfiles::xmp::detail
 		{
 			node_position at;
 			at.parent = tree;
-			at.index = static_cast<std::size_t>(
-				std::find_if(tree->children.begin(), tree->children.end(), [schema](const auto& c) { return c.get() == schema; }) -
-				tree->children.begin());
+			at.index = static_cast<std::size_t>(std::find_if(tree->children.begin(), tree->children.end(),
+			                                                 [schema](const auto& c)
+			{ return c.get() == schema; }) - tree->children.begin());
 			return at;
 		};
 
@@ -962,14 +971,15 @@ namespace libfiles::xmp::detail
 		if (options & array_is_ordered) options |= value_is_array;
 
 		constexpr option_bits allowed = value_is_uri | value_is_struct | value_is_array | array_is_ordered |
-			array_is_alternate | array_is_alt_text | delete_existing;
+		                                array_is_alternate | array_is_alt_text | delete_existing;
 
 		if (options & ~allowed) throw error("Unrecognized option flags");
 		if ((options & value_is_struct) && (options & value_is_array))
 		{
 			throw error("IsStruct and IsArray options are mutually exclusive");
 		}
-		if ((options & value_is_uri) && (options & composite_mask)) throw error("Structs and arrays can't have \"value\" options");
+		if ((options & value_is_uri) && (options & composite_mask))
+			throw error("Structs and arrays can't have \"value\" options");
 		if (has_value && (options & composite_mask)) throw error("Structs and arrays can't have string values");
 
 		return options;
@@ -996,10 +1006,12 @@ namespace libfiles::xmp::detail
 
 			int count;
 			char32_t cp;
+			// clang-format off
 			if ((c & 0xE0) == 0xC0) { count = 2; cp = c & 0x1F; }
 			else if ((c & 0xF0) == 0xE0) { count = 3; cp = c & 0x0F; }
 			else if ((c & 0xF8) == 0xF0) { count = 4; cp = c & 0x07; }
 			else throw error("Invalid UTF-8 data byte");
+			// clang-format on
 
 			if (i + count > text.size()) throw error("Invalid UTF-8 data byte");
 

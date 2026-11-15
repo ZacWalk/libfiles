@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The TIFF scanner. A TIFF file is a TIFF stream as an EXIF block is, and is read with the
 // same directory reader: IFD0 for the primary image's dimensions and XMP, and - by the rules
@@ -59,21 +59,17 @@ namespace libfiles::detail
 			switch (*t.photometric)
 			{
 			case 0: // white is zero
-			case 1: p.chroma = chroma_format::gray;
-				break;
-			case 2: p.chroma = chroma_format::rgb;
-				break;
-			case 3: p.chroma = chroma_format::rgb;
+			case 1: p.chroma = chroma_format::gray; break;
+			case 2: p.chroma = chroma_format::rgb; break;
+			case 3:
+				p.chroma = chroma_format::rgb;
 				p.palette = true;
 				break;
-			case 5: p.chroma = chroma_format::cmyk;
-				break;
-			case 6: p.chroma = ycbcr_chroma(t.sampling_h, t.sampling_v);
-				break;
+			case 5: p.chroma = chroma_format::cmyk; break;
+			case 6: p.chroma = ycbcr_chroma(t.sampling_h, t.sampling_v); break;
 			case 8: // CIE, ICC and ITU L*a*b*
 			case 9:
-			case 10: p.chroma = chroma_format::lab;
-				break;
+			case 10: p.chroma = chroma_format::lab; break;
 			default: return p;
 			}
 
@@ -114,25 +110,17 @@ namespace libfiles::detail
 
 				switch (e.tag)
 				{
-				case tag_image_width:
-					result.width = dimension();
-					break;
-				case tag_image_length:
-					result.height = dimension();
-					break;
-				case tag_bits_per_sample:
-					samples.bits = e.first_u16();
-					break;
-				case tag_photometric:
-					samples.photometric = e.first_u16();
-					break;
+				case tag_image_width: result.width = dimension(); break;
+				case tag_image_length: result.height = dimension(); break;
+				case tag_bits_per_sample: samples.bits = e.first_u16(); break;
+				case tag_photometric: samples.photometric = e.first_u16(); break;
 				case tag_extra_samples:
-					{
-						// 1 and 2 are alpha, associated with the colour or not; 0 is a sample of no stated use.
-						const auto use = e.first_u16();
-						samples.alpha = use == 1 || use == 2;
-					}
-					break;
+				{
+					// 1 and 2 are alpha, associated with the colour or not; 0 is a sample of no stated use.
+					const auto use = e.first_u16();
+					samples.alpha = use == 1 || use == 2;
+				}
+				break;
 				case tag_ycbcr_subsampling:
 					if (e.type == type_short && e.count >= 2)
 					{
@@ -157,8 +145,7 @@ namespace libfiles::detail
 						if (r.contains(at, e.size())) result.metadata.iptc = r.read(at, e.size());
 					}
 					break;
-				default:
-					break;
+				default: break;
 				}
 			});
 
@@ -176,8 +163,8 @@ namespace libfiles::detail
 		// A recognised byte order with an unusable magic, truncated or corrupt, must not read as a
 		// successful 0x0 image. The dimensions are unvalidated 32-bit fields, so a nonsense one is
 		// refused here rather than reaching a decoder's budget as a negative size.
-		result.success = result.width != 0 && result.height != 0 &&
-			result.width <= max_image_dimension && result.height <= max_image_dimension;
+		result.success = result.width != 0 && result.height != 0 && result.width <= max_image_dimension &&
+		                 result.height <= max_image_dimension;
 
 		if (result.success)
 		{

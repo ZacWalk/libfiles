@@ -1,18 +1,23 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The HEIF scanner - HEIC, AVIF and the other ISO base media still images - and the read of
 // a HEIF file's XMP packet. Everything comes from the 'meta' box and the items it locates: the coded
 // image is never read, except for a JPEG item's frame header. What a file reads as, and which files
 // read at all, follow libheif 1.23 as Diffractor builds it, which scanned these files before: the
-// primary item's size after its transforms, libheif's preferred decoding chroma, how it attaches
-// metadata items, thumbnails and auxiliary images, and the faults for which it refuses a whole file.
+// primary item's size after its transforms, libheif's preferred decoding chroma and the HDR transfer its
+// nclx colour names, how it attaches metadata items, thumbnails and auxiliary images, and the faults for
+// which it refuses a whole file. An inspect scan lists the primary's colour, light levels and gain map too.
 
 #include "bmff_internal.h"
+#include "hdr_internal.h"
+#include "heif_internal.h"
+#include "libfiles/hdr.h"
 #include "scan_internal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <limits>
 #include <map>
@@ -105,6 +110,8 @@ namespace libfiles::detail
 		constexpr auto prop_a1lx = fourcc("a1lx");
 		constexpr auto prop_taic = fourcc("taic");
 		constexpr auto prop_itai = fourcc("itai");
+		constexpr auto prop_clli = fourcc("clli");
+		constexpr auto prop_mdcv = fourcc("mdcv");
 
 		constexpr auto item_hvc1 = fourcc("hvc1");
 		constexpr auto item_av01 = fourcc("av01");
@@ -123,6 +130,8 @@ namespace libfiles::detail
 		constexpr auto item_rgan = fourcc("rgan");
 		constexpr auto item_exif = fourcc("Exif");
 		constexpr auto item_uri = fourcc("uri ");
+		// An ISO 21496-1 tone map: a derived image of the primary and its gain map.
+		constexpr auto item_tmap = fourcc("tmap");
 
 		constexpr auto ref_thmb = fourcc("thmb");
 		constexpr auto ref_auxl = fourcc("auxl");
@@ -182,9 +191,13 @@ namespace libfiles::detail
 
 		bool equal_ignoring_case(const std::string_view a, const std::string_view b)
 		{
-			const auto lower = [](const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+			const auto lower = [](const char c)
+			{
+				return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+			};
 			return a.size() == b.size() &&
-				std::equal(a.begin(), a.end(), b.begin(), [&lower](const char x, const char y) { return lower(x) == lower(y); });
+			       std::equal(a.begin(), a.end(), b.begin(),
+			                  [&lower](const char x, const char y) { return lower(x) == lower(y); });
 		}
 
 		// A box's payload read as libheif's BitstreamRange reads one: a read past the end yields zero and
@@ -192,9 +205,7 @@ namespace libfiles::detail
 		class cursor
 		{
 		public:
-			explicit cursor(const std::span<const std::uint8_t> data) : _data(data)
-			{
-			}
+			explicit cursor(const std::span<const std::uint8_t> data) : _data(data) {}
 
 			bool failed() const { return _failed; }
 			bool at_end() const { return _pos >= _data.size(); }
@@ -221,10 +232,7 @@ namespace libfiles::detail
 			std::uint64_t u64() { return read(8); }
 
 			// iloc's field widths: four or eight bytes, and nothing read for any other width.
-			std::uint64_t sized(const unsigned bytes)
-			{
-				return bytes == 4 || bytes == 8 ? read(bytes) : 0;
-			}
+			std::uint64_t sized(const unsigned bytes) { return bytes == 4 || bytes == 8 ? read(bytes) : 0; }
 
 			// A NUL-terminated string as libheif reads one: empty at the end of the box, and a string the
 			// box ends inside loses its last character.
@@ -289,6 +297,9 @@ namespace libfiles::detail
 			std::span<const std::uint8_t> payload;
 			std::uint64_t payload_offset = 0;
 			const std::uint8_t* uuid = nullptr;
+			// Where the box starts in the file, and its whole length, header included.
+			std::uint64_t offset = 0;
+			std::uint64_t size = 0;
 		};
 
 		// The boxes a payload holds, split as libheif's read_children splits them: every byte must belong
@@ -296,7 +307,8 @@ namespace libfiles::detail
 		std::vector<child_box> read_children(const std::span<const std::uint8_t> data, const std::uint64_t offset,
 		                                     const std::optional<std::size_t> count = {})
 		{
-			if (count && *count > data.size() / 8) throw format_error("a HEIF box declares more boxes than it can hold");
+			if (count && *count > data.size() / 8)
+				throw format_error("a HEIF box declares more boxes than it can hold");
 
 			std::vector<child_box> boxes;
 			std::size_t pos = 0;
@@ -307,7 +319,8 @@ namespace libfiles::detail
 
 				const auto left = data.size() - pos;
 				bmff::box_header h;
-				if (bmff::read_header(data.subspan(pos), h) != bmff::header_status::box) throw format_error("a HEIF box is cut short");
+				if (bmff::read_header(data.subspan(pos), h) != bmff::header_status::box)
+					throw format_error("a HEIF box is cut short");
 
 				child_box box;
 				box.type = h.type;
@@ -336,6 +349,8 @@ namespace libfiles::detail
 				box.declared = size;
 				box.payload = data.subspan(pos + header, static_cast<std::size_t>(payload_size));
 				box.payload_offset = offset + pos + header;
+				box.offset = offset + pos;
+				box.size = header + payload_size;
 				boxes.push_back(box);
 				pos += header + static_cast<std::size_t>(payload_size);
 			}
@@ -416,6 +431,12 @@ namespace libfiles::detail
 			std::span<const std::uint8_t> icc;
 			// auxC
 			std::string aux_type;
+			// clli: the brightest pixel's and the brightest frame average's light, in nits
+			std::uint16_t max_cll = 0;
+			std::uint16_t max_fall = 0;
+			// mdcv: the mastering display's peak and black, in ten-thousandths of a nit
+			std::uint32_t mastering_max = 0;
+			std::uint32_t mastering_min = 0;
 			// The coding configuration: libheif's chroma and the bit depths.
 			chroma coded_chroma = chroma::undefined;
 			int luma_bits = -1;
@@ -434,28 +455,11 @@ namespace libfiles::detail
 			bool intrinsics = false;
 		};
 
-		struct item_entry
-		{
-			std::uint32_t id = 0;
-			std::uint32_t type = 0;
-			bool hidden = false;
-			std::string content_type;
-			std::string content_encoding;
-		};
-
-		struct extent
-		{
-			std::uint64_t offset = 0;
-			std::uint64_t length = 0;
-		};
-
-		struct location
-		{
-			std::uint32_t item = 0;
-			std::uint8_t method = 0;
-			std::uint64_t base = 0;
-			std::vector<extent> extents;
-		};
+		using heif::extent;
+		using heif::item_entry;
+		using heif::location;
+		using heif::location_format;
+		using heif::reference;
 
 		struct association
 		{
@@ -467,13 +471,6 @@ namespace libfiles::detail
 		{
 			std::uint32_t item = 0;
 			std::vector<association> associations;
-		};
-
-		struct reference
-		{
-			std::uint32_t type = 0;
-			std::uint32_t from = 0;
-			std::vector<std::uint32_t> to;
 		};
 
 		struct idat_box
@@ -524,44 +521,66 @@ namespace libfiles::detail
 			return entry;
 		}
 
-		std::vector<item_entry> parse_iinf(const child_box& box, const int depth)
+		struct item_information
+		{
+			std::uint8_t version = 0;
+			std::vector<item_entry> entries;
+			// Where the entries the box declares end, in the file.
+			std::uint64_t entries_end = 0;
+		};
+
+		item_information parse_iinf(const child_box& box, const int depth)
 		{
 			cursor c(box.payload);
 			const auto header = read_full_box(c);
 			const std::uint32_t count = header.version > 0 ? c.u32() : c.u16();
 
+			item_information info;
+			info.version = header.version;
+			info.entries_end = box.payload_offset + c.position();
+
 			// libheif takes an item count it could not read as zero, and so an empty list.
-			if (count == 0) return {};
+			if (count == 0) return info;
 			if (count > max_items) throw format_error("a HEIF file declares too many items");
 
 			const auto start = c.position();
-			std::vector<item_entry> entries;
 
 			for (const auto& child : read_children(c.rest(), box.payload_offset + start, count))
 			{
-				if (child.type == box_infe) entries.push_back(parse_infe(child.payload));
+				if (child.type == box_infe) info.entries.push_back(parse_infe(child.payload));
 				else check_box(child, depth + 1);
+
+				info.entries_end = child.offset + child.size;
 			}
 
-			return entries;
+			return info;
 		}
 
-		std::vector<location> parse_iloc(const std::span<const std::uint8_t> payload)
+		struct item_locations
+		{
+			location_format format;
+			std::vector<location> locations;
+		};
+
+		item_locations parse_iloc(const std::span<const std::uint8_t> payload)
 		{
 			cursor c(payload);
 			const auto box = read_full_box(c);
 			if (box.version > 2) throw format_error("the HEIF item locations have an unknown version");
 
 			const auto sizes = c.u16();
-			const unsigned offset_size = sizes >> 12 & 0xfu;
-			const unsigned length_size = sizes >> 8 & 0xfu;
-			const unsigned base_size = sizes >> 4 & 0xfu;
-			const unsigned index_size = box.version >= 1 ? sizes & 0xfu : 0u;
+			item_locations result;
+			auto& format = result.format;
+			format.version = box.version;
+			format.offset_size = sizes >> 12 & 0xfu;
+			format.length_size = sizes >> 8 & 0xfu;
+			format.base_size = sizes >> 4 & 0xfu;
+			format.index_size = box.version >= 1 ? sizes & 0xfu : 0u;
 			const std::uint32_t count = box.version < 2 ? c.u16() : c.u32();
 
 			if (count > max_items) throw format_error("the HEIF item locations list too many items");
 
-			std::vector<location> locations;
+			auto& locations = result.locations;
 
 			for (std::uint32_t i = 0; i < count; ++i)
 			{
@@ -570,8 +589,8 @@ namespace libfiles::detail
 				location item;
 				item.item = box.version < 2 ? c.u16() : c.u32();
 				if (box.version >= 1) item.method = static_cast<std::uint8_t>(c.u16() & 0xfu);
-				c.u16();
-				item.base = c.sized(base_size);
+				item.data_reference = c.u16();
+				item.base = c.sized(format.base_size);
 
 				const auto extent_count = c.u16();
 				if (extent_count > max_extents) throw format_error("a HEIF item has too many extents");
@@ -580,10 +599,10 @@ namespace libfiles::detail
 				{
 					if (c.at_end()) throw format_error("the HEIF item locations are cut short");
 
-					c.sized(index_size);
 					extent x;
-					x.offset = c.sized(offset_size);
-					x.length = c.sized(length_size);
+					x.index = c.sized(format.index_size);
+					x.offset = c.sized(format.offset_size);
+					x.length = c.sized(format.length_size);
 					item.extents.push_back(x);
 				}
 
@@ -591,7 +610,7 @@ namespace libfiles::detail
 			}
 
 			if (c.failed()) throw format_error("the HEIF item locations are cut short");
-			return locations;
+			return result;
 		}
 
 		void parse_ipma(const std::span<const std::uint8_t> payload, std::vector<property_list>& lists)
@@ -635,14 +654,22 @@ namespace libfiles::detail
 			if (c.failed()) throw format_error("the HEIF property associations are cut short");
 		}
 
-		std::vector<reference> parse_iref(const std::span<const std::uint8_t> payload)
+		struct item_references
+		{
+			std::uint8_t version = 0;
+			std::vector<reference> references;
+		};
+
+		item_references parse_iref(const std::span<const std::uint8_t> payload)
 		{
 			cursor c(payload);
 			const auto box = read_full_box(c);
 			if (box.version > 1) throw format_error("the HEIF item references have an unknown version");
 
 			const auto id_bytes = box.version == 0 ? 2u : 4u;
-			std::vector<reference> references;
+			item_references result;
+			result.version = box.version;
+			auto& references = result.references;
 
 			while (!c.at_end())
 			{
@@ -672,7 +699,7 @@ namespace libfiles::detail
 			}
 
 			if (c.failed()) throw format_error("the HEIF item references are cut short");
-			return references;
+			return result;
 		}
 
 		// libheif's Fraction: both terms within 32 bits and a denominator that is not zero, reduced until
@@ -789,10 +816,10 @@ namespace libfiles::detail
 		void parse_uncc(cursor& c, property& p)
 		{
 			static constexpr std::uint32_t profiles[] = {
-				fourcc("rgb3"), fourcc("rgba"), fourcc("abgr"), fourcc("2vuy"), fourcc("yuv2"), fourcc("yvyu"),
-				fourcc("vyuy"), fourcc("yuv1"), fourcc("v308"), fourcc("v408"), fourcc("y210"), fourcc("v410"),
-				fourcc("v210"), fourcc("i420"), fourcc("nv12"), fourcc("nv21"), fourcc("yu22"), fourcc("yv22"),
-				fourcc("yv20"),
+				fourcc("rgb3"), fourcc("rgba"), fourcc("abgr"), fourcc("2vuy"), fourcc("yuv2"),
+				fourcc("yvyu"), fourcc("vyuy"), fourcc("yuv1"), fourcc("v308"), fourcc("v408"),
+				fourcc("y210"), fourcc("v410"), fourcc("v210"), fourcc("i420"), fourcc("nv12"),
+				fourcc("nv21"), fourcc("yu22"), fourcc("yv22"), fourcc("yv20"),
 			};
 
 			const auto box = read_full_box(c);
@@ -821,7 +848,8 @@ namespace libfiles::detail
 					p.components.push_back(component);
 
 					if (format > 3) throw format_error("a HEIF uncompressed image has an invalid component format");
-					if (align != 0 && align * 8 < component.bits) throw format_error("a HEIF uncompressed image has an invalid alignment");
+					if (align != 0 && align * 8 < component.bits)
+						throw format_error("a HEIF uncompressed image has an invalid alignment");
 				}
 
 				p.sampling = c.u8();
@@ -833,7 +861,8 @@ namespace libfiles::detail
 				if (c.u32() > max_pixel_size) throw format_error("a HEIF uncompressed image's pixels are too large");
 				c.u32();
 				c.u32();
-				if (c.u32() == 0xffffffffu || c.u32() == 0xffffffffu) throw format_error("a HEIF uncompressed image has too many tiles");
+				if (c.u32() == 0xffffffffu || c.u32() == 0xffffffffu)
+					throw format_error("a HEIF uncompressed image has too many tiles");
 			}
 		}
 
@@ -854,7 +883,8 @@ namespace libfiles::detail
 
 		void parse_rref(cursor& c, property& p)
 		{
-			if (read_full_box(c).version > 1) throw format_error("a HEIF required references property has an unknown version");
+			if (read_full_box(c).version > 1)
+				throw format_error("a HEIF required references property has an unknown version");
 
 			// The count is a byte, but libheif reads it as a word when the rest of the box is a whole
 			// number of words, as two conformance files store it, and keeps its low byte.
@@ -937,46 +967,46 @@ namespace libfiles::detail
 			switch (box.type)
 			{
 			case prop_ispe:
-				{
-					if (read_full_box(c).version != 0) throw format_error("a HEIF image size has an unknown version");
-					p.width = c.u32();
-					p.height = c.u32();
-					fatal_if_failed();
-				}
-				break;
+			{
+				if (read_full_box(c).version != 0) throw format_error("a HEIF image size has an unknown version");
+				p.width = c.u32();
+				p.height = c.u32();
+				fatal_if_failed();
+			}
+			break;
 
 			case prop_colr:
-				{
-					p.colour_type = c.u32();
+			{
+				p.colour_type = c.u32();
 
-					if (p.colour_type == fourcc("nclx") || p.colour_type == fourcc("nclc"))
-					{
-						p.nclx.primaries = c.u16();
-						p.nclx.transfer = c.u16();
-						p.nclx.matrix = c.u16();
-						p.nclx.full_range = p.colour_type == fourcc("nclx") ? (c.u8() & 0x80u) != 0 : p.nclx.matrix == 0;
-						fatal_if_failed();
-					}
-					else if (p.colour_type == fourcc("prof") || p.colour_type == fourcc("rICC"))
-					{
-						if (box.declared == 0) throw format_error("a HEIF colour profile has no size");
-						if (c.remaining() > max_colour_profile) throw format_error("a HEIF colour profile is too large");
-						p.icc = c.rest();
-					}
-					else
-					{
-						throw format_error("a HEIF colour description has an unknown type");
-					}
-				}
-				break;
-
-			case prop_auxc:
+				if (p.colour_type == fourcc("nclx") || p.colour_type == fourcc("nclc"))
 				{
-					if (read_full_box(c).version != 0) throw format_error("a HEIF auxiliary type has an unknown version");
-					p.aux_type = c.string();
+					p.nclx.primaries = c.u16();
+					p.nclx.transfer = c.u16();
+					p.nclx.matrix = c.u16();
+					p.nclx.full_range = p.colour_type == fourcc("nclx") ? (c.u8() & 0x80u) != 0 : p.nclx.matrix == 0;
 					fatal_if_failed();
 				}
-				break;
+				else if (p.colour_type == fourcc("prof") || p.colour_type == fourcc("rICC"))
+				{
+					if (box.declared == 0) throw format_error("a HEIF colour profile has no size");
+					if (c.remaining() > max_colour_profile) throw format_error("a HEIF colour profile is too large");
+					p.icc = c.rest();
+				}
+				else
+				{
+					throw format_error("a HEIF colour description has an unknown type");
+				}
+			}
+			break;
+
+			case prop_auxc:
+			{
+				if (read_full_box(c).version != 0) throw format_error("a HEIF auxiliary type has an unknown version");
+				p.aux_type = c.string();
+				fatal_if_failed();
+			}
+			break;
 
 			case prop_irot:
 				p.rotation = (c.u8() & 3u) * 90u;
@@ -989,30 +1019,30 @@ namespace libfiles::detail
 				break;
 
 			case prop_clap:
+			{
+				const auto width_num = c.u32();
+				const auto width_den = c.u32();
+				const auto height_num = c.u32();
+				const auto height_den = c.u32();
+				const auto h_offset_num = static_cast<std::int32_t>(c.u32());
+				const auto h_offset_den = c.u32();
+				const auto v_offset_num = static_cast<std::int32_t>(c.u32());
+				const auto v_offset_den = c.u32();
+
+				const auto width = fraction(width_num, width_den);
+				const auto height = fraction(height_num, height_den);
+
+				if (c.failed() || !width || !height || !fraction(h_offset_num, h_offset_den) ||
+				    !fraction(v_offset_num, v_offset_den))
 				{
-					const auto width_num = c.u32();
-					const auto width_den = c.u32();
-					const auto height_num = c.u32();
-					const auto height_den = c.u32();
-					const auto h_offset_num = static_cast<std::int32_t>(c.u32());
-					const auto h_offset_den = c.u32();
-					const auto v_offset_num = static_cast<std::int32_t>(c.u32());
-					const auto v_offset_den = c.u32();
-
-					const auto width = fraction(width_num, width_den);
-					const auto height = fraction(height_num, height_den);
-
-					if (c.failed() || !width || !height || !fraction(h_offset_num, h_offset_den) ||
-						!fraction(v_offset_num, v_offset_den))
-					{
-						p.fault = parse_fault::ignorable;
-						break;
-					}
-
-					p.clap_width = round_fraction(*width);
-					p.clap_height = round_fraction(*height);
+					p.fault = parse_fault::ignorable;
+					break;
 				}
-				break;
+
+				p.clap_width = round_fraction(*width);
+				p.clap_height = round_fraction(*height);
+			}
+			break;
 
 			case prop_pasp:
 				p.h_spacing = c.u32();
@@ -1020,18 +1050,34 @@ namespace libfiles::detail
 				if (c.failed()) p.fault = parse_fault::optional;
 				break;
 
-			case prop_pixi:
-				{
-					if (read_full_box(c).version != 0)
-					{
-						p.fault = parse_fault::optional;
-						break;
-					}
-
-					c.skip(c.u8());
-					if (c.failed()) p.fault = parse_fault::optional;
-				}
+			// Read for the listing alone: libheif keeps a light level it cannot read out of the picture's
+			// description, and refuses nothing for it.
+			case prop_clli:
+				p.max_cll = c.u16();
+				p.max_fall = c.u16();
+				if (c.failed()) p.fault = parse_fault::optional;
 				break;
+
+			case prop_mdcv:
+				// The display's primaries and white point, then its luminance.
+				for (auto i = 0; i < 8; ++i) c.u16();
+				p.mastering_max = c.u32();
+				p.mastering_min = c.u32();
+				if (c.failed()) p.fault = parse_fault::optional;
+				break;
+
+			case prop_pixi:
+			{
+				if (read_full_box(c).version != 0)
+				{
+					p.fault = parse_fault::optional;
+					break;
+				}
+
+				c.skip(c.u8());
+				if (c.failed()) p.fault = parse_fault::optional;
+			}
+			break;
 
 			case prop_hvcc:
 				parse_hvcc(c, p);
@@ -1039,31 +1085,31 @@ namespace libfiles::detail
 				break;
 
 			case prop_av1c:
-				{
-					if (box.declared == 0) throw format_error("a HEIF AV1 configuration has no size");
+			{
+				if (box.declared == 0) throw format_error("a HEIF AV1 configuration has no size");
 
-					c.u8();
-					c.u8();
-					const auto flags = c.u8();
-					c.u8();
-					fatal_if_failed();
+				c.u8();
+				c.u8();
+				const auto flags = c.u8();
+				c.u8();
+				fatal_if_failed();
 
-					const auto high_bitdepth = (flags >> 6 & 1u) != 0;
-					const auto twelve_bit = (flags >> 5 & 1u) != 0;
-					const auto monochrome = (flags >> 4 & 1u) != 0;
-					const auto subsampling_x = flags >> 3 & 1u;
-					const auto subsampling_y = flags >> 2 & 1u;
+				const auto high_bitdepth = (flags >> 6 & 1u) != 0;
+				const auto twelve_bit = (flags >> 5 & 1u) != 0;
+				const auto monochrome = (flags >> 4 & 1u) != 0;
+				const auto subsampling_x = flags >> 3 & 1u;
+				const auto subsampling_y = flags >> 2 & 1u;
 
-					if (monochrome) p.coded_chroma = chroma::monochrome;
-					else if (subsampling_x == 1 && subsampling_y == 1) p.coded_chroma = chroma::c420;
-					else if (subsampling_x == 1 && subsampling_y == 0) p.coded_chroma = chroma::c422;
-					else if (subsampling_x == 0 && subsampling_y == 0) p.coded_chroma = chroma::c444;
-					else p.coded_chroma = chroma::undefined;
+				if (monochrome) p.coded_chroma = chroma::monochrome;
+				else if (subsampling_x == 1 && subsampling_y == 1) p.coded_chroma = chroma::c420;
+				else if (subsampling_x == 1 && subsampling_y == 0) p.coded_chroma = chroma::c422;
+				else if (subsampling_x == 0 && subsampling_y == 0) p.coded_chroma = chroma::c444;
+				else p.coded_chroma = chroma::undefined;
 
-					p.luma_bits = !high_bitdepth ? 8 : twelve_bit ? 12 : 10;
-					p.chroma_bits = p.luma_bits;
-				}
-				break;
+				p.luma_bits = !high_bitdepth ? 8 : twelve_bit ? 12 : 10;
+				p.chroma_bits = p.luma_bits;
+			}
+			break;
 
 			case prop_avcc:
 				parse_avcc(c, p);
@@ -1096,28 +1142,25 @@ namespace libfiles::detail
 				fatal_if_failed();
 				break;
 
-			case prop_rref:
-				parse_rref(c, p);
-				break;
+			case prop_rref: parse_rref(c, p); break;
 
-			case prop_cmin:
-				parse_cmin(c, p);
-				break;
+			case prop_cmin: parse_cmin(c, p); break;
 
 			case prop_iscl:
-				{
-					const auto header = read_full_box(c);
-					const auto width_num = c.u16();
-					const auto width_den = c.u16();
-					const auto height_num = c.u16();
-					const auto height_den = c.u16();
+			{
+				const auto header = read_full_box(c);
+				const auto width_num = c.u16();
+				const auto width_den = c.u16();
+				const auto height_num = c.u16();
+				const auto height_den = c.u16();
 
-					if (header.version != 0 || width_num == 0 || width_den == 0 || height_num == 0 || height_den == 0 || c.failed())
-					{
-						p.fault = parse_fault::ignorable;
-					}
+				if (header.version != 0 || width_num == 0 || width_den == 0 || height_num == 0 || height_den == 0 ||
+				    c.failed())
+				{
+					p.fault = parse_fault::ignorable;
 				}
-				break;
+			}
+			break;
 
 			// Properties libheif reads only to keep: a fault in one is the box cut short.
 			case prop_a1op:
@@ -1146,8 +1189,7 @@ namespace libfiles::detail
 				if (!entity_group_valid(box)) p.fault = parse_fault::ignorable;
 				break;
 
-			default:
-				break;
+			default: break;
 			}
 
 			return p;
@@ -1157,7 +1199,8 @@ namespace libfiles::detail
 		{
 			if (p.type == box_uuid)
 			{
-				return p.uuid && std::ranges::any_of(libheif_uuids, [&p](const auto& id) { return std::equal(id, id + 16, p.uuid); });
+				return p.uuid && std::ranges::any_of(libheif_uuids,
+				                                     [&p](const auto& id) { return std::equal(id, id + 16, p.uuid); });
 			}
 
 			return std::ranges::find(libheif_box_types, p.type) != std::end(libheif_box_types);
@@ -1196,68 +1239,59 @@ namespace libfiles::detail
 				return true;
 
 			case box_pitm:
-				{
-					const auto header = read_full_box(c);
-					if (header.version > 1) throw format_error("a HEIF primary item box has an unknown version");
-					c.skip(header.version == 0 ? 2 : 4);
-					if (c.failed()) throw format_error("a HEIF primary item box is cut short");
-				}
+			{
+				const auto header = read_full_box(c);
+				if (header.version > 1) throw format_error("a HEIF primary item box has an unknown version");
+				c.skip(header.version == 0 ? 2 : 4);
+				if (c.failed()) throw format_error("a HEIF primary item box is cut short");
+			}
 				return true;
 
-			case box_iloc:
-				parse_iloc(box.payload);
-				return true;
+			case box_iloc: parse_iloc(box.payload); return true;
 
-			case box_iinf:
-				parse_iinf(box, depth);
-				return true;
+			case box_iinf: parse_iinf(box, depth); return true;
 
-			case box_infe:
-				parse_infe(box.payload);
-				return true;
+			case box_infe: parse_infe(box.payload); return true;
 
 			case box_ipma:
-				{
-					std::vector<property_list> lists;
-					parse_ipma(box.payload, lists);
-				}
+			{
+				std::vector<property_list> lists;
+				parse_ipma(box.payload, lists);
+			}
 				return true;
 
-			case box_iref:
-				parse_iref(box.payload);
-				return true;
+			case box_iref: parse_iref(box.payload); return true;
 
 			case box_iprp:
 			case box_ipco:
 			case box_grpl:
-			case box_dinf:
-				children(0);
-				return true;
+			case box_dinf: children(0); return true;
 
 			case box_dref:
+			{
+				if (read_full_box(c).version != 0)
+					throw format_error("a HEIF data reference box has an unknown version");
+				const auto count = c.u32();
+				if (c.failed()) throw format_error("a HEIF data reference box is cut short");
+				if (count > max_children) throw format_error("a HEIF data reference box holds too many boxes");
+
+				// libheif reads on through a count of zero, and refuses the box for any box it finds.
+				if (count == 0 && !read_children(box.payload.subspan(8), box.payload_offset + 8).empty())
 				{
-					if (read_full_box(c).version != 0) throw format_error("a HEIF data reference box has an unknown version");
-					const auto count = c.u32();
-					if (c.failed()) throw format_error("a HEIF data reference box is cut short");
-					if (count > max_children) throw format_error("a HEIF data reference box holds too many boxes");
-
-					// libheif reads on through a count of zero, and refuses the box for any box it finds.
-					if (count == 0 && !read_children(box.payload.subspan(8), box.payload_offset + 8).empty())
-					{
-						throw format_error("a HEIF data reference box holds more boxes than it declares");
-					}
-
-					if (count > 0) children(8, count);
+					throw format_error("a HEIF data reference box holds more boxes than it declares");
 				}
+
+				if (count > 0) children(8, count);
+			}
 				return true;
 
 			case box_url:
-				{
-					const auto header = read_full_box(c);
-					if (header.version > 0) throw format_error("a HEIF data location has an unknown version");
-					if (!(header.flags & 1u)) c.string();
-					if (c.failed()) throw format_error("a HEIF data location is cut short");
-				}
+			{
+				const auto header = read_full_box(c);
+				if (header.version > 0) throw format_error("a HEIF data location has an unknown version");
+				if (!(header.flags & 1u)) c.string();
+				if (c.failed()) throw format_error("a HEIF data location is cut short");
+			}
 				return true;
 
 			case group_altr:
@@ -1265,8 +1299,7 @@ namespace libfiles::detail
 				if (!entity_group_valid(box)) throw format_error("a HEIF entity group is malformed");
 				return true;
 
-			default:
-				return false;
+			default: return false;
 			}
 		}
 
@@ -1287,6 +1320,11 @@ namespace libfiles::detail
 			// The meta box's payload, held while the scan runs.
 			std::vector<std::uint8_t> meta;
 			std::uint64_t meta_offset = 0;
+			// The meta box itself, and the top-level boxes the scan stepped through.
+			heif::box_place meta_box;
+			std::vector<heif::box_place> top_level;
+			bool cut = false;
+			bool found_moov = false;
 
 			std::optional<std::uint32_t> handler;
 			std::optional<std::uint32_t> primary;
@@ -1297,12 +1335,23 @@ namespace libfiles::detail
 			bool have_ipma = false;
 			std::map<std::uint32_t, item_entry> items;
 			std::vector<location> locations;
+			location_format locations_format;
 			std::vector<property> properties;
 			std::vector<property_list> property_lists;
 			// Each item's first list in property_lists.
 			std::map<std::uint32_t, std::size_t> first_lists;
 			std::optional<std::vector<reference>> references;
 			std::optional<idat_box> idat;
+
+			// The meta box's children, and which of them the scan reads, for a writer.
+			std::vector<heif::box_place> meta_children;
+			std::optional<std::size_t> iloc_child;
+			std::optional<std::size_t> iinf_child;
+			std::optional<std::size_t> iref_child;
+			std::uint8_t iinf_version = 0;
+			std::uint64_t iinf_entries_end = 0;
+			std::uint8_t iref_version = 0;
+			std::uint32_t largest_id = 0;
 
 			bool has_brand(const std::uint32_t brand) const
 			{
@@ -1425,7 +1474,8 @@ namespace libfiles::detail
 			}
 
 			f.property_lists = std::move(lists);
-			for (std::size_t i = 0; i < f.property_lists.size(); ++i) f.first_lists.try_emplace(f.property_lists[i].item, i);
+			for (std::size_t i = 0; i < f.property_lists.size(); ++i)
+				f.first_lists.try_emplace(f.property_lists[i].item, i);
 		}
 
 		void parse_meta(heif_boxes& f)
@@ -1442,52 +1492,66 @@ namespace libfiles::detail
 				switch (child.type)
 				{
 				case box_hdlr:
-					{
-						cursor h(child.payload);
-						if (read_full_box(h).version != 0) throw format_error("the HEIF handler box has an unknown version");
-						h.u32();
-						const auto handler = h.u32();
-						h.read(12);
-						h.string();
-						if (h.failed()) throw format_error("the HEIF handler box is cut short");
-						if (!f.handler) f.handler = handler;
-					}
-					break;
+				{
+					cursor h(child.payload);
+					if (read_full_box(h).version != 0)
+						throw format_error("the HEIF handler box has an unknown version");
+					h.u32();
+					const auto handler = h.u32();
+					h.read(12);
+					h.string();
+					if (h.failed()) throw format_error("the HEIF handler box is cut short");
+					if (!f.handler) f.handler = handler;
+				}
+				break;
 
 				case box_pitm:
-					{
-						cursor p(child.payload);
-						const auto box = read_full_box(p);
-						if (box.version > 1) throw format_error("the HEIF primary item box has an unknown version");
-						const std::uint32_t id = box.version == 0 ? p.u16() : p.u32();
-						if (p.failed()) throw format_error("the HEIF primary item box is cut short");
-						if (!f.primary) f.primary = id;
-					}
-					break;
+				{
+					cursor p(child.payload);
+					const auto box = read_full_box(p);
+					if (box.version > 1) throw format_error("the HEIF primary item box has an unknown version");
+					const std::uint32_t id = box.version == 0 ? p.u16() : p.u32();
+					if (p.failed()) throw format_error("the HEIF primary item box is cut short");
+					if (!f.primary) f.primary = id;
+					f.largest_id = std::max(f.largest_id, id);
+				}
+				break;
 
 				case box_iloc:
+				{
+					auto parsed = parse_iloc(child.payload);
+					for (const auto& l : parsed.locations) f.largest_id = std::max(f.largest_id, l.item);
+
+					if (first_iloc)
 					{
-						auto locations = parse_iloc(child.payload);
-						if (first_iloc) f.locations = std::move(locations);
-						first_iloc = false;
-						f.have_iloc = true;
+						f.locations = std::move(parsed.locations);
+						f.locations_format = parsed.format;
+						f.iloc_child = f.meta_children.size();
 					}
-					break;
+
+					first_iloc = false;
+					f.have_iloc = true;
+				}
+				break;
 
 				case box_iinf:
+				{
+					auto parsed = parse_iinf(child, 1);
+					for (const auto& entry : parsed.entries) f.largest_id = std::max(f.largest_id, entry.id);
+
+					if (first_iinf)
 					{
-						auto entries = parse_iinf(child, 1);
-
-						if (first_iinf)
-						{
-							// A second entry for an item is ignored, as libheif's map keeps the first.
-							for (auto& entry : entries) f.items.try_emplace(entry.id, std::move(entry));
-						}
-
-						first_iinf = false;
-						f.have_iinf = true;
+						// A second entry for an item is ignored, as libheif's map keeps the first.
+						for (auto& entry : parsed.entries) f.items.try_emplace(entry.id, std::move(entry));
+						f.iinf_child = f.meta_children.size();
+						f.iinf_version = parsed.version;
+						f.iinf_entries_end = parsed.entries_end;
 					}
-					break;
+
+					first_iinf = false;
+					f.have_iinf = true;
+				}
+				break;
 
 				case box_iprp:
 					if (first_iprp) parse_iprp(f, child);
@@ -1497,20 +1561,49 @@ namespace libfiles::detail
 					break;
 
 				case box_iref:
+				{
+					auto parsed = parse_iref(child.payload);
+
+					for (const auto& ref : parsed.references)
 					{
-						auto references = parse_iref(child.payload);
-						if (!f.references) f.references = std::move(references);
+						f.largest_id = std::max(f.largest_id, ref.from);
+						for (const auto to : ref.to) f.largest_id = std::max(f.largest_id, to);
 					}
-					break;
+
+					if (!f.references)
+					{
+						f.references = std::move(parsed.references);
+						f.iref_child = f.meta_children.size();
+						f.iref_version = parsed.version;
+					}
+				}
+				break;
 
 				case box_idat:
 					if (!f.idat) f.idat = idat_box{child.payload_offset, child.declared};
 					break;
 
-				default:
+				case box_grpl:
 					check_box(child, 1);
+
+					// An entity group's id is drawn from the items' ids, so a new item must not take one.
+					for (const auto& group : read_children(child.payload, child.payload_offset))
+					{
+						cursor g(group.payload);
+						read_full_box(g);
+						const auto id = g.u32();
+						if (!g.failed()) f.largest_id = std::max(f.largest_id, id);
+					}
 					break;
+
+				default: check_box(child, 1); break;
 				}
+
+				f.meta_children.push_back({.type = child.type,
+				                           .offset = child.offset,
+				                           .size = child.size,
+				                           .header = static_cast<std::uint32_t>(child.payload_offset - child.offset),
+				                           .declared = child.declared});
 			}
 		}
 
@@ -1531,7 +1624,8 @@ namespace libfiles::detail
 			const std::size_t ftyp_header = ftyp.header;
 
 			if (ftyp_size == 0) throw format_error("the HEIF file type box is the only box");
-			if (ftyp_size > std::min(f.file_size, ftyp_window)) throw format_error("the HEIF file type box is too large");
+			if (ftyp_size > std::min(f.file_size, ftyp_window))
+				throw format_error("the HEIF file type box is too large");
 			if (ftyp_size < ftyp_header) throw format_error("the HEIF file type box is smaller than its header");
 
 			parse_ftyp(r, f, ftyp_size, ftyp_header);
@@ -1539,7 +1633,13 @@ namespace libfiles::detail
 			auto found_meta = false;
 			auto found_moov = false;
 			std::vector<std::pair<std::uint64_t, std::uint64_t>> metas;
+			std::vector<heif::box_place> meta_boxes;
 			std::uint64_t next = ftyp_size;
+			f.top_level.push_back({.type = box_ftyp,
+			                       .offset = 0,
+			                       .size = ftyp_size,
+			                       .header = static_cast<std::uint32_t>(ftyp_header),
+			                       .declared = ftyp_size});
 
 			for (std::size_t boxes = 0;; ++boxes)
 			{
@@ -1559,10 +1659,19 @@ namespace libfiles::detail
 				const std::uint64_t header = h.header;
 				if (h.large() && size > max_large_box) throw format_error("a HEIF top-level box is too large");
 
+				const auto left = f.file_size - next;
+				f.cut = f.cut || size > left;
+				f.top_level.push_back({.type = type,
+				                       .offset = next,
+				                       .size = size == 0 ? left : std::min(size, left),
+				                       .header = static_cast<std::uint32_t>(header),
+				                       .declared = size});
+
 				if (type == box_meta || type == box_moov || type == box_mini)
 				{
 					const auto end = size == 0 ? f.file_size : next + size;
-					if (size != 0 && size > f.file_size - next) throw format_error("a HEIF top-level box runs past the end of the file");
+					if (size != 0 && size > f.file_size - next)
+						throw format_error("a HEIF top-level box runs past the end of the file");
 					if (end - next < header) throw format_error("a HEIF top-level box is smaller than its header");
 
 					if (type == box_mini) throw format_error("a low-overhead HEIF file is not read");
@@ -1570,6 +1679,7 @@ namespace libfiles::detail
 					if (type == box_meta)
 					{
 						metas.emplace_back(next + header, end);
+						meta_boxes.push_back(f.top_level.back());
 						found_meta = true;
 					}
 					else
@@ -1590,12 +1700,13 @@ namespace libfiles::detail
 				next += size;
 			}
 
-			const auto sequence = f.has_brand(fourcc("msf1")) || f.has_brand(fourcc("isom")) || f.has_brand(fourcc("mp41")) ||
-				f.has_brand(fourcc("mp42"));
+			const auto sequence = f.has_brand(fourcc("msf1")) || f.has_brand(fourcc("isom")) ||
+			                      f.has_brand(fourcc("mp41")) || f.has_brand(fourcc("mp42"));
 
-			const auto supported = f.has_brand(fourcc("heic")) || f.has_brand(fourcc("heix")) || f.has_brand(fourcc("mif1")) ||
-				f.has_brand(fourcc("avif")) || f.has_brand(fourcc("1pic")) || f.major_brand == fourcc("mif3") ||
-				f.has_brand(fourcc("jpeg")) || sequence;
+			const auto supported = f.has_brand(fourcc("heic")) || f.has_brand(fourcc("heix")) ||
+			                       f.has_brand(fourcc("mif1")) || f.has_brand(fourcc("avif")) ||
+			                       f.has_brand(fourcc("1pic")) || f.major_brand == fourcc("mif3") ||
+			                       f.has_brand(fourcc("jpeg")) || sequence;
 
 			if (!supported) throw format_error("the HEIF file names no brand libheif reads");
 			if (!found_meta && !sequence) throw format_error("the HEIF file has no meta box");
@@ -1608,7 +1719,8 @@ namespace libfiles::detail
 
 			for (const auto& [start, end] : metas)
 			{
-				if (end - start > max_meta_box - meta_bytes) throw format_error("the HEIF meta box is too large to read");
+				if (end - start > max_meta_box - meta_bytes)
+					throw format_error("the HEIF meta box is too large to read");
 				meta_bytes += end - start;
 			}
 
@@ -1616,11 +1728,17 @@ namespace libfiles::detail
 			{
 				const auto [start, end] = metas[i];
 				const auto payload = r.read(start, static_cast<std::size_t>(end - start));
-				check_structure({.type = box_meta, .declared = end - start, .payload = payload, .payload_offset = start}, 0);
+				check_structure({.type = box_meta,
+				                 .declared = end - start,
+				                 .payload = payload,
+				                 .payload_offset = start},
+				                0);
 			}
 
 			const auto [meta_start, meta_end] = metas.back();
 			f.meta_offset = meta_start;
+			f.meta_box = meta_boxes.back();
+			f.found_moov = found_moov;
 			f.meta = r.read(meta_start, static_cast<std::size_t>(meta_end - meta_start));
 			parse_meta(f);
 
@@ -1678,7 +1796,8 @@ namespace libfiles::detail
 					const auto start = e.offset + loc->base;
 					const auto box_size = f.idat->declared;
 
-					if (start < e.offset || e.length > box_size || start > box_size - e.length) return data_status::fault;
+					if (start < e.offset || e.length > box_size || start > box_size - e.length)
+						return data_status::fault;
 					if (f.idat->data_offset + start + e.length > f.file_size) return data_status::fault;
 				}
 				else
@@ -1693,9 +1812,11 @@ namespace libfiles::detail
 		}
 
 		// Bytes of the file, from the meta box held in memory where they lie in it: 'idat' data does.
-		std::vector<std::uint8_t> read_bytes(reader& r, const heif_boxes& f, const std::uint64_t at, const std::size_t count)
+		std::vector<std::uint8_t> read_bytes(reader& r, const heif_boxes& f, const std::uint64_t at,
+		                                     const std::size_t count)
 		{
-			if (at >= f.meta_offset && at - f.meta_offset <= f.meta.size() && count <= f.meta.size() - (at - f.meta_offset))
+			if (at >= f.meta_offset && at - f.meta_offset <= f.meta.size() &&
+			    count <= f.meta.size() - (at - f.meta_offset))
 			{
 				const auto begin = f.meta.begin() + static_cast<std::ptrdiff_t>(at - f.meta_offset);
 				return {begin, begin + static_cast<std::ptrdiff_t>(count)};
@@ -1705,7 +1826,8 @@ namespace libfiles::detail
 		}
 
 		// Up to limit bytes from the start of an item's data, which check_item_data has passed.
-		std::vector<std::uint8_t> read_item_data(reader& r, const heif_boxes& f, const std::uint32_t id, const std::uint64_t limit)
+		std::vector<std::uint8_t> read_item_data(reader& r, const heif_boxes& f, const std::uint32_t id,
+		                                         const std::uint64_t limit)
 		{
 			std::vector<std::uint8_t> out;
 			const auto* const loc = f.location_of(id);
@@ -1726,8 +1848,8 @@ namespace libfiles::detail
 		}
 
 		// The bytes that come after the first `skip` of an item's data, up to `count` of them.
-		std::vector<std::uint8_t> read_item_range(reader& r, const heif_boxes& f, const std::uint32_t id, std::uint64_t skip,
-		                                          const std::uint64_t count)
+		std::vector<std::uint8_t> read_item_range(reader& r, const heif_boxes& f, const std::uint32_t id,
+		                                          std::uint64_t skip, const std::uint64_t count)
 		{
 			std::vector<std::uint8_t> out;
 			const auto* const loc = f.location_of(id);
@@ -1744,7 +1866,8 @@ namespace libfiles::detail
 				}
 
 				const auto n = static_cast<std::size_t>(std::min<std::uint64_t>(e.length - skip, count - out.size()));
-				const auto at = (loc->method == 0 ? loc->base + e.offset : f.idat->data_offset + loc->base + e.offset) + skip;
+				const auto at = (loc->method == 0 ? loc->base + e.offset : f.idat->data_offset + loc->base + e.offset) +
+				                skip;
 				const auto bytes = read_bytes(r, f, at, n);
 				out.insert(out.end(), bytes.begin(), bytes.end());
 				skip = 0;
@@ -1788,7 +1911,8 @@ namespace libfiles::detail
 			case item_grid: return codec::grid;
 			case item_iovl: return codec::overlay;
 			case item_iden: return codec::iden;
-			case item_mime: if (entry.content_type == jpeg_content_type) return codec::jpeg;
+			case item_mime:
+				if (entry.content_type == jpeg_content_type) return codec::jpeg;
 				break;
 			default: break;
 			}
@@ -1813,12 +1937,9 @@ namespace libfiles::detail
 			case item_vvc1:
 			case item_jpeg:
 			case item_j2k1:
-			case item_mski:
-				return true;
-			case item_mime:
-				return entry.content_type == jpeg_content_type;
-			default:
-				return false;
+			case item_mski: return true;
+			case item_mime: return entry.content_type == jpeg_content_type;
+			default: return false;
 			}
 		}
 
@@ -1898,10 +2019,7 @@ namespace libfiles::detail
 				return it == images.end() ? nullptr : &it->second;
 			}
 
-			void remove_top_level(const std::uint32_t id)
-			{
-				std::erase(top_level, id);
-			}
+			void remove_top_level(const std::uint32_t id) { std::erase(top_level, id); }
 		};
 
 		// libheif's initialize_decoder: false when it makes the item an ImageItem_Error.
@@ -1917,40 +2035,41 @@ namespace libfiles::detail
 			case codec::vvc: return m.first(img, prop_vvcc) != nullptr;
 			case codec::j2k: return m.first(img, prop_j2kh) != nullptr;
 			case codec::unci:
-				{
-					const auto* const uncc = m.first(img, prop_uncc);
-					if (!uncc || !m.first(img, prop_ispe)) return false;
-					return std::ranges::none_of(uncc->components, [](const unc_component& c) { return c.bits > 128; });
-				}
+			{
+				const auto* const uncc = m.first(img, prop_uncc);
+				if (!uncc || !m.first(img, prop_ispe)) return false;
+				return std::ranges::none_of(uncc->components, [](const unc_component& c) { return c.bits > 128; });
+			}
 			case codec::grid:
-				{
-					const auto spec = parse_grid(r, f, img.id);
-					if (!spec || !f.references) return false;
+			{
+				const auto spec = parse_grid(r, f, img.id);
+				if (!spec || !f.references) return false;
 
-					img.grid_rows = spec->rows;
-					img.grid_columns = spec->columns;
-					return f.references_from(img.id, ref_dimg).size() == static_cast<std::size_t>(spec->rows) * spec->columns;
-				}
+				img.grid_rows = spec->rows;
+				img.grid_columns = spec->columns;
+				return f.references_from(img.id, ref_dimg).size() ==
+				       static_cast<std::size_t>(spec->rows) * spec->columns;
+			}
 			case codec::overlay:
-				{
-					if (!f.references) return false;
+			{
+				if (!f.references) return false;
 
-					const auto inputs = f.references_from(img.id, ref_dimg);
-					if (inputs.empty() || inputs.size() > max_overlay_images) return false;
+				const auto inputs = f.references_from(img.id, ref_dimg);
+				if (inputs.empty() || inputs.size() > max_overlay_images) return false;
 
-					std::uint64_t size = 0;
-					if (check_item_data(f, img.id, size) != data_status::ok) return false;
+				std::uint64_t size = 0;
+				if (check_item_data(f, img.id, size) != data_status::ok) return false;
 
-					const auto data = read_item_data(r, f, img.id, 32);
-					if (size < 10 || data[0] != 0) return false;
+				const auto data = read_item_data(r, f, img.id, 32);
+				if (size < 10 || data[0] != 0) return false;
 
-					const std::uint64_t field = (data[1] & 1u) ? 4 : 2;
-					if (2 + 8 + 2 * field + inputs.size() * 2 * field > size) return false;
+				const std::uint64_t field = (data[1] & 1u) ? 4 : 2;
+				if (2 + 8 + 2 * field + inputs.size() * 2 * field > size) return false;
 
-					const auto width = field == 4 ? load_be32(data.data() + 10) : load_be16(data.data() + 10);
-					const auto height = field == 4 ? load_be32(data.data() + 14) : load_be16(data.data() + 12);
-					return width != 0 && height != 0;
-				}
+				const auto width = field == 4 ? load_be32(data.data() + 10) : load_be16(data.data() + 10);
+				const auto height = field == 4 ? load_be32(data.data() + 14) : load_be16(data.data() + 12);
+				return width != 0 && height != 0;
+			}
 			case codec::unsupported: return false;
 			default: return true;
 			}
@@ -1959,7 +2078,7 @@ namespace libfiles::detail
 		bool is_alpha_type(const std::string_view type)
 		{
 			return type == "urn:mpeg:avc:2015:auxid:1" || type == "urn:mpeg:hevc:2015:auxid:1" ||
-				type == "urn:mpeg:mpegB:cicp:systems:auxiliary:alpha";
+			       type == "urn:mpeg:mpegB:cicp:systems:auxiliary:alpha";
 		}
 
 		bool is_depth_type(const std::string_view type)
@@ -2029,7 +2148,8 @@ namespace libfiles::detail
 
 				for (const auto index : img.properties)
 				{
-					if (m.prop(index).fault == parse_fault::ignorable) throw format_error("a HEIF image property is malformed");
+					if (m.prop(index).fault == parse_fault::ignorable)
+						throw format_error("a HEIF image property is malformed");
 				}
 
 				auto have_size = false;
@@ -2048,10 +2168,12 @@ namespace libfiles::detail
 				for (const auto index : img.properties)
 				{
 					const auto& p = m.prop(index);
-					if (p.intrinsics && !have_size) throw format_error("a HEIF camera model belongs to an image with no size");
+					if (p.intrinsics && !have_size)
+						throw format_error("a HEIF camera model belongs to an image with no size");
 					if (p.type != prop_colr) continue;
 
-					if (!p.icc.empty() || p.colour_type == fourcc("prof") || p.colour_type == fourcc("rICC")) img.icc = &p;
+					if (!p.icc.empty() || p.colour_type == fourcc("prof") || p.colour_type == fourcc("rICC"))
+						img.icc = &p;
 					else img.nclx = p.nclx;
 				}
 
@@ -2061,7 +2183,8 @@ namespace libfiles::detail
 
 					if (p.type == prop_clap)
 					{
-						if (p.clap_width <= 0 || p.clap_height <= 0) throw format_error("a HEIF clean aperture leaves no image");
+						if (p.clap_width <= 0 || p.clap_height <= 0)
+							throw format_error("a HEIF clean aperture leaves no image");
 						img.width = static_cast<std::uint32_t>(p.clap_width);
 						img.height = static_cast<std::uint32_t>(p.clap_height);
 					}
@@ -2093,7 +2216,8 @@ namespace libfiles::detail
 
 								auto* const master = m.find(to);
 								if (!master) throw format_error("a HEIF thumbnail belongs to no image");
-								if (master->thumbnail) throw format_error("a HEIF thumbnail belongs to another thumbnail");
+								if (master->thumbnail)
+									throw format_error("a HEIF thumbnail belongs to another thumbnail");
 								if (master == &img) throw format_error("a HEIF thumbnail belongs to itself");
 
 								master->thumbnails.push_back(id);
@@ -2114,7 +2238,8 @@ namespace libfiles::detail
 
 									if (!master)
 									{
-										if (!f.item(to)) throw format_error("a HEIF auxiliary image belongs to no item");
+										if (!f.item(to))
+											throw format_error("a HEIF auxiliary image belongs to no item");
 										continue;
 									}
 
@@ -2169,7 +2294,8 @@ namespace libfiles::detail
 
 				if (status == data_status::fault)
 				{
-					if (entry.type == item_exif || entry.type == item_mime) throw format_error("a HEIF metadata item cannot be read");
+					if (entry.type == item_exif || entry.type == item_mime)
+						throw format_error("a HEIF metadata item cannot be read");
 					continue;
 				}
 
@@ -2197,7 +2323,8 @@ namespace libfiles::detail
 				std::uint64_t size = 0;
 				const auto status = check_item_data(f, id, size);
 
-				if (entry.type == item_rgan && status != data_status::ok) throw format_error("a HEIF region item cannot be read");
+				if (entry.type == item_rgan && status != data_status::ok)
+					throw format_error("a HEIF region item cannot be read");
 
 				// A text item libheif cannot read is skipped; one that faults has refused the file above.
 				const auto encoded = !entry.content_encoding.empty() && entry.content_encoding != "identity";
@@ -2243,9 +2370,8 @@ namespace libfiles::detail
 		// this; it is read here a step at a time, and no further than 16 MiB.
 		std::optional<jpeg_frame> jpeg_sof(reader& r, const heif_model& m, const image& img)
 		{
-			static constexpr bool is_sof[16] = {
-				true, true, true, true, false, true, true, true, false, true, true, true, false, true, true, true
-			};
+			static constexpr bool is_sof[16] = {true,  true, true, true, false, true, true, true,
+			                                    false, true, true, true, false, true, true, true};
 
 			const auto& f = m.boxes;
 			std::uint64_t item_size = 0;
@@ -2367,7 +2493,8 @@ namespace libfiles::detail
 
 			if (has_alpha) *has_alpha = (set & alpha) != 0;
 
-			if (set == (red | green | blue) || set == (red | green | blue | alpha)) result = {colourspace::rgb, chroma::c444};
+			if (set == (red | green | blue) || set == (red | green | blue | alpha))
+				result = {colourspace::rgb, chroma::c444};
 
 			if (set == (y | cb | cr))
 			{
@@ -2375,17 +2502,15 @@ namespace libfiles::detail
 
 				switch (uncc.sampling)
 				{
-				case 0: result.format = chroma::c444;
-					break;
-				case 1: result.format = chroma::c422;
-					break;
-				case 2: result.format = chroma::c420;
-					break;
+				case 0: result.format = chroma::c444; break;
+				case 1: result.format = chroma::c422; break;
+				case 2: result.format = chroma::c420; break;
 				default: break;
 				}
 			}
 
-			if (set == mono || set == (mono | alpha) || set == y || set == (y | alpha)) result = {colourspace::monochrome, chroma::monochrome};
+			if (set == mono || set == (mono | alpha) || set == y || set == (y | alpha))
+				result = {colourspace::monochrome, chroma::monochrome};
 			if (set == filter_array) result = {colourspace::undefined, chroma::monochrome};
 			return result;
 		}
@@ -2400,7 +2525,8 @@ namespace libfiles::detail
 				coded_format result{colourspace::rgb, chroma::undefined, true};
 
 				if (uncc->profile == fourcc("rgb3")) result = {colourspace::rgb, chroma::interleaved_rgb};
-				else if (uncc->profile == fourcc("rgba") || uncc->profile == fourcc("abgr")) result = {colourspace::rgb, chroma::interleaved_rgba};
+				else if (uncc->profile == fourcc("rgba") || uncc->profile == fourcc("abgr"))
+					result = {colourspace::rgb, chroma::interleaved_rgba};
 
 				return result;
 			}
@@ -2430,17 +2556,19 @@ namespace libfiles::detail
 
 				switch (cmpd->component_types[c.index])
 				{
-				case 0: case 4: case 5: case 6: case 11:
-					alternate = std::max(alternate, c.bits);
-					break;
+				case 0:
+				case 4:
+				case 5:
+				case 6:
+				case 11: alternate = std::max(alternate, c.bits); break;
 				case 1:
 					if (luma) bits = std::max(bits, c.bits);
 					break;
-				case 2: case 3:
+				case 2:
+				case 3:
 					if (!luma) bits = std::max(bits, c.bits);
 					break;
-				default:
-					break;
+				default: break;
 				}
 			}
 
@@ -2454,7 +2582,8 @@ namespace libfiles::detail
 			{
 				const auto* const config = m.first(img, type);
 				if (!config) return {};
-				const auto space = config->coded_chroma == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr;
+				const auto space = config->coded_chroma == chroma::monochrome ? colourspace::monochrome
+				                                                              : colourspace::ycbcr;
 				return coded_format{space, config->coded_chroma, false, config->luma_bits};
 			};
 
@@ -2468,17 +2597,18 @@ namespace libfiles::detail
 			case codec::vvc: return from_config(prop_vvcc);
 			case codec::j2k: return coded_format{colourspace::ycbcr, chroma::c444};
 			case codec::unci:
-				{
-					auto format = unci_format(m, img);
-					if (format) format->bits = unci_bits(m, img, true);
-					return format;
-				}
+			{
+				auto format = unci_format(m, img);
+				if (format) format->bits = unci_bits(m, img, true);
+				return format;
+			}
 			case codec::jpeg:
-				{
-					const auto frame = jpeg_sof(r, m, img);
-					if (!frame) return {};
-					return coded_format{frame->format == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr, frame->format, false, frame->precision};
-				}
+			{
+				const auto frame = jpeg_sof(r, m, img);
+				if (!frame) return {};
+				return coded_format{frame->format == chroma::monochrome ? colourspace::monochrome : colourspace::ycbcr,
+				                    frame->format, false, frame->precision};
+			}
 			default: return {};
 			}
 		}
@@ -2521,40 +2651,40 @@ namespace libfiles::detail
 
 		// libheif's get_coded_image_colorspace, which heif_image_handle_get_preferred_decoding_colorspace
 		// returns.
-		std::optional<coded_format> coded_image_format(reader& r, const heif_model& m, const image& img, const int depth = 0)
+		std::optional<coded_format> coded_image_format(reader& r, const heif_model& m, const image& img,
+		                                               const int depth = 0)
 		{
 			if (img.error || depth > 64) return {};
 
 			switch (img.kind)
 			{
-			case codec::overlay:
-				return coded_format{colourspace::rgb, chroma::c444};
+			case codec::overlay: return coded_format{colourspace::rgb, chroma::c444};
 
 			case codec::iden:
-				{
-					const auto coded = first_coded(m, img.id);
-					const auto* const source = coded ? m.find(*coded) : nullptr;
-					if (!source) return {};
-					return coded_image_format(r, m, *source, depth + 1);
-				}
+			{
+				const auto coded = first_coded(m, img.id);
+				const auto* const source = coded ? m.find(*coded) : nullptr;
+				if (!source) return {};
+				return coded_image_format(r, m, *source, depth + 1);
+			}
 
 			case codec::grid:
-				{
-					const auto coded = first_coded(m, img.id);
-					const auto* const tile = coded ? m.find(*coded) : nullptr;
-					if (!tile || tile->error) return {};
+			{
+				const auto coded = first_coded(m, img.id);
+				const auto* const tile = coded ? m.find(*coded) : nullptr;
+				if (!tile || tile->error) return {};
 
-					const auto format = decoder_format(r, m, *tile);
-					if (!format) return {};
-					return corrected(*format, img.nclx);
-				}
+				const auto format = decoder_format(r, m, *tile);
+				if (!format) return {};
+				return corrected(*format, img.nclx);
+			}
 
 			default:
-				{
-					const auto format = decoder_format(r, m, img);
-					if (!format) return {};
-					return corrected(*format, img.nclx);
-				}
+			{
+				const auto format = decoder_format(r, m, img);
+				if (!format) return {};
+				return corrected(*format, img.nclx);
+			}
 			}
 		}
 
@@ -2576,25 +2706,25 @@ namespace libfiles::detail
 			case codec::avc: return from_config(prop_avcc);
 			case codec::vvc: return from_config(prop_vvcc);
 			case codec::jpeg:
-				{
-					const auto frame = jpeg_sof(r, m, img);
-					return frame ? frame->precision : -1;
-				}
+			{
+				const auto frame = jpeg_sof(r, m, img);
+				return frame ? frame->precision : -1;
+			}
 			case codec::unci: return unci_bits(m, img, luma);
 			case codec::mask:
-				{
-					if (!luma) return 0;
-					const auto* const config = m.first(img, prop_mskc);
-					return config ? config->luma_bits : -1;
-				}
+			{
+				if (!luma) return 0;
+				const auto* const config = m.first(img, prop_mskc);
+				return config ? config->luma_bits : -1;
+			}
 			case codec::grid:
 			case codec::overlay:
 			case codec::iden:
-				{
-					const auto coded = first_coded(m, img.id);
-					const auto* const source = coded ? m.find(*coded) : nullptr;
-					return source ? bits_per_pixel(r, m, *source, luma, depth + 1) : -1;
-				}
+			{
+				const auto coded = first_coded(m, img.id);
+				const auto* const source = coded ? m.find(*coded) : nullptr;
+				return source ? bits_per_pixel(r, m, *source, luma, depth + 1) : -1;
+			}
 			default:
 				// libfiles does not read a JPEG 2000 codestream, where libheif finds the depth.
 				return -1;
@@ -2616,13 +2746,15 @@ namespace libfiles::detail
 			}
 
 			if (!format) return false;
-			if (format->format == chroma::interleaved_rgba || format->format == chroma::interleaved_rrggbbaa) return true;
+			if (format->format == chroma::interleaved_rgba || format->format == chroma::interleaved_rrggbbaa)
+				return true;
 
 			if (m.boxes.item_type(img.id) != item_grid || !m.boxes.references) return false;
 
 			const auto tiles = m.boxes.references_from(img.id, ref_dimg);
 			if (tiles.size() != static_cast<std::size_t>(img.grid_rows) * img.grid_columns) return false;
-			if (!std::ranges::all_of(tiles, [&m](const std::uint32_t id) { return m.find(id) != nullptr; })) return false;
+			if (!std::ranges::all_of(tiles, [&m](const std::uint32_t id) { return m.find(id) != nullptr; }))
+				return false;
 
 			return std::ranges::any_of(tiles, [&m](const std::uint32_t id) { return m.find(id)->alpha.has_value(); });
 		}
@@ -2655,21 +2787,19 @@ namespace libfiles::detail
 
 			switch (format.format)
 			{
-			case chroma::monochrome: p.chroma = format.space == colourspace::undefined ? chroma_format::unknown : chroma_format::gray;
+			case chroma::monochrome:
+				p.chroma = format.space == colourspace::undefined ? chroma_format::unknown : chroma_format::gray;
 				break;
-			case chroma::c420: p.chroma = chroma_format::yuv420;
-				break;
-			case chroma::c422: p.chroma = chroma_format::yuv422;
-				break;
-			case chroma::c444: p.chroma = format.space == colourspace::rgb ? chroma_format::rgb : chroma_format::yuv444;
+			case chroma::c420: p.chroma = chroma_format::yuv420; break;
+			case chroma::c422: p.chroma = chroma_format::yuv422; break;
+			case chroma::c444:
+				p.chroma = format.space == colourspace::rgb ? chroma_format::rgb : chroma_format::yuv444;
 				break;
 			case chroma::interleaved_rgb:
 			case chroma::interleaved_rgba:
 			case chroma::interleaved_rrggbb:
-			case chroma::interleaved_rrggbbaa: p.chroma = chroma_format::rgb;
-				break;
-			case chroma::undefined:
-				break;
+			case chroma::interleaved_rrggbbaa: p.chroma = chroma_format::rgb; break;
+			case chroma::undefined: break;
 			}
 
 			if (format.bits > 0 && format.bits <= 255) p.bit_depth = static_cast<std::uint8_t>(format.bits);
@@ -2700,7 +2830,8 @@ namespace libfiles::detail
 				if (equal_ignoring_case(name, "iptc")) choice.iptc = id;
 
 				if (equal_ignoring_case(name, "XMP") ||
-					(equal_ignoring_case(name, "mime") && equal_ignoring_case(entry.content_type, "application/rdf+xml")))
+				    (equal_ignoring_case(name, "mime") &&
+				     equal_ignoring_case(entry.content_type, "application/rdf+xml")))
 				{
 					choice.xmp = id;
 				}
@@ -2722,7 +2853,86 @@ namespace libfiles::detail
 			return static_cast<std::int32_t>(value);
 		}
 
-		std::vector<structure_row> heif_structure(reader& r, const heif_model& m, const image& primary)
+		constexpr std::string_view apple_gain_map_type = "urn:com:apple:photo:2020:aux:hdrgainmap";
+
+		// The ISO 21496-1 tone map item that derives an HDR rendition from the primary image and its gain map, as
+		// the item references alone say: its two inputs are the primary, then the gain map.
+		std::optional<std::uint32_t> tone_map_item(const heif_model& m)
+		{
+			for (const auto& [id, entry] : m.boxes.items)
+			{
+				if (entry.type != item_tmap) continue;
+
+				const auto inputs = m.boxes.references_from(id, ref_dimg);
+				if (inputs.size() == 2 && inputs[0] == m.primary) return id;
+			}
+
+			return {};
+		}
+
+		// Apple's auxiliary gain map image of the primary, by the type its auxC property names.
+		const image* apple_gain_map(const heif_model& m, const image& primary)
+		{
+			for (const auto aux : primary.aux_images)
+			{
+				const auto map = m.images.find(aux);
+				if (map == m.images.end()) continue;
+
+				const auto* const auxc = m.first(map->second, prop_auxc);
+				if (auxc && auxc->aux_type == apple_gain_map_type) return &map->second;
+			}
+
+			return nullptr;
+		}
+
+		// The gain map the primary image carries, as the listing describes it: an ISO 21496-1 tone map item's, with its
+		// size and headroom, else Apple's auxiliary image's, with the headroom Apple's metadata gives it - the gain
+		// map's XMP, else the photo's maker note.
+		std::optional<std::string> gain_map_text(reader& r, const heif_model& m, const image& primary,
+		                                         const std::span<const std::uint8_t> exif)
+		{
+			const auto& f = m.boxes;
+
+			if (const auto id = tone_map_item(m))
+			{
+				const auto inputs = f.references_from(*id, ref_dimg);
+
+				auto text = std::string("ISO 21496-1");
+				if (const auto map = m.images.find(inputs[1]); map != m.images.end())
+					text += std::format(", {} x {}", map->second.width, map->second.height);
+
+				std::uint64_t size = 0;
+				if (check_item_data(f, *id, size) == data_status::ok && size > 1 && size <= max_metadata_block)
+				{
+					const auto data = read_item_data(r, f, *id, size);
+					const auto metadata = data.size() > 1 && data[0] == 0
+					                          ? read_gain_map_metadata({data.data() + 1, data.size() - 1})
+					                          : std::nullopt;
+					if (metadata) text += ", " + headroom_text(metadata->alternate_headroom);
+				}
+
+				return text;
+			}
+
+			if (const auto* const map = apple_gain_map(m, primary))
+			{
+				auto text = std::format("Apple, {} x {}", map->width, map->height);
+				std::vector<std::uint8_t> xmp;
+				if (const auto choice = choose_metadata(m, *map); choice.xmp)
+				{
+					if (auto data = metadata_data(r, m, *choice.xmp)) xmp = std::move(*data);
+				}
+
+				if (const auto headroom = apple_gain_map_headroom(xmp, exif))
+					text += ", " + headroom_text(std::log2(*headroom));
+				return text;
+			}
+
+			return {};
+		}
+
+		std::vector<structure_row> heif_structure(reader& r, const heif_model& m, const image& primary,
+		                                          const std::span<const std::uint8_t> exif)
 		{
 			std::vector<structure_row> rows;
 			const auto& f = m.boxes;
@@ -2758,7 +2968,8 @@ namespace libfiles::detail
 
 			add_structure_row(rows, "Top level images", std::to_string(m.top_level.size()));
 			add_structure_row(rows, "Primary item id", std::to_string(m.primary));
-			add_structure_row(rows, "Stored size", std::format("{} x {}", as_int(ispe ? ispe->width : 0), as_int(ispe ? ispe->height : 0)));
+			add_structure_row(rows, "Stored size",
+			                  std::format("{} x {}", as_int(ispe ? ispe->width : 0), as_int(ispe ? ispe->height : 0)));
 			add_structure_row(rows, "Displayed size", std::format("{} x {}", displayed_width, displayed_height));
 
 			const auto luma = bits_per_pixel(r, m, primary, true);
@@ -2767,24 +2978,47 @@ namespace libfiles::detail
 			if (luma > 0) add_structure_row(rows, "Luma depth", std::format("{} bits", luma));
 			if (chroma_depth > 0) add_structure_row(rows, "Chroma depth", std::format("{} bits", chroma_depth));
 
-			add_structure_row(rows, "Alpha channel", has_alpha(m, primary, coded_image_format(r, m, primary))
-				                                         ? primary.premultiplied ? "present, premultiplied" : "present"
-				                                         : "none");
+			add_structure_row(rows, "Alpha channel",
+			                  has_alpha(m, primary, coded_image_format(r, m, primary))
+			                      ? primary.premultiplied ? "present, premultiplied" : "present"
+			                      : "none");
 
 			if (const auto* const pasp = m.first(primary, prop_pasp); pasp && pasp->h_spacing != pasp->v_spacing)
 			{
 				add_structure_row(rows, "Pixel aspect ratio", std::format("{}:{}", pasp->h_spacing, pasp->v_spacing));
 			}
 
-			add_structure_row(rows, "Colour profile", primary.icc
-				                                          ? "ICC"
-				                                          : primary.nclx != nclx_profile{}
-				                                          ? "nclx (coded primaries and transfer)"
-				                                          : "none");
+			add_structure_row(rows, "Colour profile",
+			                  primary.icc                      ? "ICC"
+			                  : primary.nclx != nclx_profile{} ? "nclx (coded primaries and transfer)"
+			                                                   : "none");
+
+			// What the nclx says, as the decoder maps the picture by it where it names PQ or HLG.
+			if (primary.nclx != nclx_profile{})
+			{
+				add_structure_row(rows, "Colour",
+				                  std::format("{}, {}, {}, {} range", colour_primaries_text(primary.nclx.primaries),
+				                              transfer_text(primary.nclx.transfer), matrix_text(primary.nclx.matrix),
+				                              primary.nclx.full_range ? "full" : "limited"));
+			}
+
+			if (const auto* const clli = m.first(primary, prop_clli))
+				add_structure_row(rows, "Content light level", light_level_text(clli->max_cll, clli->max_fall));
+
+			if (const auto* const mdcv = m.first(primary, prop_mdcv))
+			{
+				add_structure_row(rows, "Mastering display",
+				                  std::format("{} to {}", nits_text(mdcv->mastering_min / 10000.0),
+				                              nits_text(mdcv->mastering_max / 10000.0)));
+			}
+
+			if (const auto gain_map = gain_map_text(r, m, primary, exif))
+				add_structure_row(rows, "Gain map", *gain_map);
 
 			add_structure_row(rows, "Thumbnails", std::to_string(primary.thumbnails.size()));
 			if (primary.depth) add_structure_row(rows, "Depth images", "1");
-			if (!primary.aux_images.empty()) add_structure_row(rows, "Auxiliary images", std::to_string(primary.aux_images.size()));
+			if (!primary.aux_images.empty())
+				add_structure_row(rows, "Auxiliary images", std::to_string(primary.aux_images.size()));
 
 			add_structure_section(rows, "Metadata items", "heif.metadata");
 
@@ -2815,7 +3049,8 @@ namespace libfiles::detail
 		if (exif.size() >= 4)
 		{
 			const auto tiff_offset = 4u + static_cast<std::uint64_t>(load_be32(exif.data()));
-			if (tiff_offset <= exif.size()) exif.erase(exif.begin(), exif.begin() + static_cast<std::ptrdiff_t>(tiff_offset));
+			if (tiff_offset <= exif.size())
+				exif.erase(exif.begin(), exif.begin() + static_cast<std::ptrdiff_t>(tiff_offset));
 		}
 
 		if (starts_with(exif, {"Exif\0\0", 6})) exif.erase(exif.begin(), exif.begin() + 6);
@@ -2844,6 +3079,7 @@ namespace libfiles::detail
 			const auto type = m.prop(index).type;
 			return type == prop_irot || type == prop_imir;
 		});
+		result.animated = m.boxes.found_moov;
 
 		const auto choice = choose_metadata(m, primary);
 
@@ -2871,7 +3107,15 @@ namespace libfiles::detail
 			result.metadata.icc.assign(primary.icc->icc.begin(), primary.icc->icc.end());
 		}
 
-		if (intent == scan_intent::inspect) result.structure = heif_structure(r, m, primary);
+		// The nclx libheif hands decode_heif, which maps the picture by it when it names PQ or HLG.
+		result.hdr = hdr_transfer_of(primary.nclx.transfer).has_value();
+		if (primary.nclx.primaries <= 0xFF) result.colour_primaries = static_cast<std::uint8_t>(primary.nclx.primaries);
+		if (primary.nclx.transfer <= 0xFF) result.colour_transfer = static_cast<std::uint8_t>(primary.nclx.transfer);
+
+		// Read from the items alone, which the scan has already: an index scan reads no item to say so.
+		result.gain_map = tone_map_item(m).has_value() || apple_gain_map(m, primary) != nullptr;
+
+		if (intent == scan_intent::inspect) result.structure = heif_structure(r, m, primary, result.metadata.exif);
 
 		result.success = result.width != 0 && result.height != 0;
 		return result;
@@ -2890,5 +3134,47 @@ namespace libfiles::detail
 
 		packet = std::move(*data);
 		return true;
+	}
+
+	heif::layout heif::read_layout(reader& r)
+	{
+		const auto m = interpret(r, read_boxes(r));
+		const auto& f = m.boxes;
+
+		layout out;
+		out.file_size = f.file_size;
+		out.boxes = f.top_level;
+		out.cut = f.cut;
+		out.movie = f.found_moov;
+		out.meta = f.meta_box;
+		out.meta_payload = f.meta;
+		out.children = f.meta_children;
+		out.iloc_child = f.iloc_child;
+		out.iinf_child = f.iinf_child;
+		out.iref_child = f.iref_child;
+		out.locations_format = f.locations_format;
+		out.locations = f.locations;
+		out.iinf_version = f.iinf_version;
+		out.iinf_entries_end = f.iinf_entries_end;
+		out.iref_version = f.iref_version;
+		if (f.references) out.references = *f.references;
+		out.items = f.items;
+		if (f.idat) out.idat_data = f.idat->data_offset;
+		out.primary = m.primary;
+		out.largest_id = f.largest_id;
+
+		const auto take = [&r, &m](const std::uint32_t id, const bool read_data)
+		{
+			metadata_item item;
+			item.id = id;
+			check_item_data(m.boxes, id, item.size);
+			if (read_data) item.data = metadata_data(r, m, id);
+			return item;
+		};
+
+		const auto choice = choose_metadata(m, m.images.at(m.primary));
+		if (choice.exif) out.exif = take(*choice.exif, true);
+		if (choice.xmp) out.xmp = take(*choice.xmp, false);
+		return out;
 	}
 }

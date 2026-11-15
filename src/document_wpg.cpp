@@ -1,5 +1,5 @@
 // Copyright (C) 1998-2026 Zac Walker.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: WPG level 1 and 2 native rasters, palettes and byte-run decoding.
 
@@ -12,7 +12,11 @@ namespace libfiles::detail
 {
 	namespace
 	{
-		struct palette_color { std::uint8_t red, blue, green; };
+		struct palette_color
+		{
+			std::uint8_t red, blue, green;
+		};
+		// clang-format off
 		constexpr palette_color default_palette[256] = {
 			{0, 0, 0}, {0, 0, 168}, {0, 168, 0}, {0, 168, 168},
 			{168, 0, 0}, {168, 0, 168}, {168, 84, 0}, {168, 168, 168},
@@ -79,6 +83,7 @@ namespace libfiles::detail
 			{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
 			{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}
 		};
+		// clang-format on
 
 		std::uint32_t record_size(cursor& input)
 		{
@@ -122,7 +127,11 @@ namespace libfiles::detail
 			{
 				if (y >= frame.height) return;
 				line[x++] = value;
-				if (x == packed) { store(); x = 0; }
+				if (x == packed)
+				{
+					store();
+					x = 0;
+				}
 			}
 
 			void repeat(const unsigned count)
@@ -183,12 +192,11 @@ namespace libfiles::detail
 					const auto count = (static_cast<unsigned>(input.u8()) + 1) * sample_size;
 					for (unsigned i = 0; i < count; ++i) rows.put(control == 0xff ? 255 : 0);
 				}
-				else if (control == 0xfe)
-					rows.repeat(static_cast<unsigned>(input.u8()) + 1);
+				else if (control == 0xfe) rows.repeat(static_cast<unsigned>(input.u8()) + 1);
 				else if (control == 0xfd || (control & 0x80))
 				{
-					const auto count = control == 0xfd ? static_cast<unsigned>(input.u8()) + 1 :
-						static_cast<unsigned>(control & 0x7f) + 1;
+					const auto count = control == 0xfd ? static_cast<unsigned>(input.u8()) + 1
+					                                   : static_cast<unsigned>(control & 0x7f) + 1;
 					if (control != 0xfd) input.read(sample.data(), sample_size);
 					for (unsigned i = 0; i < count; ++i)
 						for (unsigned j = 0; j < sample_size; ++j) rows.put(sample[j]);
@@ -317,7 +325,9 @@ namespace libfiles::detail
 		}
 		catch (const document_stop&)
 		{
-			if (!decode.result.info.frames || decode.result.refused || decode.result.cancelled || decode.result.resource_limit) throw;
+			if (!decode.result.info.frames || decode.result.refused || decode.result.cancelled ||
+			    decode.result.resource_limit)
+				throw;
 			decode.result.warnings.push_back(decode.result.error + "; complete WPG rasters were kept");
 			decode.result.error.clear();
 		}

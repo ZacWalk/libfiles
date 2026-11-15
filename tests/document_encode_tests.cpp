@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026 Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Native document and row encoder round trips. These cases intentionally retain packed
 // rows, palette alpha/transparency and animation/page attributes rather than testing a display-BGRA
@@ -28,9 +28,8 @@
 
 namespace
 {
-	libfiles::decoded_document indexed_document(const libfiles::document_storage storage,
-	                                            const std::uint32_t width, const std::uint32_t height,
-	                                            const std::vector<std::uint32_t>& palette)
+	libfiles::decoded_document indexed_document(const libfiles::document_storage storage, const std::uint32_t width,
+	                                            const std::uint32_t height, const std::vector<std::uint32_t>& palette)
 	{
 		libfiles::decoded_document document;
 		document.info.width = width;
@@ -60,8 +59,7 @@ namespace
 					row[x >> 2] |= static_cast<std::uint8_t>((index & 3) << (6 - 2 * (x & 3)));
 				else if (storage == libfiles::document_storage::indexed4)
 					row[x >> 1] |= static_cast<std::uint8_t>((index & 15) << (x & 1 ? 0 : 4));
-				else
-					row[x] = static_cast<std::uint8_t>(index);
+				else row[x] = static_cast<std::uint8_t>(index);
 			}
 		}
 		return document;
@@ -73,8 +71,7 @@ namespace
 		libfiles::decoded_document document;
 		document.info.width = width;
 		document.info.height = height;
-		document.info.storage = channels == 4 ? libfiles::document_storage::bgra32 :
-			libfiles::document_storage::bgr24;
+		document.info.storage = channels == 4 ? libfiles::document_storage::bgra32 : libfiles::document_storage::bgr24;
 		document.info.bits_per_pixel = static_cast<std::uint32_t>(channels * 8);
 		document.info.frames = 1;
 		document.info.has_resolution = true;
@@ -107,9 +104,8 @@ namespace
 TEST("native BMP encoder keeps packed indexed rows at odd widths")
 {
 	const auto source = indexed_document(libfiles::document_storage::indexed4, 5, 3,
-	                                     {0xff000000, 0xffff0000, 0xff00ff00, 0xff0000ff,
-	                                      0xffffff00, 0xffff00ff, 0xff00ffff, 0xffffffff,
-	                                      0xff202020, 0xff404040, 0xff606060, 0xff808080,
+	                                     {0xff000000, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffff00, 0xffff00ff,
+	                                      0xff00ffff, 0xffffffff, 0xff202020, 0xff404040, 0xff606060, 0xff808080,
 	                                      0xffa0a0a0, 0xffc0c0c0, 0xffe0e0e0, 0xffffffff});
 	const auto encoded = libfiles::encode_document(source, libfiles::image_format::bmp);
 	CHECK(encoded.success);
@@ -158,18 +154,18 @@ TEST("native BMP encoder keeps legacy 555 and 565 bitfield headers")
 			for (std::uint32_t x = 0; x < frame.width; ++x)
 			{
 				const auto value = storage == libfiles::document_storage::bgr565
-					? static_cast<std::uint16_t>(((x + 1) & 31) | (((y + 2) & 63) << 5) |
-						(((x + y + 3) & 31) << 11))
-					: static_cast<std::uint16_t>(((x + 1) & 31) | (((y + 2) & 31) << 5) |
-						(((x + y + 3) & 31) << 10));
+				                       ? static_cast<std::uint16_t>(((x + 1) & 31) | (((y + 2) & 63) << 5) |
+				                                                    (((x + y + 3) & 31) << 11))
+				                       : static_cast<std::uint16_t>(((x + 1) & 31) | (((y + 2) & 31) << 5) |
+				                                                    (((x + y + 3) & 31) << 10));
 				std::memcpy(frame.pixels.data() + y * frame.stride + x * 2, &value, sizeof(value));
 			}
 		const auto encoded = libfiles::encode_document(source, libfiles::image_format::bmp);
 		CHECK(encoded.success);
 		if (!encoded.success) continue;
 		CHECK_EQ(encoded.data[30] | (static_cast<unsigned>(encoded.data[31]) << 8) |
-			(static_cast<unsigned>(encoded.data[32]) << 16) |
-			(static_cast<unsigned>(encoded.data[33]) << 24), 3u);
+		             (static_cast<unsigned>(encoded.data[32]) << 16) | (static_cast<unsigned>(encoded.data[33]) << 24),
+		         3u);
 		CHECK_EQ(encoded.data[10] | (static_cast<unsigned>(encoded.data[11]) << 8), 66u);
 		libfiles::reader input(encoded.data);
 		libfiles::decoded_document decoded;
@@ -182,20 +178,27 @@ TEST("native BMP encoder keeps legacy 555 and 565 bitfield headers")
 TEST("native PNG encoder keeps indexed palette alpha and metadata")
 {
 	auto source = indexed_document(libfiles::document_storage::indexed4, 5, 3,
-	                               {0x00000000, 0xffff0000, 0xff00ff00, 0xff0000ff,
-	                                0xffffffff, 0xff101010, 0xff202020, 0xff303030,
-	                                0xff404040, 0xff505050, 0xff606060, 0xff707070,
-	                                0xff808080, 0xff909090, 0xffa0a0a0, 0xffb0b0b0});
+	                               {0x00000000, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffffff, 0xff101010, 0xff202020,
+	                                0xff303030, 0xff404040, 0xff505050, 0xff606060, 0xff707070, 0xff808080, 0xff909090,
+	                                0xffa0a0a0, 0xffb0b0b0});
 	source.frames.front().transparent = 0;
 	source.metadata.push_back({libfiles::document_metadata::comment, {'c', 'm', 't'}});
 	const auto encoded = libfiles::encode_document(source, libfiles::image_format::png);
 	CHECK(encoded.success);
-	if (!encoded.success) { CHECK_STR(encoded.error, ""); return; }
+	if (!encoded.success)
+	{
+		CHECK_STR(encoded.error, "");
+		return;
+	}
 	libfiles::reader input(encoded.data);
 	libfiles::decoded_document decoded;
 	const auto result = libfiles::decode_document(input, libfiles::image_format::png, decoded);
 	CHECK(result.success);
-	if (!result.success) { CHECK_STR(result.error, ""); return; }
+	if (!result.success)
+	{
+		CHECK_STR(result.error, "");
+		return;
+	}
 	CHECK_EQ(decoded.info.pixels_per_meter_x, 3780u);
 	CHECK_EQ(decoded.info.pixels_per_meter_y, 1890u);
 	CHECK_EQ(decoded.frames.size(), std::size_t{1});
@@ -228,7 +231,11 @@ TEST("native PNG metadata retains simultaneous short text XMP EXIF profile and a
 	{
 		const auto encoded = libfiles::encode_document(source, libfiles::image_format::png, options);
 		CHECK(encoded.success);
-		if (!encoded.success) { CHECK_STR(encoded.error, ""); return; }
+		if (!encoded.success)
+		{
+			CHECK_STR(encoded.error, "");
+			return;
+		}
 		for (const auto& warning : encoded.warnings) CHECK_STR(warning, "");
 		libfiles::reader scan_input(encoded.data);
 		const auto scanned = libfiles::scan(scan_input);
@@ -242,10 +249,8 @@ TEST("native PNG metadata retains simultaneous short text XMP EXIF profile and a
 		for (const auto& warning : result.warnings) CHECK_STR(warning, "");
 		const auto has = [&](const libfiles::document_metadata kind, const std::vector<std::uint8_t>& bytes)
 		{
-			return std::ranges::any_of(decoded.metadata, [&](const auto& block)
-			{
-				return block.kind == kind && block.bytes == bytes;
-			});
+			return std::ranges::any_of(decoded.metadata,
+			                           [&](const auto& block) { return block.kind == kind && block.bytes == bytes; });
 		};
 		CHECK(has(libfiles::document_metadata::comment, {'c'}));
 		CHECK(has(libfiles::document_metadata::author, {'a'}));
@@ -272,8 +277,7 @@ TEST("native PNG metadata retains simultaneous short text XMP EXIF profile and a
 	metadata_only.maximum_retained_bytes = 4096;
 	libfiles::reader large_input(large_encoded.data);
 	libfiles::decoded_document metadata;
-	const auto header = libfiles::decode_document(large_input, libfiles::image_format::png,
-		metadata, metadata_only);
+	const auto header = libfiles::decode_document(large_input, libfiles::image_format::png, metadata, metadata_only);
 	CHECK(header.success);
 	CHECK_EQ(header.info.width, 2048u);
 	CHECK_EQ(header.info.height, 1024u);
@@ -283,8 +287,8 @@ TEST("native PNG metadata retains simultaneous short text XMP EXIF profile and a
 	CHECK(metadata.metadata.size() == source.metadata.size());
 	metadata_only.pixels = true;
 	libfiles::reader pixels_input(large_encoded.data);
-	const auto refused_pixels = libfiles::decode_document(pixels_input, libfiles::image_format::png,
-		metadata, metadata_only);
+	const auto refused_pixels = libfiles::decode_document(pixels_input, libfiles::image_format::png, metadata,
+	                                                      metadata_only);
 	CHECK(!refused_pixels.success && refused_pixels.resource_limit);
 	source.metadata.push_back({libfiles::document_metadata::png_text, {'b', 'a', 'd'}});
 	const auto invalid = libfiles::encode_document(source, libfiles::image_format::png);
@@ -312,7 +316,11 @@ TEST("native GIF encoder keeps indexed frames offsets delay disposal and transpa
 	source.info.frames = 2;
 	const auto encoded = libfiles::encode_document(source, libfiles::image_format::gif);
 	CHECK(encoded.success);
-	if (!encoded.success) { CHECK_STR(encoded.error, ""); return; }
+	if (!encoded.success)
+	{
+		CHECK_STR(encoded.error, "");
+		return;
+	}
 	libfiles::reader input(encoded.data);
 	libfiles::decoded_document decoded;
 	const auto result = libfiles::decode_document(input, libfiles::image_format::gif, decoded);
@@ -332,8 +340,8 @@ TEST("native GIF encoder keeps indexed frames offsets delay disposal and transpa
 TEST("native TIFF encoder keeps RGB pages and resolution")
 {
 	auto source = rgb_document(5, 3);
-	std::vector<std::uint8_t> photoshop{'P','h','o','t','o','s','h','o','p',' ',
-		'3','.', '0', 0, '8','B','I','M', 4, 4, 0, 0, 0, 0, 0, 3, 'a', 'b', 'c', 0};
+	std::vector<std::uint8_t> photoshop{'P', 'h', 'o', 't', 'o', 's', 'h', 'o', 'p', ' ', '3', '.', '0', 0,   '8',
+	                                    'B', 'I', 'M', 4,   4,   0,   0,   0,   0,   0,   3,   'a', 'b', 'c', 0};
 	source.metadata.push_back({libfiles::document_metadata::photoshop, std::move(photoshop)});
 	libfiles::exif_fields exif_fields;
 	exif_fields.orientation = 6;
@@ -345,7 +353,11 @@ TEST("native TIFF encoder keeps RGB pages and resolution")
 	source.info.frames = 2;
 	const auto encoded = libfiles::encode_document(source, libfiles::image_format::tiff);
 	CHECK(encoded.success);
-	if (!encoded.success) { CHECK_STR(encoded.error, ""); return; }
+	if (!encoded.success)
+	{
+		CHECK_STR(encoded.error, "");
+		return;
+	}
 	libfiles::reader input(encoded.data);
 	libfiles::decoded_document decoded;
 	const auto result = libfiles::decode_document(input, libfiles::image_format::tiff, decoded);
@@ -396,11 +408,10 @@ TEST("native TIFF metadata does not invent identity-only EXIF")
 		libfiles::detail::tiff_editor fields;
 		CHECK(fields.open(original));
 		if (variant == 1)
-			fields.set_short(libfiles::detail::tiff_editor::directory::ifd0,
-				libfiles::detail::tag_orientation, 6);
+			fields.set_short(libfiles::detail::tiff_editor::directory::ifd0, libfiles::detail::tag_orientation, 6);
 		if (variant == 2)
-			fields.set_ascii(libfiles::detail::tiff_editor::directory::ifd0,
-				libfiles::detail::tag_make, "recorded camera");
+			fields.set_ascii(libfiles::detail::tiff_editor::directory::ifd0, libfiles::detail::tag_make,
+			                 "recorded camera");
 		const auto data = libfiles::detail::apply_changes(encoded.data, fields.changes(encoded.data.size()));
 		libfiles::reader input(data);
 		libfiles::document_options options;
@@ -408,9 +419,7 @@ TEST("native TIFF metadata does not invent identity-only EXIF")
 		libfiles::decoded_document decoded;
 		CHECK(libfiles::decode_document(input, libfiles::image_format::tiff, decoded, options).success);
 		const auto exif = std::find_if(decoded.metadata.begin(), decoded.metadata.end(), [](const auto& value)
-		{
-			return value.kind == libfiles::document_metadata::exif;
-		});
+		{ return value.kind == libfiles::document_metadata::exif; });
 		CHECK((exif != decoded.metadata.end()) == (variant != 0));
 		if (exif != decoded.metadata.end())
 		{
@@ -448,10 +457,9 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 {
 	for (const bool big_endian : {false, true})
 	{
-		auto exif = big_endian
-			? std::vector<std::uint8_t>{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1,
-				1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0}
-			: libfiles::detail::tiff_editor::empty_stream();
+		auto exif = big_endian ? std::vector<std::uint8_t>{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0,
+		                                                   3,   0,   0, 0,  1, 0, 6, 0, 0, 0, 0, 0,  0}
+		                       : libfiles::detail::tiff_editor::empty_stream();
 		using directory = libfiles::detail::tiff_editor::directory;
 		libfiles::reader original(exif);
 		libfiles::detail::tiff_editor metadata;
@@ -463,8 +471,8 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 		metadata.set_short(directory::exif, libfiles::detail::tag_pixel_x_dimension, 7);
 		metadata.set_short(directory::exif, libfiles::detail::tag_pixel_y_dimension, 11);
 		const std::vector<std::uint8_t> note{'o', 'p', 'a', 'q', 'u', 'e', 0, 1, 255};
-		metadata.set(directory::exif, libfiles::detail::tag_maker_note,
-			libfiles::detail::tiff_editor::type_undefined, static_cast<std::uint32_t>(note.size()), note);
+		metadata.set(directory::exif, libfiles::detail::tag_maker_note, libfiles::detail::tiff_editor::type_undefined,
+		             static_cast<std::uint32_t>(note.size()), note);
 		metadata.set_ascii(directory::gps, libfiles::detail::tag_gps_latitude_ref, "N");
 		metadata.set_rationals(directory::gps, libfiles::detail::tag_gps_latitude, {{37, 1}, {30, 1}, {0, 1}});
 		metadata.set_ascii(directory::gps, libfiles::detail::tag_gps_longitude_ref, "W");
@@ -477,7 +485,11 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 		options.reset_orientation_metadata = true;
 		const auto encoded = libfiles::encode_document(source, libfiles::image_format::tiff, options);
 		CHECK(encoded.success);
-		if (!encoded.success) { CHECK_STR(encoded.error, ""); continue; }
+		if (!encoded.success)
+		{
+			CHECK_STR(encoded.error, "");
+			continue;
+		}
 		libfiles::reader input(encoded.data);
 		const auto scanned = libfiles::scan(input);
 		CHECK(scanned.success);
@@ -498,24 +510,24 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 		const auto maker = encoded_metadata.value_range(directory::exif, libfiles::detail::tag_maker_note);
 		CHECK(maker.has_value());
 		if (maker) CHECK(input.read(maker->offset, static_cast<std::size_t>(maker->size)) == note);
-		for (const auto& [tag, expected] : {
-			std::pair{libfiles::detail::tag_pixel_x_dimension, 9u},
-			std::pair{libfiles::detail::tag_pixel_y_dimension, 5u}})
+		for (const auto& [tag, expected] : {std::pair{libfiles::detail::tag_pixel_x_dimension, 9u},
+		                                    std::pair{libfiles::detail::tag_pixel_y_dimension, 5u}})
 		{
 			const auto dimension = encoded_metadata.value_range(directory::exif, tag);
 			CHECK(dimension.has_value() && dimension->size == 4);
 			if (dimension && dimension->size == 4)
 			{
 				const auto bytes = input.read(dimension->offset, 4);
-				CHECK_EQ(encoded_metadata.little_endian() ? libfiles::detail::load_le32(bytes.data()) :
-					libfiles::detail::load_be32(bytes.data()), expected);
+				CHECK_EQ(encoded_metadata.little_endian() ? libfiles::detail::load_le32(bytes.data())
+				                                          : libfiles::detail::load_be32(bytes.data()),
+				         expected);
 			}
 		}
 		const auto interoperability = encoded_metadata.value_range(directory::interoperability, 1);
 		CHECK(interoperability.has_value());
 		if (interoperability)
 			CHECK(input.read(interoperability->offset, static_cast<std::size_t>(interoperability->size)) ==
-				test_build::lit("R98\0"));
+			      test_build::lit("R98\0"));
 		libfiles::decoded_document decoded;
 		CHECK(libfiles::decode_document(input, libfiles::image_format::tiff, decoded).success);
 		CHECK(!decoded.frames.empty() && decoded.frames.front().pixels == source.frames.front().pixels);
@@ -524,14 +536,14 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 			if (block.kind != libfiles::document_metadata::exif) return false;
 			const auto info = libfiles::read_exif(block.bytes);
 			return info.camera_make == "TestCam" && info.original.text == "2025:07:14 10:20:30" &&
-				info.orientation == std::optional<std::uint16_t>{1};
+			       info.orientation == std::optional<std::uint16_t>{1};
 		}));
 		libfiles::document_options metadata_only;
 		metadata_only.pixels = false;
 		metadata_only.maximum_working_bytes = 4096;
 		metadata_only.maximum_retained_bytes = 4096;
-		const auto metadata_result = libfiles::decode_document(input, libfiles::image_format::tiff,
-			decoded, metadata_only);
+		const auto metadata_result = libfiles::decode_document(input, libfiles::image_format::tiff, decoded,
+		                                                       metadata_only);
 		CHECK(metadata_result.success);
 		if (!metadata_result.success)
 		{
@@ -542,7 +554,7 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 		CHECK(std::ranges::any_of(decoded.metadata, [](const auto& block)
 		{
 			return block.kind == libfiles::document_metadata::exif &&
-				libfiles::read_exif(block.bytes).camera_make == "TestCam";
+			       libfiles::read_exif(block.bytes).camera_make == "TestCam";
 		}));
 	}
 }
@@ -550,24 +562,22 @@ TEST("native TIFF metadata uses standard EXIF GPS and interoperability directori
 #ifdef LIBFILES_TIFF
 TEST("native TIFF encoder keeps every packed and alpha storage's displayed pixels")
 {
-	const auto palette = std::vector<std::uint32_t>{
-		0xff102030, 0xff405060, 0xff708090, 0xffa0b0c0,
-		0xffd0e0f0, 0xff203040, 0xff506070, 0xff8090a0,
-		0xffb0c0d0, 0xffe0f000, 0xff304050, 0xff607080,
-		0xff90a0b0, 0xffc0d0e0, 0xfff01020, 0xff506070};
+	const auto palette = std::vector<std::uint32_t>{0xff102030, 0xff405060, 0xff708090, 0xffa0b0c0,
+	                                                0xffd0e0f0, 0xff203040, 0xff506070, 0xff8090a0,
+	                                                0xffb0c0d0, 0xffe0f000, 0xff304050, 0xff607080,
+	                                                0xff90a0b0, 0xffc0d0e0, 0xfff01020, 0xff506070};
 	for (const auto storage : {libfiles::document_storage::indexed1, libfiles::document_storage::indexed2,
-		libfiles::document_storage::indexed4, libfiles::document_storage::indexed8,
-		libfiles::document_storage::indexed8_alpha})
+	                           libfiles::document_storage::indexed4, libfiles::document_storage::indexed8,
+	                           libfiles::document_storage::indexed8_alpha})
 	{
 		auto colors = palette;
-		if (storage == libfiles::document_storage::indexed8 ||
-			storage == libfiles::document_storage::indexed8_alpha)
+		if (storage == libfiles::document_storage::indexed8 || storage == libfiles::document_storage::indexed8_alpha)
 			colors.resize(256, palette.front());
 		auto source = indexed_document(storage, 9, 5, colors);
 		if (storage == libfiles::document_storage::indexed8_alpha)
 			for (std::size_t i = 0; i < source.frames.front().palette.size(); ++i)
-				source.frames.front().palette[i] =
-					(source.frames.front().palette[i] & 0x00ffffffu) | (i & 1 ? 0x80000000u : 0xff000000u);
+				source.frames.front().palette[i] = (source.frames.front().palette[i] & 0x00ffffffu) |
+				                                   (i & 1 ? 0x80000000u : 0xff000000u);
 		const auto encoded = libfiles::encode_document(source, libfiles::image_format::tiff);
 		CHECK(encoded.success);
 		if (!encoded.success) continue;
@@ -588,8 +598,8 @@ TEST("native TIFF encoder keeps every packed and alpha storage's displayed pixel
 TEST("native JPEG row encoder and explicit coefficient transform report distinct outcomes")
 {
 	const auto source = rgb_document(64, 32);
-	libfiles::image_view view{source.frames.front().pixels.data(), source.frames.front().stride,
-	                          source.info.width, source.info.height, libfiles::pixel_format::bgrx8};
+	libfiles::image_view view{source.frames.front().pixels.data(), source.frames.front().stride, source.info.width,
+	                          source.info.height, libfiles::pixel_format::bgrx8};
 	// The row view is four-byte storage, so make a compact copy only for this test's input.
 	std::vector<std::uint8_t> bgrx(static_cast<std::size_t>(view.width) * view.height * 4);
 	for (std::uint32_t y = 0; y < view.height; ++y)
@@ -630,8 +640,7 @@ TEST("native JPEG row encoder and explicit coefficient transform report distinct
 	}
 	libfiles::document_encode_options legacy_options;
 	legacy_options.legacy_compatibility = true;
-	const auto legacy_density = libfiles::encode_document(
-		density_source, libfiles::image_format::jpeg, legacy_options);
+	const auto legacy_density = libfiles::encode_document(density_source, libfiles::image_format::jpeg, legacy_options);
 	CHECK(legacy_density.success && legacy_density.data.size() >= 18);
 	if (legacy_density.success && legacy_density.data.size() >= 18)
 	{
@@ -649,7 +658,10 @@ TEST("native JPEG row encoder and explicit coefficient transform report distinct
 	CHECK(limited.data.empty());
 	CHECK(limited.over_budget);
 	options.maximum_bytes = 256ull * 1024 * 1024;
-	options.cancelled = [] { return true; };
+	options.cancelled = []
+	{
+		return true;
+	};
 	CHECK(transformer.transform(encoded.data, encoder, options).cancelled);
 	const auto partial_source = rgb_document(60, 30);
 	const auto partial_encoded = libfiles::encode_document(partial_source, libfiles::image_format::jpeg);
@@ -668,8 +680,8 @@ TEST("native encoders can reset EXIF and XMP orientation after an upright edit")
 	libfiles::xmp::meta xmp;
 	xmp.set_property_int(libfiles::xmp::ns::tiff, "Orientation", 6);
 	const auto packet = xmp.serialize();
-	source.metadata.push_back({libfiles::document_metadata::xmp,
-		std::vector<std::uint8_t>(packet.begin(), packet.end())});
+	source.metadata.push_back(
+		{libfiles::document_metadata::xmp, std::vector<std::uint8_t>(packet.begin(), packet.end())});
 	libfiles::document_encode_options options;
 	options.reset_orientation_metadata = true;
 	const auto encoded = libfiles::encode_document(source, libfiles::image_format::jpeg, options);
@@ -680,8 +692,8 @@ TEST("native encoders can reset EXIF and XMP orientation after an upright edit")
 	CHECK(scanned.success);
 	CHECK(scanned.orientation == std::optional<std::uint16_t>{1});
 	libfiles::xmp::meta round_trip;
-	round_trip.parse(std::string_view(reinterpret_cast<const char*>(scanned.metadata.xmp.data()),
-	                                  scanned.metadata.xmp.size()));
+	round_trip.parse(
+		std::string_view(reinterpret_cast<const char*>(scanned.metadata.xmp.data()), scanned.metadata.xmp.size()));
 	std::int32_t orientation = 0;
 	CHECK(round_trip.get_property_int(libfiles::xmp::ns::tiff, "Orientation", &orientation));
 	CHECK_EQ(orientation, 1);
@@ -690,8 +702,8 @@ TEST("native encoders can reset EXIF and XMP orientation after an upright edit")
 	const auto refused = libfiles::encode_document(invalid, libfiles::image_format::jpeg, options);
 	CHECK(!refused.success && !refused.error.empty());
 	CHECK(source.metadata.front().bytes == exif);
-	libfiles::image_view rows{source.frames.front().pixels.data(), source.frames.front().stride,
-		source.info.width, source.info.height, libfiles::pixel_format::bgrx8};
+	libfiles::image_view rows{source.frames.front().pixels.data(), source.frames.front().stride, source.info.width,
+	                          source.info.height, libfiles::pixel_format::bgrx8};
 	auto rgba = rgb_document(9, 5, 4);
 	rows.pixels = rgba.frames.front().pixels.data();
 	rows.stride = rgba.frames.front().stride;

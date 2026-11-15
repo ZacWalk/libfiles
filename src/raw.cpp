@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Camera raw files, with LibRaw and Adobe's DNG SDK: their largest decodable embedded preview, or
 // their raw data developed into the caller's memory, and their scan - the metadata LibRaw parses, and a
@@ -45,8 +45,23 @@ namespace libfiles
 	{
 		if (!std::isnormal(value)) return 0;
 		return static_cast<int>(std::clamp(static_cast<double>(value),
-			static_cast<double>(std::numeric_limits<int>::min()),
-			static_cast<double>(std::numeric_limits<int>::max())));
+		                                   static_cast<double>(std::numeric_limits<int>::min()),
+		                                   static_cast<double>(std::numeric_limits<int>::max())));
+	}
+
+	double detail::raw_highlight_rolloff(const double x, const double x_max)
+	{
+		constexpr double knee = 0.8;
+		if (x <= knee) return std::max(x, 0.0);
+		if (x_max <= 1.0) return std::min(x, 1.0);
+		if (x >= x_max) return 1.0;
+
+		// In the shoulder's own units u = (x - knee) / (1 - knee): f(u) = u / (1 + au) leaves the knee with
+		// slope 1 and reaches 1 at the brightest, U, when a = (U - 1) / U.
+		const auto u = (x - knee) / (1.0 - knee);
+		const auto brightest = (x_max - knee) / (1.0 - knee);
+		const auto a = (brightest - 1.0) / brightest;
+		return knee + (1.0 - knee) * u / (1.0 + a * u);
 	}
 
 	std::uint16_t detail::orientation_of_flip(const int flip)
@@ -91,6 +106,9 @@ namespace libfiles
 			// The camera's white balance, without which the image has a strong colour cast: LibRaw
 			// defaults to none.
 			result.processor->imgdata.params.use_camera_wb = 1;
+			// Clipped channels blended towards white rather than clipped apart, which turns a blown sky
+			// magenta. The auto-brightness LibRaw's developer applies stays: mode 2 alone keeps it.
+			result.processor->imgdata.params.highlight = 2;
 			return result;
 		}
 
@@ -132,7 +150,8 @@ namespace libfiles
 
 				if (item.tformat == LIBRAW_INTERNAL_THUMBNAIL_JPEG && item.tlength > 0)
 				{
-					const auto area = static_cast<std::uint32_t>(item.twidth) * static_cast<std::uint32_t>(item.theight);
+					const auto area = static_cast<std::uint32_t>(item.twidth) *
+					                  static_cast<std::uint32_t>(item.theight);
 
 					if (best < 0 || area > best_area)
 					{
@@ -261,8 +280,8 @@ namespace libfiles
 		}
 
 		// A bitmap preview, as write_bitmap writes it.
-		bool take_bitmap_preview(const libraw_thumbnail_t& thumbnail, const libraw_data_t& image_data,
-		                         image_sink& sink, raw_load_result& result)
+		bool take_bitmap_preview(const libraw_thumbnail_t& thumbnail, const libraw_data_t& image_data, image_sink& sink,
+		                         raw_load_result& result)
 		{
 			if (!write_bitmap(thumbnail, image_data, sink, result.decoded)) return false;
 			result.orientation = result.decoded.frame.orientation;
@@ -270,8 +289,9 @@ namespace libfiles
 		}
 
 		// The raw data developed into the sink, the declared size accepted first: unpack, dcraw_process,
-		// and dcraw_make_mem_image's auto-brightness replicated over imgdata.image as it is written.
-		void develop(libraw_ex& processor, image_sink& sink, raw_load_result& result)
+		// and dcraw_make_mem_image's auto-brightness replicated over imgdata.image as it is written - with the
+		// highlights past its white rolled off rather than clipped, and sixteen bits a channel when asked.
+		void develop(libraw_ex& processor, image_sink& sink, const bool allow_16bit, raw_load_result& result)
 		{
 			const auto& image_data = processor.imgdata;
 
@@ -283,7 +303,7 @@ namespace libfiles
 			declared.source_height = static_cast<std::uint32_t>(image_data.sizes.height);
 			declared.width = declared.source_width;
 			declared.height = declared.source_height;
-			declared.format = pixel_format::bgrx8;
+			declared.format = allow_16bit ? pixel_format::rgbx16 : pixel_format::bgrx8;
 			declared.orientation = orientation_of_flip(image_data.sizes.flip);
 			result.decoded.frame = declared;
 
@@ -321,7 +341,11 @@ namespace libfiles
 			}
 
 			// dcraw_make_mem_image's auto-brightness (LibRaw's src/postprocessing/mem_image.cpp), which reaches
-			// into libraw_internal_data: kept in step with it on a LibRaw upgrade.
+			// into libraw_internal_data: kept in step with it on a LibRaw upgrade. Its white is the level its
+			// top percent of pixels reach, which it clips; here what lies past it is rolled off into white.
+			auto white = 0;
+			auto brightest = 0.0;
+
 			if (internal.output_data.histogram)
 			{
 				int val, total, t_white = 0x2000, c;
@@ -344,7 +368,42 @@ namespace libfiles
 					}
 				}
 
-				processor.gamma_curve(O.gamm[0], O.gamm[1], 2, detail::raw_output_integer((t_white << 3) / O.bright));
+				white = detail::raw_output_integer((t_white << 3) / O.bright);
+				processor.gamma_curve(O.gamm[0], O.gamm[1], 2, white);
+
+				// The highest level any colour reaches, in the histogram's bins of eight.
+				auto top = 0;
+				for (c = 0; c < P1.colors; c++)
+				{
+					for (val = 0x1FFF; val > top; --val)
+					{
+						if (internal.output_data.histogram[c][val])
+						{
+							top = val;
+							break;
+						}
+					}
+				}
+
+				brightest = white > 0 ? ((top + 1) << 3) / static_cast<double>(white) : 0.0;
+			}
+
+			// The light shown at each linear level: LibRaw's own curve up to the shoulder, and wherever nothing
+			// passes its white; above the shoulder, the curve read at the level rolled off to.
+			const auto& color_curve = image_data.color.curve;
+			std::vector<std::uint16_t> tone(0x10000);
+
+			for (auto level = 0; level < 0x10000; ++level)
+			{
+				auto at = level;
+
+				if (white > 0 && brightest > 1.0 && level > white * 4 / 5)
+				{
+					const auto shown = detail::raw_highlight_rolloff(level / static_cast<double>(white), brightest);
+					at = std::min(white - 1, static_cast<int>(std::lround(shown * white)));
+				}
+
+				tone[level] = color_curve[at];
 			}
 
 			frame_info frame = declared;
@@ -361,12 +420,27 @@ namespace libfiles
 				return;
 			}
 
-			const auto& color_curve = image_data.color.curve;
 			std::size_t i = 0;
 
 			for (auto y = 0; y < S.height; y++)
 			{
 				auto* row = pixels.pixels + pixels.stride * static_cast<std::size_t>(y);
+
+				if (allow_16bit)
+				{
+					auto* wide = reinterpret_cast<std::uint16_t*>(row);
+
+					for (auto x = 0; x < S.width; x++, wide += 4)
+					{
+						const auto* const id = image_data.image[i++];
+						wide[0] = tone[id[0]];
+						wide[1] = colors == 1 ? tone[id[0]] : tone[id[1]];
+						wide[2] = colors == 1 ? tone[id[0]] : tone[id[2]];
+						wide[3] = 0xFFFF;
+					}
+
+					continue;
+				}
 
 				for (auto x = 0; x < S.width; x++, row += 4)
 				{
@@ -375,13 +449,13 @@ namespace libfiles
 
 					if (colors == 1)
 					{
-						const auto grey = static_cast<std::uint32_t>(color_curve[id[0]] >> 8);
+						const auto grey = static_cast<std::uint32_t>(tone[id[0]] >> 8);
 						value = grey | grey << 8 | grey << 16;
 					}
 					else
 					{
-						value = (color_curve[id[2]] >> 8) | (0xFF00u & color_curve[id[1]]) |
-							(0xFF0000u & (static_cast<std::uint32_t>(color_curve[id[0]]) << 8));
+						value = (tone[id[2]] >> 8) | (0xFF00u & tone[id[1]]) |
+						        (0xFF0000u & (static_cast<std::uint32_t>(tone[id[0]]) << 8));
 					}
 
 					row[0] = static_cast<std::uint8_t>(value);
@@ -404,9 +478,7 @@ namespace libfiles
 		class scan_lease
 		{
 		public:
-			scan_lease() : _processor(thread_processor())
-			{
-			}
+			scan_lease() : _processor(thread_processor()) {}
 
 			~scan_lease()
 			{
@@ -449,7 +521,8 @@ namespace libfiles
 		class reader_datastream final : public LibRaw_abstract_datastream
 		{
 		public:
-			reader_datastream(reader& source, std::filesystem::path name) : _source(source), _size(source.size()), _end(_size), _name(std::move(name))
+			reader_datastream(reader& source, std::filesystem::path name) :
+				_source(source), _size(source.size()), _end(_size), _name(std::move(name))
 			{
 				const auto utf8 = _name.u8string();
 				_utf8_name.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
@@ -461,7 +534,9 @@ namespace libfiles
 			{
 				if (size == 0 || count == 0 || _pos >= _end) return 0;
 
-				const auto wanted = count > std::numeric_limits<size_t>::max() / size ? std::numeric_limits<size_t>::max() : size * count;
+				const auto wanted = count > std::numeric_limits<size_t>::max() / size
+				                        ? std::numeric_limits<size_t>::max()
+				                        : size * count;
 				const auto n = static_cast<size_t>(std::min<std::uint64_t>(wanted, _end - _pos));
 				if (!copy(data, n)) return 0;
 				return static_cast<int>(n / size);
@@ -474,10 +549,8 @@ namespace libfiles
 				switch (whence)
 				{
 				case SEEK_SET: break;
-				case SEEK_CUR: base = static_cast<INT64>(_pos);
-					break;
-				case SEEK_END: base = static_cast<INT64>(_size);
-					break;
+				case SEEK_CUR: base = static_cast<INT64>(_pos); break;
+				case SEEK_END: base = static_cast<INT64>(_size); break;
 				default: return -1;
 				}
 
@@ -576,7 +649,8 @@ namespace libfiles
 			}
 
 			reader& _source;
-			// What the stream says it holds, which LibRaw is told; and where reading ends, there or where a read failed.
+			// What the stream says it holds, which LibRaw is told; and where reading ends, there or where a read
+			// failed.
 			std::uint64_t _size = 0;
 			std::uint64_t _end = 0;
 			std::uint64_t _pos = 0;
@@ -611,10 +685,8 @@ namespace libfiles
 #endif
 				if (taken)
 				{
-					result.created = raw_date{
-						local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min,
-						local.tm_sec
-					};
+					result.created = raw_date{local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
+					                          local.tm_hour,        local.tm_min,     local.tm_sec};
 				}
 			}
 
@@ -645,7 +717,7 @@ namespace libfiles
 			result.image_orientation = orientation_of_flip(image_data.sizes.flip);
 
 			if (LIBRAW_THUMBNAIL_JPEG == thumbnail.tformat && thumbnail.tlength > 0 && image_data.sizes.width > 0 &&
-				image_data.sizes.height > 0)
+			    image_data.sizes.height > 0)
 			{
 				const auto* const bytes = std::bit_cast<const std::uint8_t*>(thumbnail.thumb);
 				result.thumbnail_jpeg.assign(bytes, bytes + thumbnail.tlength);
@@ -687,7 +759,8 @@ namespace libfiles
 		}
 
 		template <typename Open>
-		raw_load_result load_opened(const Open& open, image_sink& sink, const bool prefer_preview)
+		raw_load_result load_opened(const Open& open, image_sink& sink, const bool prefer_preview,
+		                            const bool allow_16bit)
 		{
 			raw_load_result result;
 
@@ -724,7 +797,7 @@ namespace libfiles
 					result.decoded = {};
 				}
 
-				develop(*rp.processor, sink, result);
+				develop(*rp.processor, sink, allow_16bit, result);
 				result.success = result.decoded.success;
 			}
 			catch (const std::bad_alloc&)
@@ -737,29 +810,37 @@ namespace libfiles
 		}
 	}
 
-	raw_scan_result scan_raw(const std::filesystem::path& path, const scan_intent intent, image_sink* const thumbnail_sink)
+	raw_scan_result scan_raw(const std::filesystem::path& path, const scan_intent intent,
+	                         image_sink* const thumbnail_sink)
 	{
-		return scan_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, intent, thumbnail_sink);
+		return scan_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, intent,
+		                   thumbnail_sink);
 	}
 
-	raw_scan_result scan_raw(reader& source, const scan_intent intent, image_sink* const thumbnail_sink, const std::filesystem::path& name)
+	raw_scan_result scan_raw(reader& source, const scan_intent intent, image_sink* const thumbnail_sink,
+	                         const std::filesystem::path& name)
 	{
 		// Declared before the scan, so it outlives the LibRaw instance that reads it.
 		reader_datastream stream(source, name);
-		auto result = scan_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, intent, thumbnail_sink);
+		auto result = scan_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, intent,
+		                          thumbnail_sink);
 		if (stream.failed()) result = {};
 		return result;
 	}
 
-	raw_load_result load_raw(const std::filesystem::path& path, image_sink& sink, const bool prefer_preview)
+	raw_load_result load_raw(const std::filesystem::path& path, image_sink& sink, const bool prefer_preview,
+	                         const bool allow_16bit)
 	{
-		return load_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, sink, prefer_preview);
+		return load_opened([&path](LibRaw& processor) { return processor.open_file(path.c_str()); }, sink,
+		                   prefer_preview, allow_16bit);
 	}
 
-	raw_load_result load_raw(reader& source, image_sink& sink, const bool prefer_preview, const std::filesystem::path& name)
+	raw_load_result load_raw(reader& source, image_sink& sink, const bool prefer_preview,
+	                         const std::filesystem::path& name, const bool allow_16bit)
 	{
 		reader_datastream stream(source, name);
-		auto result = load_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, sink, prefer_preview);
+		auto result = load_opened([&stream](LibRaw& processor) { return processor.open_datastream(&stream); }, sink,
+		                          prefer_preview, allow_16bit);
 
 		if (stream.failed())
 		{
@@ -784,8 +865,8 @@ namespace libfiles
 		};
 
 		return shape(image_width, image_height, image_orientation) !=
-		       shape(preview_width, preview_height, preview_orientation)
-			       ? image_orientation
-			       : preview_orientation;
+		               shape(preview_width, preview_height, preview_orientation)
+		           ? image_orientation
+		           : preview_orientation;
 	}
 }

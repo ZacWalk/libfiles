@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning Matroska and WebM files. The EBML header names the variant, and the Segment's
 // top-level elements are walked by their headers as far as the first Cluster; its SeekHeads lead to
@@ -226,9 +226,7 @@ namespace libfiles::detail
 		class children
 		{
 		public:
-			explicit children(const std::span<const std::uint8_t> payload) noexcept : _rest(payload)
-			{
-			}
+			explicit children(const std::span<const std::uint8_t> payload) noexcept : _rest(payload) {}
 
 			std::optional<child> next()
 			{
@@ -274,7 +272,8 @@ namespace libfiles::detail
 
 		std::optional<double> to_float(const std::span<const std::uint8_t> data)
 		{
-			if (data.size() == 4) return static_cast<double>(std::bit_cast<float>(static_cast<std::uint32_t>(*to_uint(data))));
+			if (data.size() == 4)
+				return static_cast<double>(std::bit_cast<float>(static_cast<std::uint32_t>(*to_uint(data))));
 			if (data.size() == 8) return std::bit_cast<double>(*to_uint(data));
 			return {};
 		}
@@ -288,7 +287,10 @@ namespace libfiles::detail
 		{
 			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](const char x, const char y)
 			{
-				const auto lower = [](const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+				const auto lower = [](const char c)
+				{
+					return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+				};
 				return lower(x) == lower(y);
 			});
 		}
@@ -397,7 +399,7 @@ namespace libfiles::detail
 		bool is_lossless(const std::string_view codec)
 		{
 			return codec == "pcm" || codec == "flac" || codec == "alac" || codec == "wavpack" || codec == "truehd" ||
-				codec == "mlp" || codec == "tta";
+			       codec == "mlp" || codec == "tta";
 		}
 
 		// The profile an old-style AAC CodecID names, for a track without an AudioSpecificConfig.
@@ -473,7 +475,9 @@ namespace libfiles::detail
 					}
 					else if (id == 4 && v <= 3)
 					{
-						h.chroma = v <= 1 ? chroma_format::yuv420 : v == 2 ? chroma_format::yuv422 : chroma_format::yuv444;
+						h.chroma = v <= 1   ? chroma_format::yuv420
+						           : v == 2 ? chroma_format::yuv422
+						                    : chroma_format::yuv444;
 						any = true;
 					}
 				}
@@ -569,10 +573,8 @@ namespace libfiles::detail
 				case id_bits_per_channel:
 					if (*v > 0 && *v <= 16) video.bit_depth = static_cast<std::uint8_t>(*v);
 					break;
-				case id_chroma_subsampling_horz: horizontal = v;
-					break;
-				case id_chroma_subsampling_vert: vertical = v;
-					break;
+				case id_chroma_subsampling_horz: horizontal = v; break;
+				case id_chroma_subsampling_vert: vertical = v; break;
 				default: break;
 				}
 			}
@@ -596,16 +598,11 @@ namespace libfiles::detail
 			{
 				switch (e->id)
 				{
-				case id_projection_type: type = uint_or(e->data, 0);
-					break;
-				case id_projection_private: projection_private = e->data;
-					break;
-				case id_projection_pose_yaw: yaw = to_float(e->data).value_or(0);
-					break;
-				case id_projection_pose_pitch: pitch = to_float(e->data).value_or(0);
-					break;
-				case id_projection_pose_roll: roll = to_float(e->data).value_or(0);
-					break;
+				case id_projection_type: type = uint_or(e->data, 0); break;
+				case id_projection_private: projection_private = e->data; break;
+				case id_projection_pose_yaw: yaw = to_float(e->data).value_or(0); break;
+				case id_projection_pose_pitch: pitch = to_float(e->data).value_or(0); break;
+				case id_projection_pose_roll: roll = to_float(e->data).value_or(0); break;
 				default: break;
 				}
 			}
@@ -657,30 +654,18 @@ namespace libfiles::detail
 			{
 				switch (e->id)
 				{
-				case id_pixel_width: width = uint_or(e->data, 0);
-					break;
-				case id_pixel_height: height = uint_or(e->data, 0);
-					break;
-				case id_pixel_crop_left: crop.left = uint_or(e->data, 0);
-					break;
-				case id_pixel_crop_right: crop.right = uint_or(e->data, 0);
-					break;
-				case id_pixel_crop_top: crop.top = uint_or(e->data, 0);
-					break;
-				case id_pixel_crop_bottom: crop.bottom = uint_or(e->data, 0);
-					break;
-				case id_display_width: display_width = to_uint(e->data);
-					break;
-				case id_display_height: display_height = to_uint(e->data);
-					break;
-				case id_display_unit: display_unit = uint_or(e->data, 0);
-					break;
-				case id_stereo_mode: stereo_mode = uint_or(e->data, 0);
-					break;
-				case id_flag_interlaced: video.interlaced = uint_or(e->data, 0) == 1;
-					break;
-				case id_alpha_mode: video.alpha = uint_or(e->data, 0) == 1;
-					break;
+				case id_pixel_width: width = uint_or(e->data, 0); break;
+				case id_pixel_height: height = uint_or(e->data, 0); break;
+				case id_pixel_crop_left: crop.left = uint_or(e->data, 0); break;
+				case id_pixel_crop_right: crop.right = uint_or(e->data, 0); break;
+				case id_pixel_crop_top: crop.top = uint_or(e->data, 0); break;
+				case id_pixel_crop_bottom: crop.bottom = uint_or(e->data, 0); break;
+				case id_display_width: display_width = to_uint(e->data); break;
+				case id_display_height: display_height = to_uint(e->data); break;
+				case id_display_unit: display_unit = uint_or(e->data, 0); break;
+				case id_stereo_mode: stereo_mode = uint_or(e->data, 0); break;
+				case id_flag_interlaced: video.interlaced = uint_or(e->data, 0) == 1; break;
+				case id_alpha_mode: video.alpha = uint_or(e->data, 0) == 1; break;
 				case id_frame_rate:
 					if (const auto f = to_float(e->data); f && std::isfinite(*f) && *f > 0) video.frame_rate = *f;
 					break;
@@ -688,8 +673,7 @@ namespace libfiles::detail
 					if (!colour_read) read_colour(e->data, video);
 					colour_read = true;
 					break;
-				case id_projection: read_projection(e->data, video);
-					break;
+				case id_projection: read_projection(e->data, video); break;
 				case id_uncompressed_fourcc:
 					if (e->data.size() == 4) fields.fourcc = load_le32(e->data.data());
 					break;
@@ -705,7 +689,9 @@ namespace libfiles::detail
 				return fields;
 			}
 
-			if (crop.left >= width || crop.right >= width - crop.left || crop.top >= height || crop.bottom >= height - crop.top) crop = {};
+			if (crop.left >= width || crop.right >= width - crop.left || crop.top >= height ||
+			    crop.bottom >= height - crop.top)
+				crop = {};
 
 			video.width = static_cast<std::uint32_t>(width);
 			video.height = static_cast<std::uint32_t>(height);
@@ -751,14 +737,10 @@ namespace libfiles::detail
 			{
 				switch (e->id)
 				{
-				case id_sampling_frequency: rate = to_float(e->data).value_or(rate);
-					break;
-				case id_output_sampling_frequency: output = to_float(e->data).value_or(0);
-					break;
-				case id_channels: channels = uint_or(e->data, 1);
-					break;
-				case id_bit_depth: bit_depth = uint_or(e->data, 0);
-					break;
+				case id_sampling_frequency: rate = to_float(e->data).value_or(rate); break;
+				case id_output_sampling_frequency: output = to_float(e->data).value_or(0); break;
+				case id_channels: channels = uint_or(e->data, 1); break;
+				case id_bit_depth: bit_depth = uint_or(e->data, 0); break;
 				default: break;
 				}
 			}
@@ -804,8 +786,9 @@ namespace libfiles::detail
 			const auto rest = text.substr(second + 1);
 			const auto dot = rest.find('.');
 
-			if (!parse_digits(text.substr(0, first), hours) || !parse_digits(text.substr(first + 1, second - first - 1), minutes) ||
-				!parse_digits(rest.substr(0, dot), seconds) || minutes >= 60 || seconds >= 60)
+			if (!parse_digits(text.substr(0, first), hours) ||
+			    !parse_digits(text.substr(first + 1, second - first - 1), minutes) ||
+			    !parse_digits(rest.substr(0, dot), seconds) || minutes >= 60 || seconds >= 60)
 			{
 				return {};
 			}
@@ -834,7 +817,7 @@ namespace libfiles::detail
 		{
 			if (const auto dot = name.rfind('.'); dot != std::string_view::npos) name = name.substr(0, dot);
 			return equal_ignoring_case(name, "cover") || equal_ignoring_case(name, "small_cover") ||
-				equal_ignoring_case(name, "cover_land") || equal_ignoring_case(name, "small_cover_land");
+			       equal_ignoring_case(name, "cover_land") || equal_ignoring_case(name, "small_cover_land");
 		}
 
 		std::string element_name(const std::uint32_t id)
@@ -982,14 +965,12 @@ namespace libfiles::detail
 				return static_cast<std::size_t>(std::min<std::uint64_t>(available, most));
 			}
 
-			bool whole(const located& e) const
-			{
-				return e.size != unknown_size && e.size <= _segment_end - e.data;
-			}
+			bool whole(const located& e) const { return e.size != unknown_size && e.size <= _segment_end - e.data; }
 
 			void note(const located& e)
 			{
-				if (_intent == scan_intent::inspect && _elements.size() < max_top_level + max_seek_entries) _elements.push_back(e);
+				if (_intent == scan_intent::inspect && _elements.size() < max_top_level + max_seek_entries)
+					_elements.push_back(e);
 			}
 
 			void read_ebml_header()
@@ -1011,18 +992,12 @@ namespace libfiles::detail
 				{
 					switch (e->id)
 					{
-					case id_ebml_read_version: read_version = uint_or(e->data, 1);
-						break;
-					case id_ebml_max_id_length: max_id_length = uint_or(e->data, 4);
-						break;
-					case id_ebml_max_size_length: max_size_length = uint_or(e->data, 8);
-						break;
-					case id_doc_type: _doc_type = to_text(e->data);
-						break;
-					case id_doc_type_version: _doc_type_version = uint_or(e->data, 1);
-						break;
-					case id_doc_type_read_version: _doc_type_read_version = uint_or(e->data, 1);
-						break;
+					case id_ebml_read_version: read_version = uint_or(e->data, 1); break;
+					case id_ebml_max_id_length: max_id_length = uint_or(e->data, 4); break;
+					case id_ebml_max_size_length: max_size_length = uint_or(e->data, 8); break;
+					case id_doc_type: _doc_type = to_text(e->data); break;
+					case id_doc_type_version: _doc_type_version = uint_or(e->data, 1); break;
+					case id_doc_type_read_version: _doc_type_read_version = uint_or(e->data, 1); break;
 					default: break;
 					}
 				}
@@ -1053,12 +1028,13 @@ namespace libfiles::detail
 					if (e->id == id_segment)
 					{
 						_segment = *e;
-						_segment_end = e->size == unknown_size || e->size > _file_size - e->data ? _file_size : e->data + e->size;
+						_segment_end = e->size == unknown_size || e->size > _file_size - e->data ? _file_size
+						                                                                         : e->data + e->size;
 						return;
 					}
 
 					if ((e->id != id_void && e->id != id_crc32) || skipped >= 16 || e->size == unknown_size ||
-						e->size > _file_size - e->data)
+					    e->size > _file_size - e->data)
 					{
 						break;
 					}
@@ -1109,36 +1085,36 @@ namespace libfiles::detail
 					_seeks[i].done = true;
 
 					const auto wanted = entry.id == id_info || entry.id == id_tracks || entry.id == id_tags ||
-						entry.id == id_attachments || entry.id == id_seek_head;
+					                    entry.id == id_attachments || entry.id == id_seek_head;
 					if (!wanted && _intent != scan_intent::inspect) continue;
 
 					const auto e = header_at(entry.position, _segment_end);
 					if (!e) continue;
 
-					if (std::ranges::none_of(_elements, [&](const located& seen) { return seen.offset == e->offset; })) note(*e);
+					if (std::ranges::none_of(_elements, [&](const located& seen) { return seen.offset == e->offset; }))
+						note(*e);
 					if (wanted) read_top_level(*e);
 				}
 			}
 
 			void read_top_level(const located& e)
 			{
-				if (e.id != id_seek_head && e.id != id_info && e.id != id_tracks && e.id != id_tags && e.id != id_attachments) return;
-				if (e.size == unknown_size || _read.size() >= max_element_reads || std::ranges::find(_read, e.offset) != _read.end()) return;
+				if (e.id != id_seek_head && e.id != id_info && e.id != id_tracks && e.id != id_tags &&
+				    e.id != id_attachments)
+					return;
+				if (e.size == unknown_size || _read.size() >= max_element_reads ||
+				    std::ranges::find(_read, e.offset) != _read.end())
+					return;
 
 				_read.push_back(e.offset);
 
 				switch (e.id)
 				{
-				case id_seek_head: read_seek_head(e);
-					break;
-				case id_info: read_info(e);
-					break;
-				case id_tracks: read_tracks(e);
-					break;
-				case id_tags: read_tags(e);
-					break;
-				case id_attachments: read_attachments(e);
-					break;
+				case id_seek_head: read_seek_head(e); break;
+				case id_info: read_info(e); break;
+				case id_tracks: read_tracks(e); break;
+				case id_tags: read_tags(e); break;
+				case id_attachments: read_attachments(e); break;
 				default: break;
 				}
 			}
@@ -1158,7 +1134,8 @@ namespace libfiles::detail
 
 					while (const auto f = fields.next())
 					{
-						if (f->id == id_seek_id && f->data.size() <= 4) id = static_cast<std::uint32_t>(uint_or(f->data, 0));
+						if (f->id == id_seek_id && f->data.size() <= 4)
+							id = static_cast<std::uint32_t>(uint_or(f->data, 0));
 						else if (f->id == id_seek_position) position = to_uint(f->data);
 					}
 
@@ -1184,14 +1161,10 @@ namespace libfiles::detail
 					case id_timestamp_scale:
 						if (const auto v = to_uint(x->data); v && *v != 0) info.timestamp_scale = *v;
 						break;
-					case id_duration: duration = to_float(x->data);
-						break;
-					case id_title: info.title = to_text(x->data);
-						break;
-					case id_muxing_app: info.muxing_app = to_text(x->data);
-						break;
-					case id_writing_app: info.writing_app = to_text(x->data);
-						break;
+					case id_duration: duration = to_float(x->data); break;
+					case id_title: info.title = to_text(x->data); break;
+					case id_muxing_app: info.muxing_app = to_text(x->data); break;
+					case id_writing_app: info.writing_app = to_text(x->data); break;
 					case id_date_utc:
 						if (x->data.size() == 8) info.date_utc = static_cast<std::int64_t>(*to_uint(x->data));
 						break;
@@ -1246,36 +1219,21 @@ namespace libfiles::detail
 				{
 					switch (e->id)
 					{
-					case id_track_number: s.id = uint_or(e->data, 0);
-						break;
-					case id_track_uid: t.uid = uint_or(e->data, 0);
-						break;
-					case id_track_type: t.type = uint_or(e->data, 0);
-						break;
-					case id_flag_default: s.is_default = uint_or(e->data, 1) != 0;
-						break;
-					case id_flag_commentary: s.commentary = uint_or(e->data, 0) != 0;
-						break;
-					case id_flag_visual_impaired: s.audio_description = uint_or(e->data, 0) != 0;
-						break;
-					case id_default_duration: default_duration = uint_or(e->data, 0);
-						break;
-					case id_name: s.title = to_text(e->data);
-						break;
-					case id_language: language = to_text(e->data);
-						break;
-					case id_language_bcp47: language_bcp47 = to_text(e->data);
-						break;
-					case id_codec_id: t.codec_id = to_text(e->data);
-						break;
-					case id_codec_private: t.codec_private.assign(e->data.begin(), e->data.end());
-						break;
-					case id_video: video = e->data;
-						break;
-					case id_audio: audio = e->data;
-						break;
-					case id_content_encodings: encodings = e->data;
-						break;
+					case id_track_number: s.id = uint_or(e->data, 0); break;
+					case id_track_uid: t.uid = uint_or(e->data, 0); break;
+					case id_track_type: t.type = uint_or(e->data, 0); break;
+					case id_flag_default: s.is_default = uint_or(e->data, 1) != 0; break;
+					case id_flag_commentary: s.commentary = uint_or(e->data, 0) != 0; break;
+					case id_flag_visual_impaired: s.audio_description = uint_or(e->data, 0) != 0; break;
+					case id_default_duration: default_duration = uint_or(e->data, 0); break;
+					case id_name: s.title = to_text(e->data); break;
+					case id_language: language = to_text(e->data); break;
+					case id_language_bcp47: language_bcp47 = to_text(e->data); break;
+					case id_codec_id: t.codec_id = to_text(e->data); break;
+					case id_codec_private: t.codec_private.assign(e->data.begin(), e->data.end()); break;
+					case id_video: video = e->data; break;
+					case id_audio: audio = e->data; break;
+					case id_content_encodings: encodings = e->data; break;
 					default: break;
 					}
 				}
@@ -1283,8 +1241,10 @@ namespace libfiles::detail
 				// LanguageBCP47, where there is one, replaces Language; "und" names no language at all.
 				s.language = !language_bcp47.empty() ? language_bcp47 : !language.empty() ? language : "eng";
 				if (s.language == "und") s.language.clear();
-				s.kind = t.type == 1 ? media_stream_kind::video : t.type == 2 ? media_stream_kind::audio
-					         : t.type == 0x11 ? media_stream_kind::subtitle : media_stream_kind::data;
+				s.kind = t.type == 1      ? media_stream_kind::video
+				         : t.type == 2    ? media_stream_kind::audio
+				         : t.type == 0x11 ? media_stream_kind::subtitle
+				                          : media_stream_kind::data;
 				s.codec_tag = t.codec_id;
 
 				if (codec_fits_kind(t.codec_id, s.kind)) s.codec = codec_from_id(t.codec_id);
@@ -1394,7 +1354,8 @@ namespace libfiles::detail
 					// Within what the scan may inflate in all; what fails or would pass it holds nothing.
 					std::vector<std::uint8_t> inflated;
 					const auto limit = _budget.inflate_limit(max_held_element);
-					if (algorithm != 0 || limit == 0 || !zlib_inflate(t.codec_private, inflated, limit)) inflated = std::vector<std::uint8_t>();
+					if (algorithm != 0 || limit == 0 || !zlib_inflate(t.codec_private, inflated, limit))
+						inflated = std::vector<std::uint8_t>();
 					_budget.inflated(inflated.size());
 					t.codec_private = std::move(inflated);
 				}
@@ -1409,7 +1370,9 @@ namespace libfiles::detail
 				video_header h;
 				auto parsed = false;
 
-				if (codec == "h264") parsed = !extra.empty() && extra[0] == 1 ? parse_avc_config(extra, h) : find_parameter_set(extra, false, h);
+				if (codec == "h264")
+					parsed = !extra.empty() && extra[0] == 1 ? parse_avc_config(extra, h)
+					                                         : find_parameter_set(extra, false, h);
 				else if (codec == "hevc")
 				{
 					// FFmpeg's rule for telling an hvcC from an Annex B stream.
@@ -1431,7 +1394,8 @@ namespace libfiles::detail
 
 				const auto& v = s.video;
 
-				if (codec == "h264" || codec == "hevc" || codec == "av1" || codec == "mpeg4" || codec == "mpeg1" || codec == "mpeg2")
+				if (codec == "h264" || codec == "hevc" || codec == "av1" || codec == "mpeg4" || codec == "mpeg1" ||
+				    codec == "mpeg2")
 				{
 					if (!parsed) t.block = block_use::needed;
 				}
@@ -1456,7 +1420,9 @@ namespace libfiles::detail
 				{
 					// FFmpeg reads PCM without a BitDepth as 16-bit integers or 32-bit floats.
 					s.audio.float_samples = t.codec_id.starts_with("A_PCM/FLOAT");
-					s.audio.bits_per_sample = static_cast<std::uint8_t>(bit_depth != 0 ? bit_depth : s.audio.float_samples ? 32 : 16);
+					s.audio.bits_per_sample = static_cast<std::uint8_t>(bit_depth != 0          ? bit_depth
+					                                                    : s.audio.float_samples ? 32
+					                                                                            : 16);
 				}
 				else if (is_lossless(codec) && bit_depth != 0)
 				{
@@ -1482,14 +1448,15 @@ namespace libfiles::detail
 					// "fLaC", then the STREAMINFO block's header and its 34 bytes.
 					std::uint64_t total_samples = 0;
 					parsed = data.size() >= 42 && starts_with(data, "fLaC") && (data[4] & 0x7F) == 0 &&
-						parse_flac_streaminfo(data.subspan(8, 34), h, total_samples);
+					         parse_flac_streaminfo(data.subspan(8, 34), h, total_samples);
 				}
 				else if (codec == "alac") parsed = parse_alac_config(data, h);
 
 				if (parsed) apply_audio_header(h, s.audio);
 				else if (codec == "aac") s.audio.profile = aac_profile_from_id(t.codec_id);
 
-				if (data.empty() && t.frames_readable && (codec == "ac3" || codec == "eac3" || codec == "dts")) t.block = block_use::cheap;
+				if (data.empty() && t.frames_readable && (codec == "ac3" || codec == "eac3" || codec == "dts"))
+					t.block = block_use::cheap;
 			}
 
 			void read_tags(const located& e)
@@ -1528,8 +1495,7 @@ namespace libfiles::detail
 
 					switch (e->id)
 					{
-					case id_target_type: group.target_type = to_text(e->data);
-						break;
+					case id_target_type: group.target_type = to_text(e->data); break;
 					case id_tag_track_uid:
 						if (v != 0 && group.track_uids.size() < max_tracks) group.track_uids.push_back(v);
 						break;
@@ -1544,7 +1510,8 @@ namespace libfiles::detail
 
 			// A SimpleTag and those nested in it, each keyed by the names it nests in as FFmpeg keys them,
 			// "ARTIST/SORT_WITH". A tag without a name is skipped with what it holds, as FFmpeg skips it.
-			void flatten(const std::span<const std::uint8_t> data, const std::string& parent, const int depth, std::vector<simple_tag>& out)
+			void flatten(const std::span<const std::uint8_t> data, const std::string& parent, const int depth,
+			             std::vector<simple_tag>& out)
 			{
 				std::string name;
 				std::string value;
@@ -1559,20 +1526,15 @@ namespace libfiles::detail
 				{
 					switch (e->id)
 					{
-					case id_tag_name: name = to_text(e->data);
-						break;
+					case id_tag_name: name = to_text(e->data); break;
 					case id_tag_string:
 						value = to_text(e->data);
 						has_value = true;
 						break;
-					case id_tag_binary: binary = e->data.size();
-						break;
-					case id_tag_language: language = to_text(e->data);
-						break;
-					case id_tag_language_bcp47: language_bcp47 = to_text(e->data);
-						break;
-					case id_simple_tag: nested.push_back(e->data);
-						break;
+					case id_tag_binary: binary = e->data.size(); break;
+					case id_tag_language: language = to_text(e->data); break;
+					case id_tag_language_bcp47: language_bcp47 = to_text(e->data); break;
+					case id_simple_tag: nested.push_back(e->data); break;
 					default: break;
 					}
 				}
@@ -1608,7 +1570,8 @@ namespace libfiles::detail
 					if (!file || file->size == unknown_size) break;
 
 					++_attached_files;
-					if (file->id == id_attached_file) read_attached_file(*file, file->data + std::min(file->size, end - file->data));
+					if (file->id == id_attached_file)
+						read_attached_file(*file, file->data + std::min(file->size, end - file->data));
 					if (file->size > end - file->data) break;
 					offset = file->data + file->size;
 				}
@@ -1629,26 +1592,26 @@ namespace libfiles::detail
 
 					const auto text = [&]
 					{
-						return e->size <= max_attachment_text ? to_text(_r.read(e->data, static_cast<std::size_t>(e->size))) : std::string();
+						return e->size <= max_attachment_text
+						           ? to_text(_r.read(e->data, static_cast<std::size_t>(e->size)))
+						           : std::string();
 					};
 
 					switch (e->id)
 					{
-					case id_file_name: name = text();
-						break;
-					case id_file_mime_type: mime = text();
-						break;
-					case id_file_description: description = text();
-						break;
-					case id_file_data: data = byte_range{e->data, e->size};
-						break;
+					case id_file_name: name = text(); break;
+					case id_file_mime_type: mime = text(); break;
+					case id_file_description: description = text(); break;
+					case id_file_data: data = byte_range{e->data, e->size}; break;
 					default: break;
 					}
 
 					offset = e->data + e->size;
 				}
 
-				if (!data || data->empty() || mime.size() < 6 || !equal_ignoring_case(std::string_view(mime).substr(0, 6), "image/")) return;
+				if (!data || data->empty() || mime.size() < 6 ||
+				    !equal_ignoring_case(std::string_view(mime).substr(0, 6), "image/"))
+					return;
 
 				media_picture picture;
 				picture.location = *data;
@@ -1674,7 +1637,8 @@ namespace libfiles::detail
 				if (_needed == 0 && (_cheap == 0 || cluster.data >= cheap_span)) return;
 
 				const auto unknown = cluster.size == unknown_size;
-				const auto end = unknown || cluster.size > _segment_end - cluster.data ? _segment_end : cluster.data + cluster.size;
+				const auto end = unknown || cluster.size > _segment_end - cluster.data ? _segment_end
+				                                                                       : cluster.data + cluster.size;
 				auto offset = cluster.data;
 
 				for (std::size_t n = 0; n < max_cluster_children && offset < end && (_needed > 0 || _cheap > 0); ++n)
@@ -1685,9 +1649,10 @@ namespace libfiles::detail
 					if (!e || e->size == unknown_size) break;
 
 					// A Cluster of unknown size ends where an element that cannot be its child begins.
-					const auto in_cluster = e->id == id_simple_block || e->id == id_block_group || e->id == id_cluster_timestamp ||
-						e->id == id_cluster_position || e->id == id_cluster_prev_size || e->id == id_silent_tracks ||
-						e->id == id_encrypted_block || e->id == id_void || e->id == id_crc32;
+					const auto in_cluster = e->id == id_simple_block || e->id == id_block_group ||
+					                        e->id == id_cluster_timestamp || e->id == id_cluster_position ||
+					                        e->id == id_cluster_prev_size || e->id == id_silent_tracks ||
+					                        e->id == id_encrypted_block || e->id == id_void || e->id == id_crc32;
 					if (unknown && !in_cluster) break;
 
 					const auto size = std::min(e->size, end - e->data);
@@ -1721,7 +1686,8 @@ namespace libfiles::detail
 			// muxer stripped put back in front.
 			void take_block(const std::uint64_t offset, const std::uint64_t size)
 			{
-				const auto head = _r.read(offset, static_cast<std::size_t>(std::min<std::uint64_t>(size, max_block_header)));
+				const auto head = _r.read(offset,
+				                          static_cast<std::size_t>(std::min<std::uint64_t>(size, max_block_header)));
 				if (head.empty() || head[0] == 0) return;
 
 				const auto number_length = static_cast<std::size_t>(std::countl_zero(head[0])) + 1;
@@ -1730,7 +1696,8 @@ namespace libfiles::detail
 				std::uint64_t number = head[0] & (0xFFu >> number_length);
 				for (std::size_t i = 1; i < number_length; ++i) number = number << 8 | head[i];
 
-				const auto found = std::ranges::find_if(_tracks, [&](const track& t) { return t.stream.id == number && t.block != block_use::none; });
+				const auto found = std::ranges::find_if(_tracks, [&](const track& t)
+				{ return t.stream.id == number && t.block != block_use::none; });
 				if (found == _tracks.end()) return;
 
 				// Only a track's first block is read, whatever it holds.
@@ -1891,7 +1858,8 @@ namespace libfiles::detail
 				{
 					for (auto& t : _tracks)
 					{
-						if (t.uid == 0 || std::ranges::find(group.track_uids, t.uid) == group.track_uids.end()) continue;
+						if (t.uid == 0 || std::ranges::find(group.track_uids, t.uid) == group.track_uids.end())
+							continue;
 						for (const auto& tag : group.tags) add_stream_tag(t.stream, tag);
 					}
 
@@ -1925,7 +1893,8 @@ namespace libfiles::detail
 				// replace an earlier one, as FFmpeg's dictionary does, so MuxingApp comes after WritingApp -
 				// and a global ENCODER SimpleTag, which FFmpeg's muxer writes, after both, as in FFmpeg.
 				add_tag(_out, tag_family::matroska, "TITLE", info.title);
-				if (info.writing_app != info.muxing_app) add_tag(_out, tag_family::matroska, "ENCODER", info.writing_app);
+				if (info.writing_app != info.muxing_app)
+					add_tag(_out, tag_family::matroska, "ENCODER", info.writing_app);
 				add_tag(_out, tag_family::matroska, "ENCODER", info.muxing_app);
 				if (info.date_utc) _out.properties.created = date_from_nanoseconds(*info.date_utc);
 
@@ -1951,10 +1920,14 @@ namespace libfiles::detail
 
 				add_structure_section(rows, "Summary", "mkv.summary", true);
 				add_structure_row(rows, "File size", std::format("{} bytes", _file_size));
-				add_structure_row(rows, "DocType", std::format("{}, version {}, read version {}", _doc_type, _doc_type_version, _doc_type_read_version));
-				add_structure_row(rows, "Segment", _segment.size == unknown_size
-					                                   ? std::format("offset {}, size unknown", _segment.offset)
-					                                   : std::format("offset {}, {} bytes", _segment.offset, _segment.data - _segment.offset + _segment.size));
+				add_structure_row(rows, "DocType",
+				                  std::format("{}, version {}, read version {}", _doc_type, _doc_type_version,
+				                              _doc_type_read_version));
+				add_structure_row(rows, "Segment",
+				                  _segment.size == unknown_size
+				                      ? std::format("offset {}, size unknown", _segment.offset)
+				                      : std::format("offset {}, {} bytes", _segment.offset,
+				                                    _segment.data - _segment.offset + _segment.size));
 				add_structure_row(rows, "Timestamp scale", std::format("{} ns", info.timestamp_scale));
 				if (info.duration > 0) add_structure_row(rows, "Duration", std::format("{:.3f} s", info.duration));
 				if (!info.muxing_app.empty()) add_structure_row(rows, "Muxing application", info.muxing_app);
@@ -1969,8 +1942,8 @@ namespace libfiles::detail
 					if (i > 0 && _elements[i - 1].offset == e.offset) continue;
 
 					auto value = e.size == unknown_size
-						             ? std::format("offset {}, size unknown", e.offset)
-						             : std::format("offset {}, {} bytes", e.offset, e.data - e.offset + e.size);
+					                 ? std::format("offset {}, size unknown", e.offset)
+					                 : std::format("offset {}, {} bytes", e.offset, e.data - e.offset + e.size);
 					if (_first_cluster && e.offset == _first_cluster->offset) value += ", the first cluster";
 
 					auto& row = add_row(rows, element_name(e.id), std::move(value));
@@ -1983,10 +1956,13 @@ namespace libfiles::detail
 				for (const auto& t : _tracks)
 				{
 					const auto& s = t.stream;
-					auto value = std::format("{}, {}", kind_name(s.kind), t.codec_id.empty() ? std::string("no codec") : t.codec_id);
+					auto value = std::format("{}, {}", kind_name(s.kind),
+					                         t.codec_id.empty() ? std::string("no codec") : t.codec_id);
 
-					if (s.kind == media_stream_kind::video && s.video.width != 0) value += std::format(", {} x {}", s.video.width, s.video.height);
-					if (s.kind == media_stream_kind::audio) value += std::format(", {} Hz, {} channels", s.audio.sample_rate, s.audio.channels);
+					if (s.kind == media_stream_kind::video && s.video.width != 0)
+						value += std::format(", {} x {}", s.video.width, s.video.height);
+					if (s.kind == media_stream_kind::audio)
+						value += std::format(", {} Hz, {} channels", s.audio.sample_rate, s.audio.channels);
 					if (!s.language.empty()) value += ", " + s.language;
 
 					auto& row = add_row(rows, std::format("Track {}", s.id), std::move(value));

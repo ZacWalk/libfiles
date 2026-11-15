@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 #include "test.h"
 #include "libfiles/iptc.h"
@@ -41,7 +41,9 @@ TEST("iptc reads the fields an organizer files")
 	dataset(block, 2, 90, "Paris");
 	// A later dataset with nothing but padding leaves the field as it was.
 	dataset(block, 2, 90, std::string_view("\0\0", 2));
-	dataset(block, 2, 101, "Fran\xE7" "ais");
+	dataset(block, 2, 101,
+	        "Fran\xE7"
+	        "ais");
 	dataset(block, 2, 116, "\xC2\xA9 Ann");
 	dataset(block, 2, 55, " 20240506 ");
 	dataset(block, 2, 60, "143015+0200");
@@ -54,7 +56,8 @@ TEST("iptc reads the fields an organizer files")
 	CHECK_STR(f.object_name, "Eiffel");
 	CHECK_STR(f.caption, "Line one\nLine two");
 	CHECK_STR(f.city, "Paris");
-	CHECK_STR(f.country, "Fran\xC3\xA7" "ais");
+	CHECK_STR(f.country, "Fran\xC3\xA7"
+	                     "ais");
 	CHECK_STR(f.copyright, "\xC2\xA9 Ann");
 	CHECK_STR(f.date_created, "20240506");
 	CHECK_STR(f.time_created, "143015+0200");
@@ -115,8 +118,7 @@ TEST("iptc walk follows an extended length and stops at a header it cannot trust
 	CHECK(o.city.empty());
 
 	// Every cut of a block reads without fault.
-	for (std::size_t cut = 0; cut <= block.size(); ++cut)
-		(void)libfiles::list_iptc({block.data(), cut});
+	for (std::size_t cut = 0; cut <= block.size(); ++cut) (void)libfiles::list_iptc({block.data(), cut});
 }
 
 TEST("iptc text is UTF-8 where it is valid and Windows-1252 where it is not")
@@ -127,7 +129,8 @@ TEST("iptc text is UTF-8 where it is valid and Windows-1252 where it is not")
 	CHECK_STR(libfiles::iptc_text(latin1), "caf\xC3\xA9");
 	// Windows' punctuation, where Latin-1 has controls; a byte Windows-1252 leaves undefined stays one.
 	const bytes windows = {'O', 0x92, 'B', ' ', 0x93, 'x', 0x94, ' ', 0x96, ' ', 0x80, ' ', 0x81};
-	CHECK_STR(libfiles::iptc_text(windows), "O\xE2\x80\x99" "B \xE2\x80\x9Cx\xE2\x80\x9D \xE2\x80\x93 \xE2\x82\xAC \xC2\x81");
+	CHECK_STR(libfiles::iptc_text(windows), "O\xE2\x80\x99"
+	                                        "B \xE2\x80\x9Cx\xE2\x80\x9D \xE2\x80\x93 \xE2\x82\xAC \xC2\x81");
 	// An overlong form is not UTF-8.
 	const bytes overlong = {0xC0, 0xAF};
 	CHECK_STR(libfiles::iptc_text(overlong), "\xC3\x80\xC2\xAF");

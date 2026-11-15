@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Building audio files and their tags byte by byte - ID3v2 tags and frames, MPEG audio frames,
 // FLAC metadata blocks, Vorbis comments and AIFF forms - shared by the scan, write and agreement tests, so
@@ -31,8 +31,8 @@ namespace test_build
 
 	// A frame: its size syncsafe in ID3v2.4 unless plain_size, as iTunes wrote some, plain in ID3v2.3, and
 	// 24 bits in ID3v2.2, which has no flags.
-	inline bytes id3_frame(const unsigned version, const std::string_view id, const bytes& body, const std::uint16_t flags = 0,
-	                       const bool plain_size = false)
+	inline bytes id3_frame(const unsigned version, const std::string_view id, const bytes& body,
+	                       const std::uint16_t flags = 0, const bool plain_size = false)
 	{
 		builder b;
 		b.raw(id);
@@ -52,14 +52,16 @@ namespace test_build
 	}
 
 	// A PRIV frame - PRV in ID3v2.2 - of an owner and its data.
-	inline bytes id3_private_frame(const unsigned version, const std::string_view owner, const bytes& data, const std::uint16_t flags = 0)
+	inline bytes id3_private_frame(const unsigned version, const std::string_view owner, const bytes& data,
+	                               const std::uint16_t flags = 0)
 	{
 		return id3_frame(version, version == 2 ? "PRV" : "PRIV", builder().raw(owner).u8(0).raw(data).b, flags);
 	}
 
 	// A tag of frames and padding. Its header's flags as given: 0x80 unsynchronisation, 0x40 an extended
 	// header, 0x10 a footer.
-	inline bytes id3_tag(const unsigned version, const std::vector<bytes>& frames, const std::size_t padding = 0, const std::uint8_t flags = 0)
+	inline bytes id3_tag(const unsigned version, const std::vector<bytes>& frames, const std::size_t padding = 0,
+	                     const std::uint8_t flags = 0)
 	{
 		builder body;
 		for (const auto& f : frames) body.raw(f);
@@ -104,7 +106,8 @@ namespace test_build
 	// An ID3v2.3 frame compressed as its flags say: the inflated size, then a zlib stream.
 	inline bytes id3_compressed_frame(const std::string_view id, const bytes& data)
 	{
-		return id3_frame(3, id, builder().be32(static_cast<std::uint32_t>(data.size())).raw(zlib_stored_block(data)).b, 0x0080);
+		return id3_frame(3, id, builder().be32(static_cast<std::uint32_t>(data.size())).raw(zlib_stored_block(data)).b,
+		                 0x0080);
 	}
 
 	// ---- MPEG audio ----------------------------------------------------------------------------------
@@ -122,13 +125,15 @@ namespace test_build
 
 	// ---- FLAC ----------------------------------------------------------------------------------------
 
-	inline bytes flac_streaminfo(const std::uint32_t rate, const unsigned channels, const unsigned bits, const std::uint64_t total)
+	inline bytes flac_streaminfo(const std::uint32_t rate, const unsigned channels, const unsigned bits,
+	                             const std::uint64_t total)
 	{
 		builder b;
 		b.be16(4096).be16(4096);
 		put_be24(b, 0);
 		put_be24(b, 0);
-		const auto packed = std::uint64_t{rate} << 44 | std::uint64_t{channels - 1} << 41 | std::uint64_t{bits - 1} << 36 | total;
+		const auto packed = std::uint64_t{rate} << 44 | std::uint64_t{channels - 1} << 41 |
+		                    std::uint64_t{bits - 1} << 36 | total;
 		b.be32(static_cast<std::uint32_t>(packed >> 32)).be32(static_cast<std::uint32_t>(packed)).zeros(16);
 		return b.b;
 	}
@@ -142,7 +147,8 @@ namespace test_build
 		return b.b;
 	}
 
-	inline bytes vorbis_comment_block(const std::vector<std::string_view>& fields, const std::string_view vendor = "libfiles test")
+	inline bytes vorbis_comment_block(const std::vector<std::string_view>& fields,
+	                                  const std::string_view vendor = "libfiles test")
 	{
 		builder b;
 		b.le32(static_cast<std::uint32_t>(vendor.size())).raw(vendor).le32(static_cast<std::uint32_t>(fields.size()));
@@ -173,8 +179,14 @@ namespace test_build
 	{
 		auto exponent = 0;
 		const auto significand = static_cast<std::uint64_t>(std::ldexp(std::frexp(rate, &exponent), 64));
-		return aiff_chunk("COMM", builder().be16(channels).be32(frames).be16(bits).be16(static_cast<unsigned>(exponent - 1 + 16383))
-		                                   .be32(static_cast<std::uint32_t>(significand >> 32)).be32(static_cast<std::uint32_t>(significand)).b);
+		return aiff_chunk("COMM", builder()
+		                              .be16(channels)
+		                              .be32(frames)
+		                              .be16(bits)
+		                              .be16(static_cast<unsigned>(exponent - 1 + 16383))
+		                              .be32(static_cast<std::uint32_t>(significand >> 32))
+		                              .be32(static_cast<std::uint32_t>(significand))
+		                              .b);
 	}
 
 	// The toolkit's packet chunk: APPL signed "XMP ".

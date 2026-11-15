@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The two pieces of zlib that metadata reading needs: inflating a zlib stream, for PNG's
 // compressed text and colour profiles, and CRC-32, for PNG's chunk checks. The inflater decodes a
@@ -47,7 +47,15 @@ namespace libfiles::detail
 			std::size_t max_output = 0;
 			// Reaching max_output ends the inflate rather than failing it.
 			bool stop_when_full = false;
+			// Set when the inflate failed only because the input ran out.
+			bool input_ended = false;
 		};
+
+		[[noreturn]] void out_of_input(inflate_state& s)
+		{
+			s.input_ended = true;
+			throw inflate_failure{};
+		}
 
 		int bits(inflate_state& s, const int need)
 		{
@@ -55,7 +63,7 @@ namespace libfiles::detail
 
 			while (s.bit_count < need)
 			{
-				if (s.in_pos == s.in.size()) throw inflate_failure{};
+				if (s.in_pos == s.in.size()) out_of_input(s);
 				value |= static_cast<std::uint32_t>(s.in[s.in_pos++]) << s.bit_count;
 				s.bit_count += 8;
 			}
@@ -82,7 +90,7 @@ namespace libfiles::detail
 			s.bit_buffer = 0;
 			s.bit_count = 0;
 
-			if (s.in.size() - s.in_pos < 4) throw inflate_failure{};
+			if (s.in.size() - s.in_pos < 4) out_of_input(s);
 
 			const auto len = static_cast<std::size_t>(s.in[s.in_pos] | s.in[s.in_pos + 1] << 8);
 			const auto nlen = static_cast<std::size_t>(s.in[s.in_pos + 2] | s.in[s.in_pos + 3] << 8);
@@ -94,7 +102,7 @@ namespace libfiles::detail
 			// short yields what it holds before it fails.
 			for (std::size_t i = 0; i < len; ++i)
 			{
-				if (s.in_pos == s.in.size()) throw inflate_failure{};
+				if (s.in_pos == s.in.size()) out_of_input(s);
 				put(s, s.in[s.in_pos++]);
 			}
 		}
@@ -155,20 +163,15 @@ namespace libfiles::detail
 
 		void codes(inflate_state& s, const huffman& literal_code, const huffman& distance_code)
 		{
-			static constexpr short length_base[29] = {
-				3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-				35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258
-			};
-			static constexpr short length_extra[29] = {
-				0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0
-			};
-			static constexpr short distance_base[30] = {
-				1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
-				257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577
-			};
-			static constexpr short distance_extra[30] = {
-				0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13
-			};
+			static constexpr short length_base[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
+			                                          31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+			static constexpr short length_extra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+			                                           2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+			static constexpr short distance_base[30] = {1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
+			                                            33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
+			                                            1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
+			static constexpr short distance_extra[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
+			                                             6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
 			for (;;)
 			{
@@ -192,7 +195,8 @@ namespace libfiles::detail
 					symbol = decode(s, distance_code);
 					if (symbol >= 30) throw inflate_failure{};
 
-					const auto distance = static_cast<std::size_t>(distance_base[symbol] + bits(s, distance_extra[symbol]));
+					const auto distance = static_cast<std::size_t>(distance_base[symbol] +
+					                                               bits(s, distance_extra[symbol]));
 
 					// There is no preset dictionary, so a distance may reach back only into what has
 					// been written.
@@ -290,7 +294,8 @@ namespace libfiles::detail
 
 			// An incomplete code is allowed only when it is a single code of one bit, as zlib allows.
 			auto err = construct(literal_code, lengths.data(), literal_count);
-			if (err && (err < 0 || literal_count != literal_code.count[0] + literal_code.count[1])) throw inflate_failure{};
+			if (err && (err < 0 || literal_count != literal_code.count[0] + literal_code.count[1]))
+				throw inflate_failure{};
 
 			err = construct(distance_code, lengths.data() + literal_count, distance_count);
 			if (err && (err < 0 || distance_count != distance_code.count[0] + distance_code.count[1]))
@@ -333,16 +338,12 @@ namespace libfiles::detail
 
 				switch (bits(s, 2))
 				{
-				case 0: stored(s);
-					break;
-				case 1: codes(s, fixed_codes().first, fixed_codes().second);
-					break;
-				case 2: dynamic(s);
-					break;
+				case 0: stored(s); break;
+				case 1: codes(s, fixed_codes().first, fixed_codes().second); break;
+				case 2: dynamic(s); break;
 				default: throw inflate_failure{};
 				}
-			}
-			while (!last);
+			} while (!last);
 		}
 	}
 
@@ -370,11 +371,16 @@ namespace libfiles::detail
 	}
 
 	bool zlib_inflate_prefix(const std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out,
-	                         const std::size_t length)
+	                         const std::size_t length, bool* const input_ended)
 	{
 		out.clear();
+		if (input_ended) *input_ended = false;
 
-		if (!valid_zlib_header(in)) return false;
+		if (!valid_zlib_header(in))
+		{
+			if (input_ended) *input_ended = in.size() < 2;
+			return false;
+		}
 
 		inflate_state s{in.subspan(2), 0, 0, 0, out, length};
 		s.stop_when_full = true;
@@ -388,6 +394,7 @@ namespace libfiles::detail
 		}
 		catch (const inflate_failure&)
 		{
+			if (input_ended) *input_ended = s.input_ended;
 			return false;
 		}
 

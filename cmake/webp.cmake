@@ -1,8 +1,8 @@
-# libwebp - its decoder, encoder, sharpyuv, mux and demux - for libfiles' WebP decoder and for its
-# consumers: fetched as the release archive at its SHA-256 (cmake/dd-dependencies.json) and built by this
-# recipe, as libfiles::webp. The source list is Diffractor's, which shipped it: every library source but
-# the MIPS MSA ones. The fetched tree is upstream's own, unmodified. CMakeLists.txt includes this when
-# LIBFILES_WEBP is on.
+# libwebp - its decoder, encoder, sharpyuv, mux and demux, and the quality estimate from its extras - for
+# libfiles' WebP decoder and for its consumers: fetched as the release archive at its SHA-256
+# (cmake/dd-dependencies.json) and built by this recipe, as libfiles::webp. The source list is
+# Diffractor's, which shipped it: every library source but the MIPS MSA ones. The fetched tree is
+# upstream's own, unmodified. CMakeLists.txt includes this when LIBFILES_WEBP is on.
 #
 # libwebp chooses its SIMD from what the compiler announces, and dispatches among them at run time:
 # MSVC compiles its SSE2, SSE4.1 and AVX2 paths on x86 and x64, and NEON on ARM64; GCC and Clang, told
@@ -64,6 +64,10 @@ set(_lf_webp_utils
     rescaler_utils.c thread_utils.c utils.c)
 list(TRANSFORM _lf_webp_utils PREPEND "${_lf_webp_src}/src/utils/")
 
+# From the extras beside the library, only the estimate of the quality a lossy image was compressed at,
+# which a WebP re-encoded as itself keeps.
+set(_lf_webp_extras "${_lf_webp_src}/extras/quality_estimate.c")
+
 add_library(libfiles-webp STATIC
     ${_lf_webp_sharpyuv}
     ${_lf_webp_dec}
@@ -71,7 +75,8 @@ add_library(libfiles-webp STATIC
     ${_lf_webp_dsp}
     ${_lf_webp_enc}
     ${_lf_webp_mux}
-    ${_lf_webp_utils})
+    ${_lf_webp_utils}
+    ${_lf_webp_extras})
 add_library(libfiles::webp ALIAS libfiles-webp)
 
 # The sources include each other from the tree's root - "src/dsp/dsp.h" - and a consumer includes the

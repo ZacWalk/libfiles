@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Builds the XMP tree from the RDF in an XML tree, then normalizes it: Dublin Core
 // arrays written as simple values, explicit aliases, and the special cases the XMP Toolkit repairs.
@@ -51,8 +51,14 @@ namespace libfiles::xmp::detail
 			return term_other;
 		}
 
-		bool is_core_syntax_term(const rdf_term t) { return t >= term_rdf && t <= term_datatype; }
-		bool is_old_term(const rdf_term t) { return t >= term_about_each && t <= term_bag_id; }
+		bool is_core_syntax_term(const rdf_term t)
+		{
+			return t >= term_rdf && t <= term_datatype;
+		}
+		bool is_old_term(const rdf_term t)
+		{
+			return t >= term_about_each && t <= term_bag_id;
+		}
 
 		bool is_property_element_name(const rdf_term t)
 		{
@@ -75,14 +81,9 @@ namespace libfiles::xmp::detail
 		class rdf_parser
 		{
 		public:
-			explicit rdf_parser(node& tree) : _tree(tree)
-			{
-			}
+			explicit rdf_parser(node& tree) : _tree(tree) {}
 
-			void rdf(const xml_node& xml)
-			{
-				node_element_list(&_tree, xml);
-			}
+			void rdf(const xml_node& xml) { node_element_list(&_tree, xml); }
 
 		private:
 			node& _tree;
@@ -209,7 +210,8 @@ namespace libfiles::xmp::detail
 			{
 				auto value_node = std::move(parent->children.front());
 				std::vector<std::unique_ptr<node>> others;
-				for (std::size_t i = 1; i < parent->children.size(); ++i) others.push_back(std::move(parent->children[i]));
+				for (std::size_t i = 1; i < parent->children.size(); ++i)
+					others.push_back(std::move(parent->children[i]));
 				parent->children.clear();
 
 				std::size_t first = 0;
@@ -293,7 +295,7 @@ namespace libfiles::xmp::detail
 			{
 				const auto term = term_of(xml.name);
 				if (term != term_description && term != term_other) return; // Not a node element.
-				if (top && term == term_other) return; // A typed node at the top level.
+				if (top && term == term_other) return;                      // A typed node at the top level.
 
 				node_element_attrs(parent, xml, top);
 				property_element_list(parent, xml, top);
@@ -322,12 +324,9 @@ namespace libfiles::xmp::detail
 						}
 						break;
 
-					case term_other:
-						add_child_node(parent, *attr, attr->value, top);
-						break;
+					case term_other: add_child_node(parent, *attr, attr->value, top); break;
 
-					default:
-						continue; // Not a node element attribute.
+					default: continue; // Not a node element attribute.
 					}
 				}
 			}
@@ -510,8 +509,7 @@ namespace libfiles::xmp::detail
 				{
 					switch (term_of(attr->name))
 					{
-					case term_id:
-						break;
+					case term_id: break;
 
 					case term_resource:
 						if (has_node_id_attr || has_value_attr) return;
@@ -537,8 +535,7 @@ namespace libfiles::xmp::detail
 						}
 						break;
 
-					default:
-						return; // An unrecognized attribute.
+					default: return; // An unrecognized attribute.
 					}
 				}
 
@@ -564,12 +561,9 @@ namespace libfiles::xmp::detail
 					switch (term_of(attr->name))
 					{
 					case term_id:
-					case term_node_id:
-						break;
+					case term_node_id: break;
 
-					case term_resource:
-						add_qualifier_node(child, *attr);
-						break;
+					case term_resource: add_qualifier_node(child, *attr); break;
 
 					case term_other:
 						if (!child_is_struct || attr->name == "xml:lang")
@@ -582,8 +576,7 @@ namespace libfiles::xmp::detail
 						}
 						break;
 
-					default:
-						break;
+					default: break;
 					}
 				}
 			}
@@ -613,7 +606,7 @@ namespace libfiles::xmp::detail
 					form = array_is_alt_text;
 				}
 				else if (name == "dc:contributor" || name == "dc:language" || name == "dc:publisher" ||
-					name == "dc:relation" || name == "dc:subject" || name == "dc:type")
+				         name == "dc:relation" || name == "dc:subject" || name == "dc:type")
 				{
 					form = value_is_array;
 				}
@@ -633,7 +626,8 @@ namespace libfiles::xmp::detail
 					if (is_alt_text(form) && !(item->options & has_lang))
 					{
 						item->qualifiers.insert(item->qualifiers.begin(),
-						                        std::make_unique<node>(item.get(), "xml:lang", "x-default", is_qualifier));
+						                        std::make_unique<node>(item.get(), "xml:lang", "x-default",
+						                                               is_qualifier));
 						item->options |= has_qualifiers | has_lang;
 					}
 
@@ -793,7 +787,10 @@ namespace libfiles::xmp::detail
 			d = {};
 			std::size_t pos = 0;
 			int temp;
-			const auto at = [&s](const std::size_t i) { return i < s.size() ? s[i] : '\0'; };
+			const auto at = [&s](const std::size_t i)
+			{
+				return i < s.size() ? s[i] : '\0';
+			};
 
 			const auto time_only = s[0] == 'T' || (s.size() >= 2 && s[1] == ':') || (s.size() >= 3 && s[2] == ':');
 
@@ -913,7 +910,8 @@ namespace libfiles::xmp::detail
 				}
 				else
 				{
-					std::snprintf(buffer, sizeof(buffer), "%c%02d:%02d", d.tz_sign < 0 ? '-' : '+', d.tz_hour, d.tz_minute);
+					std::snprintf(buffer, sizeof(buffer), "%c%02d:%02d", d.tz_sign < 0 ? '-' : '+', d.tz_hour,
+					              d.tz_minute);
 					result += buffer;
 				}
 			}
@@ -1048,7 +1046,8 @@ namespace libfiles::xmp::detail
 					else
 					{
 						child->qualifiers.insert(child->qualifiers.begin(),
-						                         std::make_unique<node>(child.get(), "xml:lang", "x-repair", is_qualifier));
+						                         std::make_unique<node>(child.get(), "xml:lang", "x-repair",
+						                                                is_qualifier));
 						child->options |= has_qualifiers | has_lang;
 					}
 				}
@@ -1103,7 +1102,8 @@ namespace libfiles::xmp::detail
 					if (!(item->options & has_lang))
 					{
 						item->qualifiers.insert(item->qualifiers.begin(),
-						                        std::make_unique<node>(item.get(), "xml:lang", "x-default", is_qualifier));
+						                        std::make_unique<node>(item.get(), "xml:lang", "x-default",
+						                                               is_qualifier));
 						item->options |= has_qualifiers | has_lang;
 					}
 

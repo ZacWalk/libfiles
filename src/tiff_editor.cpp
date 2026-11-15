@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The TIFF directory editor. It edits IFD0 and the Exif and GPS directories of a TIFF stream
 // without moving a byte the stream already holds: maker notes keep the absolute offsets they rely on,
@@ -20,11 +20,13 @@ namespace libfiles::detail
 		{
 			switch (type)
 			{
+				// clang-format off
 			case 1: case 2: case 6: case 7: return 1;
 			case 3: case 8: return 2;
 			case 4: case 9: case 11: case 13: return 4;
 			case 5: case 10: case 12: return 8;
 			default: return 0;
+				// clang-format on
 			}
 		}
 
@@ -132,12 +134,7 @@ namespace libfiles::detail
 	{
 		// Little-endian, IFD0 at 8 holding one entry, since an empty directory is not valid TIFF: the
 		// orientation, top-left. An edit replaces or adds to it.
-		return {
-			'I', 'I', 42, 0, 8, 0, 0, 0,
-			1, 0,
-			0x12, 0x01, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
-			0, 0, 0, 0
-		};
+		return {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0};
 	}
 
 	bool tiff_editor::has(const directory d, const std::uint16_t tag) const
@@ -158,9 +155,7 @@ namespace libfiles::detail
 		if (overlaps(0, 8)) return true;
 
 		return std::ranges::any_of(_ifds, [&overlaps](const ifd& d)
-		{
-			return d.present && overlaps(d.offset, 2 + 12ull * d.entries.size() + 4);
-		});
+		{ return d.present && overlaps(d.offset, 2 + 12ull * d.entries.size() + 4); });
 	}
 
 	std::optional<byte_range> tiff_editor::value_range(const directory d, const std::uint16_t tag) const
@@ -180,8 +175,8 @@ namespace libfiles::detail
 		return {};
 	}
 
-	void tiff_editor::set(const directory d, const std::uint16_t tag, const std::uint16_t type, const std::uint32_t count,
-	                      bytes value)
+	void tiff_editor::set(const directory d, const std::uint16_t tag, const std::uint16_t type,
+	                      const std::uint32_t count, bytes value)
 	{
 		_edits[{d, tag}] = edit{false, type, count, std::move(value)};
 	}
@@ -232,36 +227,37 @@ namespace libfiles::detail
 		tiff_editor source;
 		if (!source.open(input)) throw format_error("the TIFF metadata directory cannot be read");
 		// These tags describe encoded samples or separate metadata blocks, not EXIF fields.
-		constexpr std::uint16_t layout_tags[]{
-			254, 255, 256, 257, 258, 259, 262, 263, 264, 265, 266, 273, 277, 278,
-			279, 280, 281, 282, 283, 284, 286, 287, 288, 289, 290, 291, 292, 293,
-			296, 297, 300, 301, 318, 319, 320, 321, 322, 323, 324, 325, 330, 332,
-			333, 334, 336, 337, 338, 339, 340, 341, 342, 347, 512, 513, 514,
-			515, 517, 518, 519, 520, 521, 530, 531, 532,
-			tag_xmp, tag_iptc, tag_photoshop, 34675
-		};
+		constexpr std::uint16_t layout_tags[]{254, 255, 256, 257, 258,     259,      262,           263,  264, 265,
+		                                      266, 273, 277, 278, 279,     280,      281,           282,  283, 284,
+		                                      286, 287, 288, 289, 290,     291,      292,           293,  296, 297,
+		                                      300, 301, 318, 319, 320,     321,      322,           323,  324, 325,
+		                                      330, 332, 333, 334, 336,     337,      338,           339,  340, 341,
+		                                      342, 347, 512, 513, 514,     515,      517,           518,  519, 520,
+		                                      521, 530, 531, 532, tag_xmp, tag_iptc, tag_photoshop, 34675};
 		std::uint64_t total = 0;
 		for (const auto d : {directory::ifd0, directory::exif, directory::gps, directory::interoperability})
 		{
 			for (const auto& field : source._ifds[index(d)].entries)
 			{
 				if ((d == directory::ifd0 && (std::ranges::find(layout_tags, field.tag) != std::end(layout_tags) ||
-					(!include_orientation && field.tag == tag_orientation))) ||
-					(d == directory::ifd0 && (field.tag == tag_exif_ifd || field.tag == tag_gps_ifd)) ||
-					(d == directory::exif && field.tag == tag_interop_ifd))
+				                              (!include_orientation && field.tag == tag_orientation))) ||
+				    (d == directory::ifd0 && (field.tag == tag_exif_ifd || field.tag == tag_gps_ifd)) ||
+				    (d == directory::exif && field.tag == tag_interop_ifd))
 					continue;
 				const auto range = source.value_range(d, field.tag);
-				if (!range || !range->size)
-					throw format_error("a TIFF metadata value is outside its stream");
+				if (!range || !range->size) throw format_error("a TIFF metadata value is outside its stream");
 				if (range->size > 65536 || range->size > 16u * 1024u * 1024u - total)
 					throw format_error("TIFF metadata exceeds its value or block limit");
 				total += range->size;
 				auto value = input.read(range->offset, static_cast<std::size_t>(range->size));
 				if (source.little_endian() != little_endian())
 				{
-					const auto unit = field.type == 3 || field.type == 8 ? 2u :
-						field.type == 4 || field.type == 5 || field.type == 9 ||
-						field.type == 10 || field.type == 11 ? 4u : field.type == 12 ? 8u : 1u;
+					const auto unit = field.type == 3 || field.type == 8 ? 2u
+					                  : field.type == 4 || field.type == 5 || field.type == 9 || field.type == 10 ||
+					                          field.type == 11
+					                      ? 4u
+					                  : field.type == 12 ? 8u
+					                                     : 1u;
 					for (std::size_t at = 0; unit > 1 && at < value.size(); at += unit)
 						std::reverse(value.begin() + at, value.begin() + at + unit);
 				}
@@ -315,7 +311,8 @@ namespace libfiles::detail
 			}
 			if (d == directory::ifd0)
 			{
-				for (const auto& [sub, tag] : {std::pair{directory::exif, tag_exif_ifd}, std::pair{directory::gps, tag_gps_ifd}})
+				for (const auto& [sub, tag] :
+				     {std::pair{directory::exif, tag_exif_ifd}, std::pair{directory::gps, tag_gps_ifd}})
 				{
 					if (!moved[index(sub)]) continue;
 
@@ -364,9 +361,8 @@ namespace libfiles::detail
 						const std::uint64_t old_offset = u32(oe.value.data());
 						const auto fits = old_size == e.value.size() || (zeros_end && old_size > e.value.size());
 
-						if (old_size > 4 && fits && old_offset <= stream_size &&
-							old_size <= stream_size - old_offset && !overlaps_structure(old_offset, old_size) &&
-							claim(old_offset, old_size))
+						if (old_size > 4 && fits && old_offset <= stream_size && old_size <= stream_size - old_offset &&
+						    !overlaps_structure(old_offset, old_size) && claim(old_offset, old_size))
 						{
 							auto data = e.value;
 							data.resize(static_cast<std::size_t>(old_size), 0);
@@ -390,8 +386,8 @@ namespace libfiles::detail
 
 			if (fields.empty() && removed.empty()) continue;
 
-			const auto encode_entry = [this](const std::uint16_t tag, const std::uint16_t type, const std::uint32_t count,
-			                                 const std::array<std::uint8_t, 4>& field)
+			const auto encode_entry = [this](const std::uint16_t tag, const std::uint16_t type,
+			                                 const std::uint32_t count, const std::array<std::uint8_t, 4>& field)
 			{
 				bytes e;
 				put16(e, tag);
@@ -408,12 +404,14 @@ namespace libfiles::detail
 			{
 				for (const auto tag : removed)
 				{
-					if (std::ranges::any_of(old.entries, [tag](const entry& oe) { return oe.tag == tag; })) same_tags = false;
+					if (std::ranges::any_of(old.entries, [tag](const entry& oe) { return oe.tag == tag; }))
+						same_tags = false;
 				}
 
 				for (const auto& [tag, field] : fields)
 				{
-					if (std::ranges::none_of(old.entries, [tag](const entry& oe) { return oe.tag == tag; })) same_tags = false;
+					if (std::ranges::none_of(old.entries, [tag](const entry& oe) { return oe.tag == tag; }))
+						same_tags = false;
 				}
 			}
 
@@ -426,7 +424,8 @@ namespace libfiles::detail
 
 					const auto& e = edits.at({d, oe.tag});
 					auto rewritten = encode_entry(oe.tag, e.type, e.count, it->second);
-					if (rewritten != encode_entry(oe.tag, oe.type, oe.count, oe.value)) out.push_back({oe.at, 12, std::move(rewritten), entry_step});
+					if (rewritten != encode_entry(oe.tag, oe.type, oe.count, oe.value))
+						out.push_back({oe.at, 12, std::move(rewritten), entry_step});
 				}
 
 				continue;
@@ -452,8 +451,9 @@ namespace libfiles::detail
 			{
 				// A sub-directory left with nothing is dropped, with its pointer.
 				const auto parent = d == directory::interoperability ? directory::exif : directory::ifd0;
-				const auto tag = d == directory::interoperability ? tag_interop_ifd :
-					d == directory::exif ? tag_exif_ifd : tag_gps_ifd;
+				const auto tag = d == directory::interoperability ? tag_interop_ifd
+				                 : d == directory::exif           ? tag_exif_ifd
+				                                                  : tag_gps_ifd;
 				edits[{parent, tag}] = edit{true, 0, 0, {}};
 				continue;
 			}

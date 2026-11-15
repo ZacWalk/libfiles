@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The structure RIFF files share - WAV, AVI and WebP: forms and the chunks and lists in them, with
 // the 64-bit sizes of RF64 and BW64 - read by the one chunk walker the scans and the writers use, the chunk
@@ -28,9 +28,9 @@ namespace libfiles::detail::riff
 	constexpr std::uint32_t fourcc(const char (&s)[5])
 	{
 		return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
-			static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 8 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 16 |
+		       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3])) << 24;
 	}
 
 	inline constexpr auto riff_id = fourcc("RIFF");
@@ -220,8 +220,7 @@ namespace libfiles::detail::riff
 	// at the top of each, in file order. visit(form, chunk, end) sees each chunk as it is read, with the
 	// index of its form and where that form's chunks end inside the file, so a caller can read inside it
 	// before the walk moves on; when it returns false the walk ends there.
-	template <typename Visit>
-	layout walk_layout(reader& r, Visit&& visit)
+	template <typename Visit> layout walk_layout(reader& r, Visit&& visit)
 	{
 		layout l;
 		const auto size = r.size();
@@ -337,7 +336,8 @@ namespace libfiles::detail::riff
 		{
 			for (std::size_t i = 1; i < l.forms.size(); ++i)
 			{
-				for (const auto& c : l.forms[i].children) if (c.id == pmx_id) last = &c;
+				for (const auto& c : l.forms[i].children)
+					if (c.id == pmx_id) last = &c;
 			}
 		}
 

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Camera raw files, through LibRaw and Adobe's DNG SDK: the image a raw file holds - its largest
 // embedded preview a decoder can read, or its raw data developed - and what a scan reads of it without
@@ -41,10 +41,13 @@ namespace libfiles
 
 	// The image a raw file holds. With prefer_preview, its largest embedded preview a decoder can read -
 	// a CR3's HEVC one passed over for its JPEG - a JPEG one handed back as it is, a bitmap one written
-	// to the sink. Otherwise, or without one, its raw data developed with the camera's white balance, as
-	// B8G8R8X8 with LibRaw's auto-brightness, the fourth byte 0, left unturned: the orientation says how
-	// to show it. Never throws for a malformed file.
-	raw_load_result load_raw(const std::filesystem::path& path, image_sink& sink, bool prefer_preview);
+	// to the sink. Otherwise, or without one, its raw data developed with the camera's white balance and
+	// LibRaw's auto-brightness, left unturned - the orientation says how to show it: as B8G8R8X8, the fourth
+	// byte 0, or with allow_16bit as R16G16B16A16, the fourth channel 65535. Clipped channels are blended
+	// towards white, and the light past the auto-brightness white - which LibRaw's own developer clips - is
+	// rolled off into it, so a bright sky keeps its gradation. Never throws for a malformed file.
+	raw_load_result load_raw(const std::filesystem::path& path, image_sink& sink, bool prefer_preview,
+	                         bool allow_16bit = false);
 
 	// The orientation to show a raw file's preview with: its own, unless the raw image is not square and
 	// the preview, turned by its own, is not the raw image's shape turned by the raw data's - a preview
@@ -117,6 +120,8 @@ namespace libfiles
 	// finds the companion file a few formats keep beside the raw one; empty when there is none to find. A read
 	// the stream fails fails the scan or the load, as it fails a scan of any other format. Never throws for a
 	// malformed file.
-	raw_scan_result scan_raw(reader& source, scan_intent intent, image_sink* thumbnail_sink, const std::filesystem::path& name = {});
-	raw_load_result load_raw(reader& source, image_sink& sink, bool prefer_preview, const std::filesystem::path& name = {});
+	raw_scan_result scan_raw(reader& source, scan_intent intent, image_sink* thumbnail_sink,
+	                         const std::filesystem::path& name = {});
+	raw_load_result load_raw(reader& source, image_sink& sink, bool prefer_preview,
+	                         const std::filesystem::path& name = {}, bool allow_16bit = false);
 }

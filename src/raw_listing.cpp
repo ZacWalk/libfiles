@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What LibRaw's parse of a raw file holds, listed by section for an inspector: identification,
 // lens, shooting and exposure, temperatures, environment, GPS, colour, sizes, thumbnails and each maker's
@@ -41,7 +41,7 @@ namespace libfiles::detail
 			{LIBRAW_MOUNT_Contax645, "Contax 645"},
 			{LIBRAW_MOUNT_FT, "4/3"},
 			{LIBRAW_MOUNT_mFT, "m4/3"},
-			{LIBRAW_MOUNT_Fuji_GF, "Fuji G"}, // Fujifilm G lenses, GFX cameras
+			{LIBRAW_MOUNT_Fuji_GF, "Fuji G"},  // Fujifilm G lenses, GFX cameras
 			{LIBRAW_MOUNT_Fuji_GX, "Fuji GX"}, // GX680
 			{LIBRAW_MOUNT_Fuji_X, "Fuji X"},
 			{LIBRAW_MOUNT_Hasselblad_H, "Hasselblad H"}, // Hn cameras, HC & HCD lenses
@@ -50,9 +50,9 @@ namespace libfiles::detail
 			{LIBRAW_MOUNT_Leica_M, "Leica M"},
 			{LIBRAW_MOUNT_Leica_R, "Leica R"},
 			{LIBRAW_MOUNT_Leica_S, "Leica S"},
-			{LIBRAW_MOUNT_Leica_SL, "Leica SL"}, // mounts on "L" throat
-			{LIBRAW_MOUNT_Leica_TL, "Leica TL"}, // mounts on "L" throat
-			{LIBRAW_MOUNT_LPS_L, "LPS L-mount"}, // throat, Leica / Panasonic / Sigma
+			{LIBRAW_MOUNT_Leica_SL, "Leica SL"},     // mounts on "L" throat
+			{LIBRAW_MOUNT_Leica_TL, "Leica TL"},     // mounts on "L" throat
+			{LIBRAW_MOUNT_LPS_L, "LPS L-mount"},     // throat, Leica / Panasonic / Sigma
 			{LIBRAW_MOUNT_Mamiya67, "Mamiya RZ/RB"}, // Mamiya RB67, RZ67
 			{LIBRAW_MOUNT_Mamiya645, "Mamiya 645"},
 			{LIBRAW_MOUNT_Minolta_A, "Sony/Minolta A"},
@@ -82,9 +82,9 @@ namespace libfiles::detail
 			{LIBRAW_FORMAT_1div1p7INCH, "1/1.7\""},
 			{LIBRAW_FORMAT_1INCH, "1\""},
 			{LIBRAW_FORMAT_FT, "4/3"},
-			{LIBRAW_FORMAT_APSC, "APS-C"}, // Canon: 22.3x14.9mm; Sony et al: 23.6-23.7x15.6mm
+			{LIBRAW_FORMAT_APSC, "APS-C"},          // Canon: 22.3x14.9mm; Sony et al: 23.6-23.7x15.6mm
 			{LIBRAW_FORMAT_Leica_DMR, "Leica DMR"}, // 26.4x 17.6mm
-			{LIBRAW_FORMAT_APSH, "APS-H"}, // Canon: 27.9x18.6mm
+			{LIBRAW_FORMAT_APSH, "APS-H"},          // Canon: 27.9x18.6mm
 			{LIBRAW_FORMAT_FF, "FF 35mm"},
 			{LIBRAW_FORMAT_CROP645, "645 crop 44x33mm"},
 			{LIBRAW_FORMAT_LeicaS, "Leica S 45x30mm"},
@@ -104,11 +104,9 @@ namespace libfiles::detail
 		};
 
 		constexpr id2hr_t NikonCrops[] = {
-			{0, "Uncropped"}, {1, "1.3x"}, {2, "DX"},
-			{3, "5:4"}, {4, "3:2"}, {6, "16:9"},
-			{8, "2.7x"}, {9, "DX Movie"}, {10, "1.3x Movie"},
-			{11, "FX Uncropped"}, {12, "DX Uncropped"}, {15, "1.5x Movie"},
-			{17, "1:1"},
+			{0, "Uncropped"},     {1, "1.3x"},        {2, "DX"},       {3, "5:4"},         {4, "3:2"},
+			{6, "16:9"},          {8, "2.7x"},        {9, "DX Movie"}, {10, "1.3x Movie"}, {11, "FX Uncropped"},
+			{12, "DX Uncropped"}, {15, "1.5x Movie"}, {17, "1:1"},
 		};
 
 		constexpr id2hr_t FujiCrops[] = {
@@ -125,6 +123,7 @@ namespace libfiles::detail
 		};
 
 		constexpr id2hr_t CanonRecordModes[] = {
+			// clang-format off
 			{LIBRAW_Canon_RecordMode_JPEG, "JPEG"},
 			{LIBRAW_Canon_RecordMode_CRW_THM, "CRW+THM"},
 			{LIBRAW_Canon_RecordMode_AVI_THM, "AVI+THM"},
@@ -140,6 +139,7 @@ namespace libfiles::detail
 			{LIBRAW_Canon_RecordMode_CR3_JPEG, "CR3+JPEG"},
 			{LIBRAW_Canon_RecordMode_HEIF, "HEIF"},
 			{LIBRAW_Canon_RecordMode_CR3_HEIF, "CR3+HEIF"},
+			// clang-format on
 		};
 
 		constexpr struct
@@ -213,28 +213,27 @@ namespace libfiles::detail
 			const int NumId;
 			std::string_view StrId;
 		} Fujifilm_DynamicRangeSettingToStr[] = {
+			// clang-format off
 			{0x0000, "Auto (100-400%)"},
 			{0x0001, "Manual"},
 			{0x0100, "Standard (100%)"},
 			{0x0200, "Wide1 (230%)"},
 			{0x0201, "Wide2 (400%)"},
 			{0x8000, "Film Simulation"},
+			// clang-format on
 		};
 
-		template <typename T, std::size_t N>
-		std::string_view find_name_by_id(const T (&table)[N], const int id)
+		template <typename T, std::size_t N> std::string_view find_name_by_id(const T (&table)[N], const int id)
 		{
 			for (const auto& entry : table)
-				if (entry.NumId == id)
-					return entry.StrId;
+				if (entry.NumId == id) return entry.StrId;
 			return {};
 		}
 
 		const id2hr_t* lookup_id2hr(const std::uint64_t id, const id2hr_t* table, const std::size_t entries)
 		{
 			for (std::size_t k = 0; k < entries; k++)
-				if (id == table[k].id)
-					return &table[k];
+				if (id == table[k].id) return &table[k];
 			return nullptr;
 		}
 
@@ -345,10 +344,8 @@ namespace libfiles::detail
 		void add_id2hr_metadata(std::vector<structure_row>& kv, const std::string_view name, const std::uint64_t id,
 		                        const id2hr_t (&table)[N])
 		{
-			if (const auto* entry = lookup_id2hr(id, table, N))
-				add_metadata(kv, name, entry->name);
-			else
-				add_metadata(kv, name, std::to_string(id));
+			if (const auto* entry = lookup_id2hr(id, table, N)) add_metadata(kv, name, entry->name);
+			else add_metadata(kv, name, std::to_string(id));
 		}
 
 		// The colour filter array LibRaw inferred, spelled from the 2x2 repeat of the filters mask.
@@ -424,18 +421,17 @@ namespace libfiles::detail
 
 		add_section(kv, "Identification");
 
-		if (!is_empty(C.OriginalRawFileName))
-			add_metadata(kv, "OriginalRawFileName", C.OriginalRawFileName);
+		if (!is_empty(C.OriginalRawFileName)) add_metadata(kv, "OriginalRawFileName", C.OriginalRawFileName);
 
 		add_metadata(kv, "Timestamp", std::to_string(P2.timestamp));
 		add_metadata(kv, "Camera",
-		             std::format("{} {} ID: 0x{:x}", std::string_view(P1.make), std::string_view(P1.model), mnLens.CamID));
+		             std::format("{} {} ID: 0x{:x}", std::string_view(P1.make), std::string_view(P1.model),
+		                         mnLens.CamID));
 		add_metadata(kv, "Normalized Make/Model",
 		             std::format("{}/{}", std::string_view(P1.normalized_make), std::string_view(P1.normalized_model)));
 		add_metadata(kv, "CamMaker ID", std::to_string(P1.maker_index));
 
-		if (!CamMakerName.empty())
-			add_metadata(kv, "CameraMaker", CamMakerName);
+		if (!CamMakerName.empty()) add_metadata(kv, "CameraMaker", CamMakerName);
 
 		if (!is_empty(C.UniqueCameraModel))
 		{
@@ -454,7 +450,7 @@ namespace libfiles::detail
 			add_metadata(kv, "RawDataUniqueID", C.RawDataUniqueID);
 		}
 
-		if (!is_empty(ShootingInfo.BodySerial) && std::strcmp(ShootingInfo.BodySerial, "0"))
+		if (!is_empty(ShootingInfo.BodySerial) && std::strcmp(ShootingInfo.BodySerial, "0") != 0)
 		{
 			add_metadata(kv, "Body#", trim(ShootingInfo.BodySerial));
 		}
@@ -498,12 +494,10 @@ namespace libfiles::detail
 		if (P1.dng_version)
 		{
 			std::string s;
-			for (int i = 24; i >= 0; i -= 8)
-				s += std::format("{}{}", P1.dng_version >> i & 255, i ? '.' : ' ');
+			for (int i = 24; i >= 0; i -= 8) s += std::format("{}{}", P1.dng_version >> i & 255, i ? '.' : ' ');
 
 			add_metadata(kv, "DNG Version", s);
 		}
-
 
 		add_section(kv, "Lens (Exif)");
 		add_metadata(kv, "MinFocal", std::format("{:0.1} mm", exifLens.MinFocal));
@@ -515,7 +509,6 @@ namespace libfiles::detail
 		add_metadata(kv, "FocalLengthIn35mmFormat", std::format("{} mm", exifLens.FocalLengthIn35mmFormat));
 		add_metadata(kv, "LensMake", exifLens.LensMake);
 		add_metadata(kv, "Lens", exifLens.Lens);
-
 
 		add_section(kv, "Shooting");
 		add_metadata(kv, "DriveMode", std::to_string(ShootingInfo.DriveMode));
@@ -544,21 +537,17 @@ namespace libfiles::detail
 
 		add_id2hr_metadata(kv, "CameraFormat", mnLens.CameraFormat, FormatNames);
 
-
 		if (!strnicmp_ascii(P1.make, "Nikon", 5) && Nikon.SensorHighSpeedCrop.cwidth)
 		{
 			if (const auto* Crop = lookup_id2hr(Nikon.HighSpeedCropFormat, NikonCrops, std::size(NikonCrops)))
 				add_metadata(kv, "Nikon crop", std::format("{}: {}", Nikon.HighSpeedCropFormat, Crop->name));
-			else
-				add_metadata(kv, "Nikon crop", std::to_string(Nikon.HighSpeedCropFormat));
+			else add_metadata(kv, "Nikon crop", std::to_string(Nikon.HighSpeedCropFormat));
 
-			add_metadata(kv, "Sensor used area", std::format(
-				             "{} x {}; crop from: {} x {} at top left pixel: ({}, {})",
-				             Nikon.SensorWidth, Nikon.SensorHeight,
-				             Nikon.SensorHighSpeedCrop.cwidth,
-				             Nikon.SensorHighSpeedCrop.cheight,
-				             Nikon.SensorHighSpeedCrop.cleft,
-				             Nikon.SensorHighSpeedCrop.ctop));
+			add_metadata(kv, "Sensor used area",
+			             std::format("{} x {}; crop from: {} x {} at top left pixel: ({}, {})", Nikon.SensorWidth,
+			                         Nikon.SensorHeight, Nikon.SensorHighSpeedCrop.cwidth,
+			                         Nikon.SensorHighSpeedCrop.cheight, Nikon.SensorHighSpeedCrop.cleft,
+			                         Nikon.SensorHighSpeedCrop.ctop));
 		}
 
 		add_id2hr_metadata(kv, "CameraMount", mnLens.CameraMount, MountNames);
@@ -577,18 +566,10 @@ namespace libfiles::detail
 
 		switch (mnLens.FocalType)
 		{
-		case LIBRAW_FT_UNDEFINED:
-			add_metadata(kv, "FocalType", "Undefined");
-			break;
-		case LIBRAW_FT_PRIME_LENS:
-			add_metadata(kv, "FocalType", "Prime lens");
-			break;
-		case LIBRAW_FT_ZOOM_LENS:
-			add_metadata(kv, "FocalType", "Zoom lens");
-			break;
-		default:
-			add_metadata(kv, "FocalType", std::to_string(mnLens.FocalType));
-			break;
+		case LIBRAW_FT_UNDEFINED: add_metadata(kv, "FocalType", "Undefined"); break;
+		case LIBRAW_FT_PRIME_LENS: add_metadata(kv, "FocalType", "Prime lens"); break;
+		case LIBRAW_FT_ZOOM_LENS: add_metadata(kv, "FocalType", "Zoom lens"); break;
+		default: add_metadata(kv, "FocalType", std::to_string(mnLens.FocalType)); break;
 		}
 
 		add_metadata(kv, "LensFeatures_pre", mnLens.LensFeatures_pre);
@@ -627,36 +608,26 @@ namespace libfiles::detail
 			add_metadata(kv, "MinFocusDistance", std::format("{:0.2} m", mnLens.MinFocusDistance));
 		if (mnLens.FocusRangeIndex > 0.f)
 			add_metadata(kv, "FocusRangeIndex", std::format("{:0.2}", mnLens.FocusRangeIndex));
-		if (mnLens.FocalUnits)
-			add_metadata(kv, "FocalUnits", std::format("{} per mm", mnLens.FocalUnits));
+		if (mnLens.FocalUnits) add_metadata(kv, "FocalUnits", std::format("{} per mm", mnLens.FocalUnits));
 
 		add_section(kv, "Exposure");
 		add_metadata(kv, "ISO speed", std::to_string(static_cast<int>(P2.iso_speed)));
-		if (P3.real_ISO > 0.1f)
-			add_metadata(kv, "real ISO speed", std::to_string(static_cast<int>(P3.real_ISO)));
+		if (P3.real_ISO > 0.1f) add_metadata(kv, "real ISO speed", std::to_string(static_cast<int>(P3.real_ISO)));
 
-		if (P2.shutter > 0 && P2.shutter < 1)
-			add_metadata(kv, "Shutter", std::format("1/{:0.1}", 1.0f / P2.shutter));
-		else if (P2.shutter >= 1)
-			add_metadata(kv, "Shutter", std::format("{:0.1} sec", P2.shutter));
-		else /* negative*/
-			add_metadata(kv, "Shutter", "negative value");
+		if (P2.shutter > 0 && P2.shutter < 1) add_metadata(kv, "Shutter", std::format("1/{:0.1}", 1.0f / P2.shutter));
+		else if (P2.shutter >= 1) add_metadata(kv, "Shutter", std::format("{:0.1} sec", P2.shutter));
+		else /* negative*/ add_metadata(kv, "Shutter", "negative value");
 
 		add_metadata(kv, "Aperture", std::format("f/{:0.1}", P2.aperture));
 		add_metadata(kv, "Focal length", std::format("{:0.1} mm", P2.focal_len));
 
-		if (P3.exifExposureIndex > 0.f)
-			add_metadata(kv, "Exposure index", std::format("{:0.1}", P3.exifExposureIndex));
+		if (P3.exifExposureIndex > 0.f) add_metadata(kv, "Exposure index", std::format("{:0.1}", P3.exifExposureIndex));
 		if (P3.ExposureCalibrationShift != 0.f)
 			add_metadata(kv, "Exposure calibration shift", std::format("{:0.3} EV", P3.ExposureCalibrationShift));
-		if (P3.FlashEC != 0.f)
-			add_metadata(kv, "Flash exposure compensation", std::format("{:0.2} EV", P3.FlashEC));
-		if (C.flash_used != 0.f)
-			add_metadata(kv, "Flash used", std::format("{:0.3}", C.flash_used));
-		if (C.canon_ev != 0.f)
-			add_metadata(kv, "Canon EV", std::format("{:0.3}", C.canon_ev));
-		if (P3.afcount > 0)
-			add_metadata(kv, "Autofocus records", std::to_string(P3.afcount));
+		if (P3.FlashEC != 0.f) add_metadata(kv, "Flash exposure compensation", std::format("{:0.2} EV", P3.FlashEC));
+		if (C.flash_used != 0.f) add_metadata(kv, "Flash used", std::format("{:0.3}", C.flash_used));
+		if (C.canon_ev != 0.f) add_metadata(kv, "Canon EV", std::format("{:0.3}", C.canon_ev));
+		if (P3.afcount > 0) add_metadata(kv, "Autofocus records", std::to_string(P3.afcount));
 
 		add_section(kv, "Temperature");
 
@@ -674,19 +645,14 @@ namespace libfiles::detail
 			add_metadata(kv, "Ambient temperature", std::format("{:.2f}°C", P3.AmbientTemperature));
 		if (P3.BatteryTemperature > -273.15f)
 			add_metadata(kv, "Battery temperature", std::format("{:.2f}°C", P3.BatteryTemperature));
-		if (P3.FlashGN > 1.0f)
-			add_metadata(kv, "Flash Guide Number", std::format("{:.2f}", P3.FlashGN));
+		if (P3.FlashGN > 1.0f) add_metadata(kv, "Flash Guide Number", std::format("{:.2f}", P3.FlashGN));
 
 		add_section(kv, "Environment");
 
-		if (P3.exifHumidity > 0.f)
-			add_metadata(kv, "Humidity", std::format("{:.1f} %", P3.exifHumidity));
-		if (P3.exifPressure > 0.f)
-			add_metadata(kv, "Pressure", std::format("{:.1f} hPa", P3.exifPressure));
-		if (P3.exifWaterDepth != 0.f)
-			add_metadata(kv, "Water depth", std::format("{:.2f} m", P3.exifWaterDepth));
-		if (P3.exifAcceleration != 0.f)
-			add_metadata(kv, "Acceleration", std::format("{:.3f}", P3.exifAcceleration));
+		if (P3.exifHumidity > 0.f) add_metadata(kv, "Humidity", std::format("{:.1f} %", P3.exifHumidity));
+		if (P3.exifPressure > 0.f) add_metadata(kv, "Pressure", std::format("{:.1f} hPa", P3.exifPressure));
+		if (P3.exifWaterDepth != 0.f) add_metadata(kv, "Water depth", std::format("{:.2f} m", P3.exifWaterDepth));
+		if (P3.exifAcceleration != 0.f) add_metadata(kv, "Acceleration", std::format("{:.3f}", P3.exifAcceleration));
 		if (P3.exifCameraElevationAngle != 0.f)
 			add_metadata(kv, "Camera elevation angle", std::format("{:.2f}°", P3.exifCameraElevationAngle));
 
@@ -695,13 +661,16 @@ namespace libfiles::detail
 		if (raw_gps_fix(P2.parsed_gps))
 		{
 			const auto& G = P2.parsed_gps;
-			add_metadata(kv, "Latitude", std::format("{:.0f}° {:.0f}' {:.2f}\" {}", G.latitude[0], G.latitude[1],
-			                                         G.latitude[2], G.latref ? G.latref : '?'));
-			add_metadata(kv, "Longitude", std::format("{:.0f}° {:.0f}' {:.2f}\" {}", G.longitude[0], G.longitude[1],
-			                                          G.longitude[2], G.longref ? G.longref : '?'));
+			add_metadata(kv, "Latitude",
+			             std::format("{:.0f}° {:.0f}' {:.2f}\" {}", G.latitude[0], G.latitude[1], G.latitude[2],
+			                         G.latref ? G.latref : '?'));
+			add_metadata(kv, "Longitude",
+			             std::format("{:.0f}° {:.0f}' {:.2f}\" {}", G.longitude[0], G.longitude[1], G.longitude[2],
+			                         G.longref ? G.longref : '?'));
 			add_metadata(kv, "Altitude", std::format("{:.2f} m{}", G.altitude, G.altref ? " (below sea level)" : ""));
-			add_metadata(kv, "GPS timestamp", std::format("{:02.0f}:{:02.0f}:{:05.2f} UTC", G.gpstimestamp[0],
-			                                              G.gpstimestamp[1], G.gpstimestamp[2]));
+			add_metadata(kv, "GPS timestamp",
+			             std::format("{:02.0f}:{:02.0f}:{:05.2f} UTC", G.gpstimestamp[0], G.gpstimestamp[1],
+			                         G.gpstimestamp[2]));
 
 			// 'A' is an active fix; 'V' means the receiver reported the position as unreliable.
 			if (G.gpsstatus)
@@ -710,10 +679,8 @@ namespace libfiles::detail
 
 		add_section(kv, "Color profile");
 
-		if (C.profile)
-			add_metadata(kv, "Embedded ICC profile", std::format("yes, {} bytes", C.profile_length));
-		else
-			add_metadata(kv, "Embedded ICC profile", "no");
+		if (C.profile) add_metadata(kv, "Embedded ICC profile", std::format("yes, {} bytes", C.profile_length));
+		else add_metadata(kv, "Embedded ICC profile", "no");
 
 		if (C.dng_levels.baseline_exposure > -999.f)
 			add_metadata(kv, "Baseline exposure", std::format("{:.3f}", C.dng_levels.baseline_exposure));
@@ -723,11 +690,9 @@ namespace libfiles::detail
 
 		add_section(kv, "Fujifilm");
 
-		if (Fuji.DriveMode != -1)
-			add_id2hr_metadata(kv, "Fuji Drive Mode", Fuji.DriveMode, FujiDriveModes);
+		if (Fuji.DriveMode != -1) add_id2hr_metadata(kv, "Fuji Drive Mode", Fuji.DriveMode, FujiDriveModes);
 
-		if (Fuji.CropMode)
-			add_id2hr_metadata(kv, "Fuji Crop Mode", Fuji.CropMode, FujiCrops);
+		if (Fuji.CropMode) add_id2hr_metadata(kv, "Fuji Crop Mode", Fuji.CropMode, FujiCrops);
 
 		if (Fuji.WB_Preset != 0xffff)
 			add_metadata(kv, "Fuji WB preset", std::format("0x{:03x}", Fuji.WB_Preset),
@@ -741,8 +706,7 @@ namespace libfiles::detail
 			add_metadata(kv, "Fuji Film Mode (0x1401)", std::format("0x{:03x}", Fuji.FilmMode),
 			             find_name_by_id(Fujifilm_FilmModeToStr, Fuji.FilmMode));
 		if (Fuji.DynamicRangeSetting != 0xffff)
-			add_metadata(kv, "Fuji Dynamic Range Setting (0x1402)",
-			             std::format("0x{:04x}", Fuji.DynamicRangeSetting),
+			add_metadata(kv, "Fuji Dynamic Range Setting (0x1402)", std::format("0x{:04x}", Fuji.DynamicRangeSetting),
 			             find_name_by_id(Fujifilm_DynamicRangeSettingToStr, Fuji.DynamicRangeSetting));
 		if (Fuji.DevelopmentDynamicRange != 0xffff)
 			add_metadata(kv, "Fuji Development Dynamic Range (0x1403)", std::to_string(Fuji.DevelopmentDynamicRange));
@@ -752,21 +716,17 @@ namespace libfiles::detail
 			add_metadata(kv, "Fuji Dynamic Range priority (0x1443)", std::format("{}", Fuji.DRangePriority),
 			             Fuji.DRangePriority ? "Fixed" : "Auto");
 		if (Fuji.DRangePriorityAuto)
-			add_metadata(kv, "Fuji Dynamic Range priority Auto (0x1444)",
-			             std::format("{}", Fuji.DRangePriorityAuto),
+			add_metadata(kv, "Fuji Dynamic Range priority Auto (0x1444)", std::format("{}", Fuji.DRangePriorityAuto),
 			             Fuji.DRangePriorityAuto == 1 ? "Weak" : "Strong");
 		if (Fuji.DRangePriorityFixed)
-			add_metadata(kv, "Fuji Dynamic Range priority Fixed (0x1445)",
-			             std::format("{}", Fuji.DRangePriorityFixed),
+			add_metadata(kv, "Fuji Dynamic Range priority Fixed (0x1445)", std::format("{}", Fuji.DRangePriorityFixed),
 			             Fuji.DRangePriorityFixed == 1 ? "Weak" : "Strong");
 
 		add_section(kv, "Sizes");
 
-		if (S.pixel_aspect != 1)
-			add_metadata(kv, "Pixel Aspect Ratio", std::format("{:0.6}", S.pixel_aspect));
+		if (S.pixel_aspect != 1) add_metadata(kv, "Pixel Aspect Ratio", std::format("{:0.6}", S.pixel_aspect));
 
-		if (T.tlength)
-			add_metadata(kv, "Thumb size", std::format("{:4} x {}", T.twidth, T.theight));
+		if (T.tlength) add_metadata(kv, "Thumb size", std::format("{:4} x {}", T.twidth, T.theight));
 
 		add_metadata(kv, "Full size", std::format("{:4} x {}", S.raw_width, S.raw_height));
 
@@ -774,10 +734,8 @@ namespace libfiles::detail
 		{
 			auto s = std::format("{:4} x {}", S.raw_inset_crops[0].cwidth, S.raw_inset_crops[0].cheight);
 
-			if (S.raw_inset_crops[0].cleft != 0xffff)
-				s += std::format(" left {}", S.raw_inset_crops[0].cleft);
-			if (S.raw_inset_crops[0].ctop != 0xffff)
-				s += std::format(" top {}", S.raw_inset_crops[0].ctop);
+			if (S.raw_inset_crops[0].cleft != 0xffff) s += std::format(" left {}", S.raw_inset_crops[0].cleft);
+			if (S.raw_inset_crops[0].ctop != 0xffff) s += std::format(" top {}", S.raw_inset_crops[0].ctop);
 
 			add_metadata(kv, "Raw inset, width x height", s);
 		}
@@ -788,10 +746,8 @@ namespace libfiles::detail
 
 		if (S.top_margin || S.left_margin)
 			add_metadata(kv, "Active area margin", std::format("left {}, top {}", S.left_margin, S.top_margin));
-		if (S.raw_pitch)
-			add_metadata(kv, "Raw row pitch", std::format("{} bytes", S.raw_pitch));
-		if (S.raw_aspect)
-			add_metadata(kv, "Raw aspect", std::to_string(S.raw_aspect));
+		if (S.raw_pitch) add_metadata(kv, "Raw row pitch", std::format("{} bytes", S.raw_pitch));
+		if (S.raw_aspect) add_metadata(kv, "Raw aspect", std::to_string(S.raw_aspect));
 
 		if (S.raw_inset_crops[1].cwidth)
 		{
@@ -801,17 +757,17 @@ namespace libfiles::detail
 
 		if (C.dng_levels.default_crop[2] || C.dng_levels.default_crop[3])
 		{
-			add_metadata(kv, "DNG default crop", std::format("{} x {} at ({}, {})", C.dng_levels.default_crop[2],
-			                                                 C.dng_levels.default_crop[3], C.dng_levels.default_crop[0],
-			                                                 C.dng_levels.default_crop[1]));
+			add_metadata(kv, "DNG default crop",
+			             std::format("{} x {} at ({}, {})", C.dng_levels.default_crop[2], C.dng_levels.default_crop[3],
+			                         C.dng_levels.default_crop[0], C.dng_levels.default_crop[1]));
 		}
 
 		add_section(kv, "Thumbnails");
 
 		if (T.tlength)
 		{
-			add_metadata(kv, "Preferred thumbnail", std::format("{} x {}, {} bytes, {} colors", T.twidth, T.theight,
-			                                                    T.tlength, T.tcolors));
+			add_metadata(kv, "Preferred thumbnail",
+			             std::format("{} x {}, {} bytes, {} colors", T.twidth, T.theight, T.tlength, T.tcolors));
 		}
 
 		for (auto i = 0; i < data.thumbs_list.thumbcount && i < LIBRAW_THUMBNAIL_MAXCOUNT; ++i)
@@ -823,19 +779,14 @@ namespace libfiles::detail
 
 		add_section(kv, "Canon");
 
-		if (Canon.RecordMode)
-			add_id2hr_metadata(kv, "Canon record mode", Canon.RecordMode, CanonRecordModes);
-		if (Canon.SensorWidth)
-			add_metadata(kv, "SensorWidth", std::to_string(Canon.SensorWidth));
-		if (Canon.SensorHeight)
-			add_metadata(kv, "SensorHeight", std::to_string(Canon.SensorHeight));
+		if (Canon.RecordMode) add_id2hr_metadata(kv, "Canon record mode", Canon.RecordMode, CanonRecordModes);
+		if (Canon.SensorWidth) add_metadata(kv, "SensorWidth", std::to_string(Canon.SensorWidth));
+		if (Canon.SensorHeight) add_metadata(kv, "SensorHeight", std::to_string(Canon.SensorHeight));
 
 		add_section(kv, "Hasselblad");
 
-		if (Hasselblad.BaseISO)
-			add_metadata(kv, "Hasselblad base ISO", std::to_string(Hasselblad.BaseISO));
-		if (Hasselblad.Gain)
-			add_metadata(kv, "Hasselblad gain", fixed(Hasselblad.Gain, 3));
+		if (Hasselblad.BaseISO) add_metadata(kv, "Hasselblad base ISO", std::to_string(Hasselblad.BaseISO));
+		if (Hasselblad.Gain) add_metadata(kv, "Hasselblad gain", fixed(Hasselblad.Gain, 3));
 
 		add_section(kv, "Raw color data");
 		add_metadata(kv, "Raw colors", std::to_string(P1.colors));
@@ -846,36 +797,36 @@ namespace libfiles::detail
 			add_metadata(kv, "CFA pattern", cfa);
 		}
 
-		if (C.raw_bps)
-			add_metadata(kv, "Bits per raw pixel", std::to_string(C.raw_bps));
-		if (C.maximum)
-			add_metadata(kv, "White level", std::to_string(C.maximum));
-		if (C.data_maximum)
-			add_metadata(kv, "Highest sampled value", std::to_string(C.data_maximum));
+		if (C.raw_bps) add_metadata(kv, "Bits per raw pixel", std::to_string(C.raw_bps));
+		if (C.maximum) add_metadata(kv, "White level", std::to_string(C.maximum));
+		if (C.data_maximum) add_metadata(kv, "Highest sampled value", std::to_string(C.data_maximum));
 		if (C.linear_max[0])
 		{
-			add_metadata(kv, "Linear maximum", std::format("{} {} {} {}", C.linear_max[0], C.linear_max[1],
-			                                               C.linear_max[2], C.linear_max[3]));
+			add_metadata(kv, "Linear maximum",
+			             std::format("{} {} {} {}", C.linear_max[0], C.linear_max[1], C.linear_max[2],
+			                         C.linear_max[3]));
 		}
 
 		if (C.cam_mul[0] > 0.f)
 		{
-			add_metadata(kv, "As shot white balance", std::format("{:0.4} {:0.4} {:0.4} {:0.4}", C.cam_mul[0],
-			                                                      C.cam_mul[1], C.cam_mul[2], C.cam_mul[3]));
+			add_metadata(kv, "As shot white balance",
+			             std::format("{:0.4} {:0.4} {:0.4} {:0.4}", C.cam_mul[0], C.cam_mul[1], C.cam_mul[2],
+			                         C.cam_mul[3]));
 			add_metadata(kv, "White balance applied", C.as_shot_wb_applied ? "yes" : "no");
 		}
 
 		if (C.pre_mul[0] > 0.f)
 		{
-			add_metadata(kv, "Camera daylight multipliers", std::format("{:0.4} {:0.4} {:0.4} {:0.4}", C.pre_mul[0],
-			                                                            C.pre_mul[1], C.pre_mul[2], C.pre_mul[3]));
+			add_metadata(kv, "Camera daylight multipliers",
+			             std::format("{:0.4} {:0.4} {:0.4} {:0.4}", C.pre_mul[0], C.pre_mul[1], C.pre_mul[2],
+			                         C.pre_mul[3]));
 		}
 
 		if (C.dng_levels.asshotneutral[0] > 0.f)
 		{
-			add_metadata(kv, "DNG AsShotNeutral", std::format("{:0.4} {:0.4} {:0.4}", C.dng_levels.asshotneutral[0],
-			                                                  C.dng_levels.asshotneutral[1],
-			                                                  C.dng_levels.asshotneutral[2]));
+			add_metadata(kv, "DNG AsShotNeutral",
+			             std::format("{:0.4} {:0.4} {:0.4}", C.dng_levels.asshotneutral[0],
+			                         C.dng_levels.asshotneutral[1], C.dng_levels.asshotneutral[2]));
 		}
 
 		if (C.dng_levels.LinearResponseLimit != 0.f && C.dng_levels.LinearResponseLimit != 1.f)
@@ -886,11 +837,9 @@ namespace libfiles::detail
 
 		if (Canon.ChannelBlackLevel[0])
 		{
-			add_metadata(kv, "Canon makernotes, ChannelBlackLevel", std::format("{} {} {} {}",
-			                                                                    Canon.ChannelBlackLevel[0],
-			                                                                    Canon.ChannelBlackLevel[1],
-			                                                                    Canon.ChannelBlackLevel[2],
-			                                                                    Canon.ChannelBlackLevel[3]));
+			add_metadata(kv, "Canon makernotes, ChannelBlackLevel",
+			             std::format("{} {} {} {}", Canon.ChannelBlackLevel[0], Canon.ChannelBlackLevel[1],
+			                         Canon.ChannelBlackLevel[2], Canon.ChannelBlackLevel[3]));
 		}
 
 		if (C.black)
@@ -899,7 +848,6 @@ namespace libfiles::detail
 		}
 
 		add_metadata(kv, "Color space (makernotes)", std::format("{}, {}", P3.ColorSpace, ColorSpaceName));
-
 
 		add_section(kv, "Sony");
 
@@ -911,8 +859,9 @@ namespace libfiles::detail
 
 			if (Sony.numInPixelShiftGroup)
 			{
-				add_metadata(kv, "shot#", std::format("{} (starts at 1) of total {}", Sony.numInPixelShiftGroup,
-				                                      Sony.nShotsInPixelShiftGroup));
+				add_metadata(kv, "shot#",
+				             std::format("{} (starts at 1) of total {}", Sony.numInPixelShiftGroup,
+				                         Sony.nShotsInPixelShiftGroup));
 			}
 			else
 			{
@@ -923,8 +872,9 @@ namespace libfiles::detail
 
 		if (Sony.Sony0x9400_version)
 		{
-			add_metadata(kv, "SONY Sequence data", std::format("tag 0x9400 version '{:x}' ReleaseMode2: {}",
-			                                                   Sony.Sony0x9400_version, Sony.Sony0x9400_ReleaseMode2));
+			add_metadata(kv, "SONY Sequence data",
+			             std::format("tag 0x9400 version '{:x}' ReleaseMode2: {}", Sony.Sony0x9400_version,
+			                         Sony.Sony0x9400_ReleaseMode2));
 			add_metadata(kv, "SequenceImageNumber",
 			             std::format("{} (starts at zero)", Sony.Sony0x9400_SequenceImageNumber));
 			add_metadata(kv, "SequenceLength1", std::format("{} shot(s)", Sony.Sony0x9400_SequenceLength1));

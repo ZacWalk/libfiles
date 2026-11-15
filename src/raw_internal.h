@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: LibRaw as libfiles' raw code includes it, and what that code shares: the listing of what LibRaw
 // parsed, output brightness conversion, and the rule a GPS position it parsed must meet.
@@ -36,6 +36,13 @@ namespace libfiles::detail
 {
 	// LibRaw truncates output brightness fractions; non-normal values remain zero and casts are bounded.
 	int raw_output_integer(float value);
+
+	// A development's highlights: linear light x, in units of the auto-brightness white, to the light shown,
+	// 0 to 1. Below four fifths of white it is x, as LibRaw's own developer shows it; above, the light up to
+	// the brightest the image holds, x_max, rolls off into white along u / (1 + au), which meets the line with
+	// its slope and reaches white at x_max - where LibRaw's developer clips its top percent. An image with
+	// nothing past white is shown as LibRaw shows it.
+	double raw_highlight_rolloff(double x, double x_max);
 
 	// LibRaw's flip, 0 to 7, as the orientation it describes, numbered as EXIF numbers them; 1 for any
 	// other.

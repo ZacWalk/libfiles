@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning AIFF and AIFF-C files: the COMM chunk's channels, frames, sample size and rate, and an
 // AIFF-C's compression; the text chunks and an ID3 chunk as tags; and the XMP packet Adobe's toolkit keeps
@@ -27,9 +27,9 @@ namespace libfiles::detail
 		constexpr std::uint32_t id_of(const char (&s)[5])
 		{
 			return static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[0])) << 24 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 16 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 8 |
-				static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3]));
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[1])) << 16 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[2])) << 8 |
+			       static_cast<std::uint32_t>(static_cast<std::uint8_t>(s[3]));
 		}
 
 		constexpr auto aifc_type = id_of("AIFC");
@@ -86,8 +86,8 @@ namespace libfiles::detail
 				c.float_samples = float_samples;
 			};
 
-			const auto packed = [&c](const std::string_view codec, const std::uint32_t frames, const std::uint32_t bytes,
-			                         const std::uint32_t bytes_per_channel)
+			const auto packed = [&c](const std::string_view codec, const std::uint32_t frames,
+			                         const std::uint32_t bytes, const std::uint32_t bytes_per_channel)
 			{
 				c.codec = codec;
 				c.frames_per_packet = frames;
@@ -100,47 +100,27 @@ namespace libfiles::detail
 			case id_of("NONE"):
 			case id_of("TWOS"):
 			case id_of("SOWT"):
-			case id_of("RAW "): pcm(0, false);
-				break;
-			case id_of("IN24"): pcm(24, false);
-				break;
-			case id_of("IN32"): pcm(32, false);
-				break;
-			case id_of("FL32"): pcm(32, true);
-				break;
-			case id_of("FL64"): pcm(64, true);
-				break;
+			case id_of("RAW "): pcm(0, false); break;
+			case id_of("IN24"): pcm(24, false); break;
+			case id_of("IN32"): pcm(32, false); break;
+			case id_of("FL32"): pcm(32, true); break;
+			case id_of("FL64"): pcm(64, true); break;
 			// G.711 is named as WAVE names it, so a WAV and an AIFF of it name the same codec.
-			case id_of("ULAW"): packed(codec_from_wave_tag(0x0007), 1, 0, 1);
-				break;
-			case id_of("ALAW"): packed(codec_from_wave_tag(0x0006), 1, 0, 1);
-				break;
-			case id_of("IMA4"): packed("adpcm_ima_qt", 64, 0, 34);
-				break;
-			case id_of("MAC3"): packed("mace3", 6, 0, 2);
-				break;
-			case id_of("MAC6"): packed("mace6", 6, 0, 1);
-				break;
-			case id_of("GSM "): packed("gsm", 160, 33, 0);
-				break;
-			case id_of("QCLP"): packed("qcelp", 160, 35, 0);
-				break;
-			case id_of("QDM2"): packed("qdm2", 0, 0, 0);
-				break;
-			case id_of("QDMC"): packed("qdmc", 0, 0, 0);
-				break;
-			case id_of("SDX2"): packed("sdx2_dpcm", 1, 0, 1);
-				break;
-			case id_of("CBD2"): packed("cbd2_dpcm", 1, 0, 1);
-				break;
-			case id_of("G722"): packed("adpcm_g722", 2, 0, 1);
-				break;
-			case id_of("ADP4"): packed("adpcm_ima_ws", 2, 0, 1);
-				break;
-			case id_of("VAPC"): packed("adpcm_n64", 16, 9, 0);
-				break;
-			default: c.frames_per_packet = 0;
-				break;
+			case id_of("ULAW"): packed(codec_from_wave_tag(0x0007), 1, 0, 1); break;
+			case id_of("ALAW"): packed(codec_from_wave_tag(0x0006), 1, 0, 1); break;
+			case id_of("IMA4"): packed("adpcm_ima_qt", 64, 0, 34); break;
+			case id_of("MAC3"): packed("mace3", 6, 0, 2); break;
+			case id_of("MAC6"): packed("mace6", 6, 0, 1); break;
+			case id_of("GSM "): packed("gsm", 160, 33, 0); break;
+			case id_of("QCLP"): packed("qcelp", 160, 35, 0); break;
+			case id_of("QDM2"): packed("qdm2", 0, 0, 0); break;
+			case id_of("QDMC"): packed("qdmc", 0, 0, 0); break;
+			case id_of("SDX2"): packed("sdx2_dpcm", 1, 0, 1); break;
+			case id_of("CBD2"): packed("cbd2_dpcm", 1, 0, 1); break;
+			case id_of("G722"): packed("adpcm_g722", 2, 0, 1); break;
+			case id_of("ADP4"): packed("adpcm_ima_ws", 2, 0, 1); break;
+			case id_of("VAPC"): packed("adpcm_n64", 16, 9, 0); break;
+			default: c.frames_per_packet = 0; break;
 			}
 
 			return c;
@@ -154,7 +134,8 @@ namespace libfiles::detail
 			const auto significand = std::uint64_t{load_be32(p + 2)} << 32 | load_be32(p + 6);
 			if (sign_exponent & 0x8000) return 0;
 
-			const auto rate = std::ldexp(static_cast<double>(significand), static_cast<int>(sign_exponent & 0x7FFF) - 16383 - 63);
+			const auto rate = std::ldexp(static_cast<double>(significand),
+			                             static_cast<int>(sign_exponent & 0x7FFF) - 16383 - 63);
 			if (!(rate >= 0.5) || rate >= 4294967295.5) return 0;
 			return static_cast<std::uint32_t>(std::floor(rate + 0.5));
 		}
@@ -249,20 +230,21 @@ namespace libfiles::detail
 			const auto available = std::min<std::uint64_t>(c.size, end - payload);
 			const auto text = [&]
 			{
-				return c.size > max_text ? std::string() : text_from_unknown(r.read(payload, static_cast<std::size_t>(available)));
+				return c.size > max_text ? std::string()
+				                         : text_from_unknown(r.read(payload, static_cast<std::size_t>(available)));
 			};
 
 			switch (c.id)
 			{
 			case comm_id:
 				// Its fields, an AIFF-C's compression type and the name after it, a Pascal string.
-				if (comm.empty()) comm = r.read(payload, static_cast<std::size_t>(std::min<std::uint64_t>(available, 18 + 4 + 256)));
+				if (comm.empty())
+					comm = r.read(payload, static_cast<std::size_t>(std::min<std::uint64_t>(available, 18 + 4 + 256)));
 				break;
 			case name_id:
 			case auth_id:
 			case copyright_id:
-			case anno_id: add_tag(out, tag_family::aiff, box_type_text(c.id), text());
-				break;
+			case anno_id: add_tag(out, tag_family::aiff, box_type_text(c.id), text()); break;
 			case id3_id:
 			case id3_lower_id:
 				// A damaged tag keeps what was read of it.
@@ -309,7 +291,8 @@ namespace libfiles::detail
 
 		if (c.pcm)
 		{
-			if (c.bits == 0) c.bits = sample_size >= 1 && sample_size <= 32 ? static_cast<std::uint8_t>(sample_size) : 0;
+			if (c.bits == 0)
+				c.bits = sample_size >= 1 && sample_size <= 32 ? static_cast<std::uint8_t>(sample_size) : 0;
 			if (c.bits == 0) c.codec.clear();
 			a.bits_per_sample = c.bits;
 			a.float_samples = c.float_samples;
@@ -321,7 +304,8 @@ namespace libfiles::detail
 		if (c.frames_per_packet != 0 && a.sample_rate != 0)
 		{
 			stream.duration = static_cast<double>(frames) * c.frames_per_packet / a.sample_rate;
-			const auto packet_bytes = std::uint64_t{c.packet_bytes} + std::uint64_t{c.packet_bytes_per_channel} * a.channels;
+			const auto packet_bytes = std::uint64_t{c.packet_bytes} +
+			                          std::uint64_t{c.packet_bytes_per_channel} * a.channels;
 			stream.bit_rate = packet_bytes * 8 * a.sample_rate / c.frames_per_packet;
 		}
 
@@ -339,7 +323,9 @@ namespace libfiles::detail
 		const auto& s = out.streams.front();
 		add_structure_section(rows, "Summary", "aiff.summary", true);
 		add_structure_row(rows, "File size", std::format("{} bytes", size));
-		add_structure_row(rows, "Form", std::format("{}, {} bytes{}", box_type_text(form_type), form_size, form_cut ? ", cut short" : ""));
+		add_structure_row(rows, "Form",
+		                  std::format("{}, {} bytes{}", box_type_text(form_type), form_size,
+		                              form_cut ? ", cut short" : ""));
 		add_structure_row(rows, "Channels", std::to_string(s.audio.channels));
 		add_structure_row(rows, "Sample frames", std::to_string(frames));
 		add_structure_row(rows, "Sample size", std::format("{} bits", sample_size));
@@ -349,8 +335,11 @@ namespace libfiles::detail
 		{
 			// The compression's name follows its type, as a Pascal string.
 			std::string name;
-			if (comm.size() > 22) name = text_from_unknown(std::span(comm).subspan(23, std::min<std::size_t>(comm[22], comm.size() - 23)));
-			add_structure_row(rows, "Compression", name.empty() ? box_type_text(type) : std::format("{}, {}", box_type_text(type), name));
+			if (comm.size() > 22)
+				name = text_from_unknown(
+					std::span(comm).subspan(23, std::min<std::size_t>(comm[22], comm.size() - 23)));
+			add_structure_row(rows, "Compression",
+			                  name.empty() ? box_type_text(type) : std::format("{}, {}", box_type_text(type), name));
 		}
 
 		add_structure_section(rows, "Chunks", "aiff.chunks");
@@ -368,7 +357,8 @@ namespace libfiles::detail
 
 			if (chunk.id == ssnd_id && !chunk.cut && chunk.size >= 8)
 			{
-				value = std::format("sound data, {}, data offset {}, block size {}", value, r.be32(chunk.start + 8), r.be32(chunk.start + 12));
+				value = std::format("sound data, {}, data offset {}, block size {}", value, r.be32(chunk.start + 8),
+				                    r.be32(chunk.start + 12));
 			}
 
 			if (chunk.cut) value += ", cut short";

@@ -1,5 +1,5 @@
 // Copyright (C) 1998-2026 Zac Walker.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: PCX packed indices and planar RGB, moved from ImageWalker's native reader.
 
@@ -13,20 +13,17 @@ namespace libfiles::detail
 	void document_pcx(document_decode& decode)
 	{
 		auto& input = decode.input;
-		if (input.size() < 128 || input.u8(0) != 0x0a || input.u8(2) != 1)
-			decode.fail("invalid PCX header");
+		if (input.size() < 128 || input.u8(0) != 0x0a || input.u8(2) != 1) decode.fail("invalid PCX header");
 
-		const auto width = 1 + static_cast<std::int16_t>(input.le16(8)) -
-			static_cast<std::int16_t>(input.le16(4));
-		const auto height = 1 + static_cast<std::int16_t>(input.le16(10)) -
-			static_cast<std::int16_t>(input.le16(6));
+		const auto width = 1 + static_cast<std::int16_t>(input.le16(8)) - static_cast<std::int16_t>(input.le16(4));
+		const auto height = 1 + static_cast<std::int16_t>(input.le16(10)) - static_cast<std::int16_t>(input.le16(6));
 		const auto bits = input.u8(3);
 		const auto planes = input.u8(65);
 		const auto bytes_per_line = static_cast<std::int16_t>(input.le16(66));
 		const bool true_color = planes == 3 && bits == 8;
 		const bool indexed = planes == 1 && (bits == 1 || bits == 2 || bits == 4 || bits == 8);
 		if (width <= 0 || height <= 0 || bytes_per_line <= 0 || (!true_color && !indexed) ||
-			bytes_per_line < (width * bits + 7) / 8)
+		    bytes_per_line < (width * bits + 7) / 8)
 			decode.fail("invalid PCX dimensions or sample layout");
 
 		const auto format = true_color ? document_storage::bgr24 : storage_from_bits(bits);
@@ -77,8 +74,9 @@ namespace libfiles::detail
 			if (available == 0)
 			{
 				if (position >= end) decode.fail("the PCX pixels are incomplete");
-				const auto bytes = input.view(position, static_cast<std::size_t>(
-					std::min<std::uint64_t>(end - position, reader::default_block_size)));
+				const auto bytes = input.view(position,
+				                              static_cast<std::size_t>(
+												  std::min<std::uint64_t>(end - position, reader::default_block_size)));
 				next = bytes.data();
 				available = bytes.size();
 			}
@@ -97,8 +95,7 @@ namespace libfiles::detail
 					if (position >= end) decode.fail("the PCX pixels are incomplete");
 					const auto value = read_byte();
 					repetitions = (value & 0xc0) == 0xc0 ? value & 0x3f : 1;
-					if (repetitions == 0 || ((value & 0xc0) == 0xc0 && position >= end))
-						decode.fail("invalid PCX run");
+					if (repetitions == 0 || ((value & 0xc0) == 0xc0 && position >= end)) decode.fail("invalid PCX run");
 					repeated = (value & 0xc0) == 0xc0 ? read_byte() : value;
 				}
 				pixel = repeated;

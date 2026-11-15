@@ -1,20 +1,22 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for decoding JPEG. Files are encoded here with libjpeg-turbo, and what libfiles writes
 // is held to libjpeg-turbo's own output for the same request, or to values worked from the conversion
-// rules: so these test what libfiles adds - scaling, NV12, colour conversion, high precision,
-// orientation, cancellation and files cut short. Diffractor holds the decoder to the one it replaced,
-// byte for byte, over real files.
+// rules: so these test what libfiles adds - scaling, NV12, colour conversion, a profile's colours mapped
+// to sRGB, high precision, orientation, cancellation and files cut short. Diffractor holds the decoder to
+// the one it replaced, byte for byte, over real files.
 
 #include "test.h"
 
 #ifdef LIBFILES_JPEG
 
 #include "builders.h"
+#include "icc_corpus.h"
 #include "libfiles/decode.h"
 #include "libfiles/document.h"
+#include "libfiles/icc.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -54,6 +56,7 @@ namespace
 		int precision = 8;
 		int predictor = 0;
 		std::vector<bytes> app1;
+		std::vector<std::uint8_t> icc;
 	};
 
 	int sample_at(const jpeg_spec& s, const int x, const int y, const int c)
@@ -102,7 +105,16 @@ namespace
 		c.write_Adobe_marker = s.adobe ? TRUE : FALSE;
 		jpeg_start_compress(&c, TRUE);
 
-		for (const auto& block : s.app1) jpeg_write_marker(&c, JPEG_APP0 + 1, block.data(), static_cast<unsigned>(block.size()));
+		for (const auto& block : s.app1)
+			jpeg_write_marker(&c, JPEG_APP0 + 1, block.data(), static_cast<unsigned>(block.size()));
+
+		// The profile in one APP2 marker, as ICC.1 lays it out: its name, the marker's number and how many there are.
+		if (!s.icc.empty())
+		{
+			bytes block = {'I', 'C', 'C', '_', 'P', 'R', 'O', 'F', 'I', 'L', 'E', 0, 1, 1};
+			block.insert(block.end(), s.icc.begin(), s.icc.end());
+			jpeg_write_marker(&c, JPEG_APP0 + 2, block.data(), static_cast<unsigned>(block.size()));
+		}
 
 		const auto row_samples = static_cast<std::size_t>(s.width) * s.components;
 		std::vector<JSAMPLE> row8(row_samples);
@@ -214,7 +226,8 @@ namespace
 			while (d.output_scanline < d.output_height)
 			{
 				jpeg_read_raw_data(&d, image, rows_per_call);
-				for (int ci = 0; ci < 3; ++ci) for (const auto& row : storage[ci]) r.planes[ci].push_back(row);
+				for (int ci = 0; ci < 3; ++ci)
+					for (const auto& row : storage[ci]) r.planes[ci].push_back(row);
 			}
 		}
 		else
@@ -283,17 +296,15 @@ namespace
 			return {memory.data(), stride};
 		}
 
-		bool cancelled() override
-		{
-			return ++polls > cancel_after;
-		}
+		bool cancelled() override { return ++polls > cancel_after; }
 
 		const std::uint8_t* row(const std::size_t y) const { return memory.data() + y * stride; }
 
 		bool padding_untouched() const
 		{
 			const auto bytes_per_pixel = frame.format == libfiles::pixel_format::nv12 ? 1u : 4u;
-			const auto rows = frame.format == libfiles::pixel_format::nv12 ? frame.height + frame.height / 2 : frame.height;
+			const auto rows = frame.format == libfiles::pixel_format::nv12 ? frame.height + frame.height / 2
+			                                                               : frame.height;
 
 			for (std::size_t y = 0; y < rows; ++y)
 			{
@@ -378,8 +389,7 @@ TEST("native JPEG preserves grayscale samples and the native thumbnail rule")
 	CHECK(sink.frame.storage == libfiles::document_storage::gray8);
 	CHECK(sink.stride == 8);
 	for (int y = 0; y < spec.height; ++y)
-		for (int x = 0; x < spec.width; ++x)
-			CHECK(sink.pixels[y * sink.stride + x] == sample_at(spec, x, y, 0));
+		for (int x = 0; x < spec.width; ++x) CHECK(sink.pixels[y * sink.stride + x] == sample_at(spec, x, y, 0));
 
 	spec = {};
 	libfiles::memory_stream thumbnail_file(encode(spec));
@@ -411,8 +421,9 @@ TEST("a jpeg decodes to bgrx as libjpeg-turbo writes it, at every reduction and 
 		s.v_samp = v;
 		const auto file = encode(s);
 
-		for (const auto& [target_w, target_h, scale] : {std::tuple{0u, 0u, 1u}, std::tuple{150u, 78u, 2u}, std::tuple{75u, 39u, 4u},
-		                                               std::tuple{37u, 19u, 8u}, std::tuple{151u, 1u, 1u}})
+		for (const auto& [target_w, target_h, scale] :
+		     {std::tuple{0u, 0u, 1u}, std::tuple{150u, 78u, 2u}, std::tuple{75u, 39u, 4u}, std::tuple{37u, 19u, 8u},
+		      std::tuple{151u, 1u, 1u}})
 		{
 			for (const auto smooth : {true, false})
 			{
@@ -521,6 +532,40 @@ TEST("a jpeg decodes to nv12 from libjpeg-turbo's own planes, averaging chroma i
 	CHECK(decode(encode(gray), sink, o).frame.format == libfiles::pixel_format::bgrx8);
 }
 
+TEST("a jpeg whose profile is not srgb's comes mapped to srgb as bgrx when asked, and as it was otherwise")
+{
+	jpeg_spec s;
+	s.icc = icc_corpus::display_p3();
+	const auto file = encode(s);
+
+	libfiles::decode_options mapping;
+	mapping.allow_nv12 = true;
+	mapping.map_to_srgb = true;
+	jpeg_sink mapped;
+	const auto result = decode(file, mapped, mapping);
+	CHECK(result.success && result.frame.profile_mapped);
+	CHECK(result.frame.format == libfiles::pixel_format::bgrx8);
+
+	// libjpeg-turbo's own decode, mapped.
+	jpeg_sink plain;
+	CHECK(decode(file, plain).success);
+	const libfiles::image_view written{plain.memory.data(), plain.stride, plain.frame.width, plain.frame.height,
+	                                   plain.frame.format};
+	CHECK(libfiles::map_icc_to_srgb(written, s.icc, {plain.memory.data(), plain.stride}));
+	CHECK(plain.memory == mapped.memory);
+
+	// nv12 as before without the option, or for a profile that is sRGB's.
+	libfiles::decode_options nv12;
+	nv12.allow_nv12 = true;
+	jpeg_sink unmapped;
+	CHECK(decode(file, unmapped, nv12).frame.format == libfiles::pixel_format::nv12);
+
+	s.icc = icc_corpus::srgb_parametric();
+	jpeg_sink srgb;
+	const auto srgb_result = decode(encode(s), srgb, mapping);
+	CHECK(srgb_result.frame.format == libfiles::pixel_format::nv12 && !srgb_result.frame.profile_mapped);
+}
+
 TEST("gray, adobe cmyk and plain cmyk jpegs convert to bgrx")
 {
 	jpeg_spec gray;
@@ -558,10 +603,14 @@ TEST("gray, adobe cmyk and plain cmyk jpegs convert to bgrx")
 			for (std::size_t x = 0; x < ref.width; ++x)
 			{
 				const auto* const in = ref.rows[y].data() + x * 4;
-				const auto ink = [adobe](const int value) { return adobe ? value : 255 - value; };
+				const auto ink = [adobe](const int value)
+				{
+					return adobe ? value : 255 - value;
+				};
 				const int c = ink(in[0]), m = ink(in[1]), ye = ink(in[2]), k = ink(in[3]);
 				const auto* const p = sink.row(y) + x * 4;
-				same = same && p[2] == (c * k + 127) / 255 && p[1] == (m * k + 127) / 255 && p[0] == (ye * k + 127) / 255 && p[3] == 0;
+				same = same && p[2] == (c * k + 127) / 255 && p[1] == (m * k + 127) / 255 &&
+				       p[0] == (ye * k + 127) / 255 && p[3] == 0;
 			}
 		}
 		CHECK(same);
@@ -570,7 +619,8 @@ TEST("gray, adobe cmyk and plain cmyk jpegs convert to bgrx")
 
 TEST("12- and 16-bit jpegs scale to 8 bits, and a progressive one reports what it buffers")
 {
-	for (const auto& [precision, predictor, components] : {std::tuple{12, 0, 3}, std::tuple{12, 1, 1}, std::tuple{16, 1, 3}, std::tuple{16, 1, 1}})
+	for (const auto& [precision, predictor, components] :
+	     {std::tuple{12, 0, 3}, std::tuple{12, 1, 1}, std::tuple{16, 1, 3}, std::tuple{16, 1, 1}})
 	{
 		jpeg_spec s;
 		s.precision = precision;
@@ -595,7 +645,9 @@ TEST("12- and 16-bit jpegs scale to 8 bits, and a progressive one reports what i
 				}
 				else
 				{
-					for (std::size_t i = 0; i < 4; ++i) same = same && p[i] == static_cast<std::uint8_t>((ref.rows[y][x * 4 + i] * 255u + top / 2u) / top);
+					for (std::size_t i = 0; i < 4; ++i)
+						same = same &&
+						       p[i] == static_cast<std::uint8_t>((ref.rows[y][x * 4 + i] * 255u + top / 2u) / top);
 				}
 			}
 		}
@@ -632,7 +684,8 @@ TEST("a jpeg's orientation is its last exif block's, as stored")
 TEST("a jpeg's sink is shown the exif block its orientation comes from, and only the sink")
 {
 	jpeg_spec s;
-	s.app1 = {exif_block(6), exif_block(3), to_bytes(std::string_view("http://ns.adobe.com/xap/1.0/\0<x:xmpmeta/>", 42))};
+	s.app1 = {exif_block(6), exif_block(3),
+	          to_bytes(std::string_view("http://ns.adobe.com/xap/1.0/\0<x:xmpmeta/>", 41))};
 	jpeg_sink sink;
 	const auto result = decode(encode(s), sink);
 	const auto last = exif_block(3);
@@ -676,7 +729,8 @@ TEST("a jpeg cut short decodes as far as its data goes, or says why not")
 	jpeg_spec p;
 	p.progressive = true;
 	const auto progressive = encode(p);
-	const bytes progressive_cut(progressive.begin(), progressive.begin() + static_cast<std::ptrdiff_t>(progressive.size() / 2));
+	const bytes progressive_cut(progressive.begin(),
+	                            progressive.begin() + static_cast<std::ptrdiff_t>(progressive.size() / 2));
 	jpeg_sink progressive_sink;
 	const auto progressive_result = decode(progressive_cut, progressive_sink);
 	CHECK(!progressive_result.success);

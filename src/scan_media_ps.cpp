@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Scanning MPEG program streams: MPG, VOB, MOD and TOD. Packs hold PES packets whose stream
 // ids - and in private stream 1 their substream ids - name the streams as FFmpeg's mpeg demuxer
@@ -66,10 +66,7 @@ namespace libfiles::detail
 		{
 		public:
 			ps_scan(reader& r, const scan_intent intent, media_scan_result& out) :
-				_r(r),
-				_intent(intent),
-				_out(out),
-				_size(r.size())
+				_r(r), _intent(intent), _out(out), _size(r.size())
 			{
 			}
 
@@ -177,13 +174,16 @@ namespace libfiles::detail
 
 				for (auto at = from; at < limit && at + 4 <= _size;)
 				{
-					const auto piece = _r.read(at, static_cast<std::size_t>(std::min<std::uint64_t>(resync_piece, _size - at)));
+					const auto piece = _r.read(at, static_cast<std::size_t>(
+													   std::min<std::uint64_t>(resync_piece, _size - at)));
 
 					// The last three bytes are looked at again with the next piece, so a start code across
 					// the boundary is not missed.
 					for (std::size_t i = 0; i + 4 <= piece.size() && at + i < limit; ++i)
 					{
-						if (piece[i] == 0 && piece[i + 1] == 0 && piece[i + 2] == 1 && piece[i + 3] >= 0xBA && synced(at + i)) return at + i;
+						if (piece[i] == 0 && piece[i + 1] == 0 && piece[i + 2] == 1 && piece[i + 3] >= 0xBA &&
+						    synced(at + i))
+							return at + i;
 					}
 
 					if (piece.size() < 4) break;
@@ -239,14 +239,17 @@ namespace libfiles::detail
 					if (available < 14) return 0;
 
 					// MPEG-2's: a 33-bit base and a 9-bit extension at 27 MHz, split by marker bits.
-					const auto base = static_cast<std::uint64_t>(b[4] >> 3 & 7) << 30 | static_cast<std::uint64_t>(b[4] & 3) << 28 |
-						static_cast<std::uint64_t>(b[5]) << 20 | static_cast<std::uint64_t>(b[6] >> 3) << 15 |
-						static_cast<std::uint64_t>(b[6] & 3) << 13 | static_cast<std::uint64_t>(b[7]) << 5 |
-						static_cast<std::uint64_t>(b[8] >> 3);
-					const auto extension = static_cast<std::uint64_t>(b[8] & 3) << 7 | static_cast<std::uint64_t>(b[9] >> 1);
+					const auto base = static_cast<std::uint64_t>(b[4] >> 3 & 7) << 30 |
+					                  static_cast<std::uint64_t>(b[4] & 3) << 28 |
+					                  static_cast<std::uint64_t>(b[5]) << 20 |
+					                  static_cast<std::uint64_t>(b[6] >> 3) << 15 |
+					                  static_cast<std::uint64_t>(b[6] & 3) << 13 |
+					                  static_cast<std::uint64_t>(b[7]) << 5 | static_cast<std::uint64_t>(b[8] >> 3);
+					const auto extension = static_cast<std::uint64_t>(b[8] & 3) << 7 |
+					                       static_cast<std::uint64_t>(b[9] >> 1);
 					scr = base * 300 + extension;
 					rate = static_cast<std::uint32_t>(b[10]) << 14 | static_cast<std::uint32_t>(b[11]) << 6 |
-						static_cast<std::uint32_t>(b[12] >> 2);
+					       static_cast<std::uint32_t>(b[12] >> 2);
 					length = 14u + (b[13] & 7u);
 				}
 				else if ((b[4] & 0xF0) == 0x20)
@@ -254,7 +257,7 @@ namespace libfiles::detail
 					// MPEG-1's: 33 bits at 90 kHz, laid out as a PES timestamp is.
 					scr = read_mpeg_timestamp(b.data() + 4) * 300;
 					rate = static_cast<std::uint32_t>(b[9] & 0x7F) << 15 | static_cast<std::uint32_t>(b[10]) << 7 |
-						static_cast<std::uint32_t>(b[11] >> 1);
+					       static_cast<std::uint32_t>(b[11] >> 1);
 					mpeg1 = true;
 				}
 				else
@@ -275,12 +278,13 @@ namespace libfiles::detail
 
 			void read_system_header(const std::uint64_t at, const std::uint64_t length)
 			{
-				if (_intent != scan_intent::inspect || _system_header || length < 12 || !_r.contains(at, length)) return;
+				if (_intent != scan_intent::inspect || _system_header || length < 12 || !_r.contains(at, length))
+					return;
 
 				const auto b = _r.read(at, static_cast<std::size_t>(length));
 				_system_header = true;
 				_rate_bound = static_cast<std::uint32_t>(b[6] & 0x7F) << 15 | static_cast<std::uint32_t>(b[7]) << 7 |
-					static_cast<std::uint32_t>(b[8] >> 1);
+				              static_cast<std::uint32_t>(b[8] >> 1);
 				_audio_bound = b[9] >> 2;
 				_video_bound = b[10] & 0x1F;
 
@@ -312,7 +316,8 @@ namespace libfiles::detail
 					map_entry entry;
 					entry.stream_type = b[i];
 					entry.stream_id = b[i + 1];
-					entry.language = read_es_descriptors(std::span<const std::uint8_t>(b).subspan(i + 4, descriptors)).language;
+					entry.language = read_es_descriptors(std::span<const std::uint8_t>(b).subspan(i + 4, descriptors))
+					                     .language;
 					_map.push_back(std::move(entry));
 					i += 4 + descriptors;
 				}
@@ -372,7 +377,8 @@ namespace libfiles::detail
 				if (id != 0xBD || payload.empty()) return false;
 
 				const auto sub = payload[0];
-				const auto audio = [&out, sub](const std::string_view codec, const es_syntax syntax, const std::size_t skip)
+				const auto audio =
+					[&out, sub](const std::string_view codec, const es_syntax syntax, const std::size_t skip)
 				{
 					out = {sub, {media_stream_kind::audio, codec, syntax}, skip};
 					return true;
@@ -388,7 +394,8 @@ namespace libfiles::detail
 				// After the substream id, audio has a count of frames and a pointer to the first; LPCM's own
 				// header follows them, and TrueHD has one byte more.
 				if (sub >= 0x80 && sub <= 0x87) return audio("ac3", es_syntax::ac3, 4);
-				if ((sub >= 0x88 && sub <= 0x8F) || (sub >= 0x98 && sub <= 0x9F)) return audio("dts", es_syntax::dts, 4);
+				if ((sub >= 0x88 && sub <= 0x8F) || (sub >= 0x98 && sub <= 0x9F))
+					return audio("dts", es_syntax::dts, 4);
 				if (sub >= 0xA0 && sub <= 0xAF) return audio("pcm", es_syntax::lpcm_dvd, 4);
 				if (sub >= 0xB0 && sub <= 0xBF) return audio("truehd", es_syntax::none, 5);
 
@@ -432,7 +439,8 @@ namespace libfiles::detail
 				s.skip = route.skip;
 				s.timed = stream.kind == media_stream_kind::video || stream.kind == media_stream_kind::audio;
 
-				const auto camera = (route.type.syntax == es_syntax::h264 || route.type.syntax == es_syntax::video) && !_camera_taken;
+				const auto camera = (route.type.syntax == es_syntax::h264 || route.type.syntax == es_syntax::video) &&
+				                    !_camera_taken;
 				_camera_taken = _camera_taken || camera;
 				s.probe = es_probe(route.type.syntax, camera);
 
@@ -448,7 +456,8 @@ namespace libfiles::detail
 				ps_route where;
 
 				{
-					const auto bytes = _r.view(at, static_cast<std::size_t>(std::min<std::uint64_t>(available, header_bytes)));
+					const auto bytes = _r.view(at, static_cast<std::size_t>(
+													   std::min<std::uint64_t>(available, header_bytes)));
 					if (read_pes_header(bytes, true, h) != pes_read::ok) return;
 
 					_any_pes = true;
@@ -484,18 +493,18 @@ namespace libfiles::detail
 				if (_streams.empty()) return false;
 
 				const auto known = std::ranges::all_of(_streams, [](const ps_stream& s)
-				{
-					return !s.timed || (s.probe.done() && s.clock.first);
-				});
+				{ return !s.timed || (s.probe.done() && s.clock.first); });
 
 				if (!known) return false;
 
 				// A map lists the streams, so once each has been seen there are no more to wait for. A system
 				// header does not: a VCD has one for each stream, the first naming the video alone.
-				if (_map_read && std::ranges::all_of(_map, [this](const map_entry& e) { return _seen[e.stream_id]; })) return true;
+				if (_map_read && std::ranges::all_of(_map, [this](const map_entry& e) { return _seen[e.stream_id]; }))
+					return true;
 
-				return (_scr.first && _scr.last && *_scr.last - *_scr.first >= static_cast<std::int64_t>(discovery_ticks)) ||
-					at >= discovery_bytes;
+				return (_scr.first && _scr.last &&
+				        *_scr.last - *_scr.first >= static_cast<std::int64_t>(discovery_ticks)) ||
+				       at >= discovery_bytes;
 			}
 
 			bool tail_complete() const
@@ -527,7 +536,8 @@ namespace libfiles::detail
 
 				if (!(duration > 0) && _scr.first && _scr.last && *_scr.last > *_scr.first)
 				{
-					duration = static_cast<double>(*_scr.last - *_scr.first) / static_cast<double>(mpeg_system_ticks_per_second);
+					duration = static_cast<double>(*_scr.last - *_scr.first) /
+					           static_cast<double>(mpeg_system_ticks_per_second);
 				}
 
 				_out.duration = duration;
@@ -539,26 +549,31 @@ namespace libfiles::detail
 
 				add_structure_section(rows, "Program stream", "ps.summary", true);
 				add_structure_row(rows, "Pack header",
-				                  std::format("{}, mux rate {} bit/s", _mpeg1 ? "MPEG-1" : "MPEG-2", static_cast<std::uint64_t>(_mux_rate) * 400),
+				                  std::format("{}, mux rate {} bit/s", _mpeg1 ? "MPEG-1" : "MPEG-2",
+				                              static_cast<std::uint64_t>(_mux_rate) * 400),
 				                  "0xBA");
 				add_structure_row(rows, "Packs read", std::to_string(_packs));
 
 				if (_scr.first && _scr.last)
 				{
-					add_structure_row(rows, "SCR", std::format("{:.3f} s to {:.3f} s",
-					                                           static_cast<double>(*_scr.first) / mpeg_system_ticks_per_second,
-					                                           static_cast<double>(*_scr.last) / mpeg_system_ticks_per_second));
+					add_structure_row(rows, "SCR",
+					                  std::format("{:.3f} s to {:.3f} s",
+					                              static_cast<double>(*_scr.first) / mpeg_system_ticks_per_second,
+					                              static_cast<double>(*_scr.last) / mpeg_system_ticks_per_second));
 				}
 
 				if (_system_header)
 				{
 					add_structure_row(rows, "System header",
 					                  std::format("rate bound {} bit/s, {} audio and {} video streams at most",
-					                              static_cast<std::uint64_t>(_rate_bound) * 400, _audio_bound, _video_bound), "0xBB");
+					                              static_cast<std::uint64_t>(_rate_bound) * 400, _audio_bound,
+					                              _video_bound),
+					                  "0xBB");
 
 					for (const auto& [id, bound] : _system_streams)
 					{
-						add_structure_row(rows, std::format("Bound 0x{:02X}", id), std::format("buffer {} bytes", bound));
+						add_structure_row(rows, std::format("Bound 0x{:02X}", id),
+						                  std::format("buffer {} bytes", bound));
 					}
 				}
 
@@ -568,13 +583,15 @@ namespace libfiles::detail
 
 					for (const auto& e : _map)
 					{
-						add_structure_row(rows, std::format("Map 0x{:02X}", e.stream_id), std::format("stream type 0x{:02X}", e.stream_type));
+						add_structure_row(rows, std::format("Map 0x{:02X}", e.stream_id),
+						                  std::format("stream type 0x{:02X}", e.stream_type));
 					}
 				}
 
-				add_structure_row(rows, "Read", tail_start < _size
-					                                ? std::format("{} bytes from the start, and the last {}", head_end, _size - tail_start)
-					                                : std::format("{} bytes from the start", head_end));
+				add_structure_row(rows, "Read",
+				                  tail_start < _size ? std::format("{} bytes from the start, and the last {}", head_end,
+				                                                   _size - tail_start)
+				                                     : std::format("{} bytes from the start", head_end));
 
 				add_structure_section(rows, "Streams", "ps.streams");
 
@@ -585,13 +602,13 @@ namespace libfiles::detail
 
 					if (s.clock.first && s.clock.last)
 					{
-						value += std::format(", PTS {:.3f} s to {:.3f} s", static_cast<double>(*s.clock.first) / mpeg_ticks_per_second,
+						value += std::format(", PTS {:.3f} s to {:.3f} s",
+						                     static_cast<double>(*s.clock.first) / mpeg_ticks_per_second,
 						                     static_cast<double>(*s.clock.last) / mpeg_ticks_per_second);
 					}
 
-					const auto key = s.stream_id == 0xBD
-						                 ? std::format("Private stream 1, substream 0x{:02X}", s.id)
-						                 : std::format("Stream 0x{:X}", s.id);
+					const auto key = s.stream_id == 0xBD ? std::format("Private stream 1, substream 0x{:02X}", s.id)
+					                                     : std::format("Stream 0x{:X}", s.id);
 					add_structure_row(rows, key, std::move(value), std::format("0x{:02X}", s.stream_id));
 				}
 

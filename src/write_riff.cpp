@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to RIFF files - WAV and AVI. The packet lives where the toolkit kept it, in a
 // `_PMX` chunk at the top of the RIFF form; title, artist, comment, copyright, date and genre go to the
@@ -94,7 +94,8 @@ namespace libfiles::detail
 				if (value.empty()) continue;
 
 				auto item = make_chunk(id, text_value(value));
-				items.insert(items.begin() + static_cast<std::ptrdiff_t>(std::min(at, items.size())), {id, std::move(item)});
+				items.insert(items.begin() + static_cast<std::ptrdiff_t>(std::min(at, items.size())),
+				             {id, std::move(item)});
 			}
 
 			if (items.empty()) return bytes{};
@@ -109,9 +110,11 @@ namespace libfiles::detail
 		std::optional<bytes> idit_text(const std::string& xmp_date)
 		{
 			auto d = parse_xmp_date(xmp_date);
-			if (!d || d->year < 1800 || d->year > 3999 || d->month < 1 || d->month > 12 || d->day < 1 || d->day > 31) return {};
+			if (!d || d->year < 1800 || d->year > 3999 || d->month < 1 || d->month > 12 || d->day < 1 || d->day > 31)
+				return {};
 
-			static constexpr const char* months[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+			static constexpr const char* months[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+			                                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 			static constexpr const char* days[7] = {"Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"};
 
 			auto day_only = *d;
@@ -128,7 +131,8 @@ namespace libfiles::detail
 			std::string text = days[weekday];
 			text += ' ';
 			text += months[d->month - 1];
-			text += ' ' + two(d->day) + ' ' + two(d->hour) + ':' + two(d->minute) + ':' + two(d->second) + ' ' + std::to_string(d->year) + '\n';
+			text += ' ' + two(d->day) + ' ' + two(d->hour) + ':' + two(d->minute) + ':' + two(d->second) + ' ' +
+			        std::to_string(d->year) + '\n';
 			if (text.size() != idit_size - 1) return {};
 
 			return text_value(text);
@@ -226,11 +230,13 @@ namespace libfiles::detail
 				if (old->padded_size() == whole.size() && old->end() <= r.size())
 				{
 					const auto original = r.read(old->start, whole.size());
-					if (auto p = changed_span(old->start, original, whole, commit)) plan.replacements.push_back(std::move(*p));
+					if (auto p = changed_span(old->start, original, whole, commit))
+						plan.replacements.push_back(std::move(*p));
 					return;
 				}
 
-				if (const auto* const next = next_of(*old); next && room(*next) && place_in_junk(*next, old, whole)) return;
+				if (const auto* const next = next_of(*old); next && room(*next) && place_in_junk(*next, old, whole))
+					return;
 			}
 
 			auto placed = false;
@@ -248,10 +254,19 @@ namespace libfiles::detail
 			if (old) to_junk(*old);
 		};
 
-		const auto anywhere = [](const chunk&) { return true; };
+		const auto anywhere = [](const chunk&)
+		{
+			return true;
+		};
 		// Where the scan reads an AVI's packet, and so where it is written: after `movi`, in the first form.
-		const auto after_movi = [&l, &first](const chunk& c) { return !l.avi || (c.start >= l.movi_end && c.start < first.data_end()); };
-		const auto before_movi = [&l](const chunk& c) { return !l.avi || c.start < l.movi_end; };
+		const auto after_movi = [&l, &first](const chunk& c)
+		{
+			return !l.avi || (c.start >= l.movi_end && c.start < first.data_end());
+		};
+		const auto before_movi = [&l](const chunk& c)
+		{
+			return !l.avi || c.start < l.movi_end;
+		};
 
 		// The packet, and any stale copy beside it.
 		if (update.xmp)
@@ -267,7 +282,8 @@ namespace libfiles::detail
 			else
 			{
 				if (packet.size() & 1) packet.push_back(' ');
-				put(current, make_chunk(pmx_id, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()}), after_movi, after_movi);
+				put(current, make_chunk(pmx_id, {reinterpret_cast<const std::uint8_t*>(packet.data()), packet.size()}),
+				    after_movi, after_movi);
 			}
 
 			for (const auto& f : l.forms)
@@ -309,7 +325,8 @@ namespace libfiles::detail
 		if (!l.avi && update.legacy.title)
 		{
 			const chunk* disp = nullptr;
-			for (const auto& c : children) if (c.id == disp_id && c.size >= 4 && r.le32(c.payload()) == 1) disp = &c;
+			for (const auto& c : children)
+				if (c.id == disp_id && c.size >= 4 && r.le32(c.payload()) == 1) disp = &c;
 
 			if (disp)
 			{
@@ -339,7 +356,9 @@ namespace libfiles::detail
 				for (const auto& h : parse_children(r, c.payload() + 4, c.payload() + c.size))
 				{
 					if (h.id != idit_id || h.size != idit_size) continue;
-					if (const auto text = idit_text(*update.legacy.date_original); text && r.read(h.payload(), idit_size) != *text) patch(h.payload(), *text, commit);
+					if (const auto text = idit_text(*update.legacy.date_original);
+					    text && r.read(h.payload(), idit_size) != *text)
+						patch(h.payload(), *text, commit);
 				}
 			}
 		}
@@ -351,7 +370,8 @@ namespace libfiles::detail
 		const auto aligned = data_end + (data_end & 1);
 		const auto insert_at = aligned <= r.size() ? aligned : data_end;
 
-		if (l.forms.size() > 1) throw format_error("the AVI continues in further forms, so its first cannot grow to take the metadata");
+		if (l.forms.size() > 1)
+			throw format_error("the AVI continues in further forms, so its first cannot grow to take the metadata");
 		if (insert_at & 1) appended.insert(appended.begin(), 0);
 
 		const auto form_size = insert_at + appended.size() - first.header.start - 8;

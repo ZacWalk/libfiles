@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: A JPEG's descriptive segments carried into a re-encoding of it, byte for byte but for what the
 // re-encoding invalidated; and a JPEG's header read no further than its first scan. What ImageWalker saved
@@ -8,11 +8,14 @@
 
 #include "libfiles/encode.h"
 
+#include "gain_map_internal.h"
 #include "libfiles/exif.h"
 #include "libfiles/scan.h"
+#include "libfiles/xmp.h"
 
 #include <cstring>
 #include <exception>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -29,7 +32,6 @@ namespace libfiles
 		constexpr std::string_view exif_identifier{"Exif\0\0", 6};
 		constexpr std::string_view xmp_identifier{"http://ns.adobe.com/xap/1.0/\0", 29};
 		constexpr std::string_view icc_identifier{"ICC_PROFILE\0", 12};
-		constexpr std::string_view mpf_identifier{"MPF\0", 4};
 
 		struct segment
 		{
@@ -94,8 +96,8 @@ namespace libfiles
 		{
 			const auto tiff = std::span(payload).subspan(exif_identifier.size());
 			const exif_number numbers[] = {
-				{exif_directory::primary, 0x0112, 1}, // Orientation
-				{exif_directory::exif, 0xa002, static_cast<std::uint32_t>(width)}, // PixelXDimension
+				{exif_directory::primary, 0x0112, 1},                               // Orientation
+				{exif_directory::exif, 0xa002, static_cast<std::uint32_t>(width)},  // PixelXDimension
 				{exif_directory::exif, 0xa003, static_cast<std::uint32_t>(height)}, // PixelYDimension
 			};
 			set_exif_numbers(tiff, numbers);
@@ -112,7 +114,9 @@ namespace libfiles
 
 			const auto skip_space = [&text](std::size_t at)
 			{
-				while (at < text.size() && (text[at] == ' ' || text[at] == '\t' || text[at] == '\r' || text[at] == '\n')) ++at;
+				while (at < text.size() &&
+				       (text[at] == ' ' || text[at] == '\t' || text[at] == '\r' || text[at] == '\n'))
+					++at;
 				return at;
 			};
 
@@ -151,8 +155,8 @@ namespace libfiles
 
 			for (const auto& s : segments)
 			{
-				if (s.marker == app2 && starts_with(s.payload, icc_identifier) && s.payload.size() >= chunk_header + 20 &&
-					s.payload[icc_identifier.size()] == 1)
+				if (s.marker == app2 && starts_with(s.payload, icc_identifier) &&
+				    s.payload.size() >= chunk_header + 20 && s.payload[icc_identifier.size()] == 1)
 				{
 					return std::memcmp(s.payload.data() + chunk_header + 16, "RGB ", 4) == 0;
 				}
@@ -181,16 +185,18 @@ namespace libfiles
 				{
 					if (!input.contains(at, 1)) return {};
 					marker = input.u8(at++);
-				}
-				while (marker == 0xFF);
+				} while (marker == 0xFF);
 
 				if (marker == sos || marker == eoi) return header;
 				if (is_standalone(marker) || !input.contains(at, 2)) return {};
 
 				const std::size_t length = input.be16(at);
-				if (length < 2 || header.size() + 2 + length > maximum_header_bytes || !input.contains(at + 2, length - 2)) return {};
+				if (length < 2 || header.size() + 2 + length > maximum_header_bytes ||
+				    !input.contains(at + 2, length - 2))
+					return {};
 
-				header.insert(header.end(), {0xFF, marker, static_cast<std::uint8_t>(length >> 8), static_cast<std::uint8_t>(length & 0xFF)});
+				header.insert(header.end(), {0xFF, marker, static_cast<std::uint8_t>(length >> 8),
+				                             static_cast<std::uint8_t>(length & 0xFF)});
 				const auto payload = input.read(at + 2, length - 2);
 				header.insert(header.end(), payload.begin(), payload.end());
 				at += length;
@@ -210,7 +216,7 @@ namespace libfiles
 		std::size_t source_scan = 0, encoded_scan = 0;
 
 		if (width <= 0 || height <= 0 || !split_header(source, source_segments, source_scan) ||
-			!split_header(encoded, encoded_segments, encoded_scan) || encoded_scan >= encoded.size())
+		    !split_header(encoded, encoded_segments, encoded_scan) || encoded_scan >= encoded.size())
 		{
 			return {};
 		}
@@ -241,11 +247,22 @@ namespace libfiles
 				}
 				else if (starts_with(s.payload, xmp_identifier))
 				{
+					// The re-encoding holds no gain map, so its XMP must not say one follows.
+					if (auto signalled = detail::signalled_xmp(s.payload, std::nullopt); !signalled.empty())
+					{
+						payload = std::move(signalled);
+					}
+
 					correct_xmp(payload);
 				}
 				break;
 			case app2:
-				if (starts_with(s.payload, icc_identifier) ? !keep_profile : starts_with(s.payload, mpf_identifier)) continue;
+				if (starts_with(s.payload, icc_identifier)
+				        ? !keep_profile
+				        : starts_with(s.payload, detail::mpf_identifier) || detail::is_iso_version_segment(s.payload))
+				{
+					continue;
+				}
 				break;
 			case app14:
 				// Adobe's segment describes the old encoding's colour transform.
@@ -263,7 +280,8 @@ namespace libfiles
 		const auto emit = [&result](const std::uint8_t marker, const std::span<const std::uint8_t> payload)
 		{
 			const auto length = payload.size() + 2;
-			result.insert(result.end(), {0xFF, marker, static_cast<std::uint8_t>(length >> 8), static_cast<std::uint8_t>(length & 0xFF)});
+			result.insert(result.end(), {0xFF, marker, static_cast<std::uint8_t>(length >> 8),
+			                             static_cast<std::uint8_t>(length & 0xFF)});
 			result.insert(result.end(), payload.begin(), payload.end());
 		};
 

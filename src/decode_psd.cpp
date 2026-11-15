@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Decoding a PSD's composite image - the flattened copy Photoshop keeps after the layers - in
 // bitmap, grayscale, indexed, RGB, CMYK, multichannel, duotone and Lab modes, at 8 bits a channel or 1
@@ -43,8 +43,8 @@ namespace libfiles::detail
 			const auto depth_ok = depth == 8 || (depth == 1 && mode == bitmap_mode && channels == 1);
 
 			return columns != 0 && rows != 0 && columns <= max_psd_dimension && rows <= max_psd_dimension &&
-				static_cast<std::uint64_t>(columns) * rows <= max_psd_pixels && channels != 0 && channels <= 56 &&
-				depth_ok;
+			       static_cast<std::uint64_t>(columns) * rows <= max_psd_pixels && channels != 0 && channels <= 56 &&
+			       depth_ok;
 		}
 
 		// Which byte of a pixel a channel lands in: the first three are red, green and blue (or cyan,
@@ -200,8 +200,7 @@ namespace libfiles::detail
 			blue = linear_to_srgb_byte(0.055648 * x - 0.204043 * y + 1.057311 * z);
 		}
 
-		template <typename Pixel>
-		void each_pixel(const pixel_buffer& out, const int cx, const int cy, Pixel&& pixel)
+		template <typename Pixel> void each_pixel(const pixel_buffer& out, const int cx, const int cy, Pixel&& pixel)
 		{
 			for (int y = 0; y < cy; ++y)
 			{
@@ -263,7 +262,8 @@ namespace libfiles::detail
 				result.refused = true;
 				return;
 			}
-			for (int y = 0; y < cy; ++y) std::memset(out.pixels + static_cast<std::size_t>(y) * out.stride, 0, std::size_t{4} * columns);
+			for (int y = 0; y < cy; ++y)
+				std::memset(out.pixels + static_cast<std::size_t>(y) * out.stride, 0, std::size_t{4} * columns);
 		}
 		document_frame native_frame;
 		native_frame.width = columns;
@@ -310,11 +310,8 @@ namespace libfiles::detail
 		case grayscale_mode:
 		case indexed_mode:
 		case multichannel_mode:
-		case duotone_mode:
-			is_single_channel = true;
-			break;
-		default:
-			break;
+		case duotone_mode: is_single_channel = true; break;
+		default: break;
 		}
 
 		// The colour table, which only an indexed image's is read.
@@ -335,8 +332,8 @@ namespace libfiles::detail
 				for (unsigned i = 0; i < std::min(num_colors, 256u); ++i)
 				{
 					palette[i] = {table[i + num_colors * 2], table[i + num_colors], table[i]};
-					native_palette[i] = 0xff000000u | (table[i] << 16) |
-						(table[i + num_colors] << 8) | table[i + num_colors * 2];
+					native_palette[i] = 0xff000000u | (table[i] << 16) | (table[i + num_colors] << 8) |
+					                    table[i + num_colors * 2];
 				}
 			}
 			else
@@ -422,7 +419,10 @@ namespace libfiles::detail
 		{
 			return out.pixels + static_cast<std::size_t>(y) * out.stride;
 		};
-		const auto cancelled = [&] { return document ? document->output.cancelled() : sink->cancelled(); };
+		const auto cancelled = [&]
+		{
+			return document ? document->output.cancelled() : sink->cancelled();
+		};
 
 		if (compression == 1)
 		{
@@ -462,7 +462,7 @@ namespace libfiles::detail
 					}
 
 					scatter_plane(row(y), plane.data(), cx, is_bitmap, plane_byte(static_cast<int>(channel)),
-						pixel_stride, document != nullptr);
+					              pixel_stride, document != nullptr);
 				}
 			}
 
@@ -485,7 +485,7 @@ namespace libfiles::detail
 
 					in.read(plane.data(), plane.size());
 					scatter_plane(row(y), plane.data(), cx, is_bitmap, plane_byte(static_cast<int>(channel)),
-						pixel_stride, document != nullptr);
+					              pixel_stride, document != nullptr);
 				}
 			}
 		}
@@ -499,7 +499,7 @@ namespace libfiles::detail
 				auto* pixels = row(y);
 				if (mode == bitmap_mode)
 				{
-					std::fill(bitmap.begin(), bitmap.end(), 0);
+					std::fill(bitmap.begin(), bitmap.end(), std::uint8_t{0});
 					for (int x = 0; x < cx; ++x)
 						if (pixels[x] == 0) bitmap[x / 8] |= static_cast<std::uint8_t>(1u << (7 - x % 8));
 					document->row(y, bitmap);
@@ -537,7 +537,8 @@ namespace libfiles::detail
 			{
 				// Ink plus black routinely exceeds 255, so this is signed.
 				const int black = p[3];
-				put(p, byte_clamp(255 - (p[0] + black)), byte_clamp(255 - (p[1] + black)), byte_clamp(255 - (p[2] + black)), 255);
+				put(p, byte_clamp(255 - (p[0] + black)), byte_clamp(255 - (p[1] + black)),
+				    byte_clamp(255 - (p[2] + black)), 255);
 			});
 			break;
 		case lab_mode:
@@ -550,12 +551,7 @@ namespace libfiles::detail
 			break;
 		case grayscale_mode:
 		case duotone_mode:
-		case bitmap_mode:
-			each_pixel(out, cx, cy, [](std::uint8_t* const p)
-			{
-				put(p, p[0], p[0], p[0], 0);
-			});
-			break;
+		case bitmap_mode: each_pixel(out, cx, cy, [](std::uint8_t* const p) { put(p, p[0], p[0], p[0], 0); }); break;
 		case indexed_mode:
 			each_pixel(out, cx, cy, [&palette](std::uint8_t* const p)
 			{
@@ -563,8 +559,7 @@ namespace libfiles::detail
 				put(p, c[0], c[1], c[2], 0);
 			});
 			break;
-		default:
-			break;
+		default: break;
 		}
 
 		result.success = true;

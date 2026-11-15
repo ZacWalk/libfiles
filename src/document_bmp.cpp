@@ -1,5 +1,5 @@
 // Copyright (C) 1998-2026 Zac Walker.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Uncompressed native BMP rows; compressed DIB rendering remains a host SDK capability.
 
@@ -34,8 +34,7 @@ namespace libfiles::detail
 				storage = document_storage::bgr555;
 			else if (source_bits == 16 && red == 0xf800 && green == 0x07e0 && blue == 0x001f)
 				storage = document_storage::bgr565;
-			else
-				decode.fail("unsupported BMP bitfield masks");
+			else decode.fail("unsupported BMP bitfield masks");
 			mask_offset += 12;
 		}
 		const auto entries = palette_entries(storage);

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for writing photo metadata: the TIFF directory editor, IPTC and Photoshop resources,
 // and JPEG, TIFF and PSD files read back through the scanner after an update.
@@ -8,16 +8,21 @@
 #include "test.h"
 
 #include "builders.h"
+#include "gain_map_internal.h"
 #include "interruptions.h"
 #include "legacy.h"
+#include "libfiles/encode.h"
 #include "libfiles/iptc.h"
 #include "libfiles/write.h"
 #include "round_trip.h"
 
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <functional>
 #include <optional>
+#include <string_view>
+#include <utility>
 
 using namespace test_build;
 
@@ -54,8 +59,14 @@ namespace
 		return t.b;
 	}
 
-	std::uint16_t le16(const bytes& b, const std::size_t at) { return libfiles::detail::load_le16(b.data() + at); }
-	std::uint32_t le32(const bytes& b, const std::size_t at) { return libfiles::detail::load_le32(b.data() + at); }
+	std::uint16_t le16(const bytes& b, const std::size_t at)
+	{
+		return libfiles::detail::load_le16(b.data() + at);
+	}
+	std::uint32_t le32(const bytes& b, const std::size_t at)
+	{
+		return libfiles::detail::load_le32(b.data() + at);
+	}
 
 	// A little-endian stream's value for a tag, from IFD0 or the directory a pointer tag names.
 	std::optional<bytes> tiff_value(const bytes& t, const std::uint16_t tag, const std::uint16_t via = 0)
@@ -232,9 +243,7 @@ TEST("a tiff value said to lie over the header is appended rather than written t
 	auto in_place = true;
 
 	const auto result = edited(stream, [](tiff_editor& e)
-	{
-		e.set_ascii(directory::ifd0, 0x010E, "a description of 23 chr");
-	}, &in_place);
+	{ e.set_ascii(directory::ifd0, 0x010E, "a description of 23 chr"); }, &in_place);
 
 	CHECK(!in_place);
 	const auto header_kept = result.size() >= 8 && std::equal(stream.begin(), stream.begin() + 8, result.begin());
@@ -251,9 +260,7 @@ TEST("a tiff value that does not fit is appended, and nothing moves")
 	auto in_place = true;
 
 	const auto result = edited(stream, [](tiff_editor& e)
-	{
-		e.set_ascii(directory::ifd0, 0x010E, "a description far longer than the twenty-four bytes it had");
-	}, &in_place);
+	{ e.set_ascii(directory::ifd0, 0x010E, "a description far longer than the twenty-four bytes it had"); }, &in_place);
 
 	CHECK(!in_place);
 	CHECK(result.size() > stream.size());
@@ -289,7 +296,9 @@ TEST("iptc is written as UTF-8 and existing 8-bit text keeps its meaning")
 	builder old;
 	old.u8(0x1C).u8(2).u8(0).be16(2).u8(0).u8(4);
 	old.u8(0x1C).u8(2).u8(80).be16(4).raw(std::string_view("Ren\xe9", 4));
-	old.u8(0x1C).u8(2).u8(110).be16(7).raw(std::string_view("O\x92" "Brien", 7));
+	old.u8(0x1C).u8(2).u8(110).be16(7).raw(std::string_view("O\x92"
+	                                                        "Brien",
+	                                                        7));
 	old.u8(0x1C).u8(2).u8(25).be16(3).raw("old");
 
 	libfiles::legacy_edits e;
@@ -304,12 +313,14 @@ TEST("iptc is written as UTF-8 and existing 8-bit text keeps its meaning")
 	const auto datasets = libfiles::detail::parse_iptc(*out.iptc);
 	CHECK(datasets.front().record == 1 && datasets.front().number == 90);
 	CHECK_STR(iptc_value(*out.iptc, 80), "Ren\xc3\xa9");
-	CHECK_STR(iptc_value(*out.iptc, 110), "O\xe2\x80\x99" "Brien");
+	CHECK_STR(iptc_value(*out.iptc, 110), "O\xe2\x80\x99"
+	                                      "Brien");
 	CHECK_STR(iptc_value(*out.iptc, 120), "line one\rline two");
 	CHECK_STR(iptc_value(*out.iptc, 90), "Oslo");
 
 	auto keywords = 0;
-	for (const auto& d : datasets) if (d.record == 2 && d.number == 25) ++keywords;
+	for (const auto& d : datasets)
+		if (d.record == 2 && d.number == 25) ++keywords;
 	CHECK_EQ(keywords, 2);
 	CHECK(to_string(*out.iptc).find("old") == std::string::npos);
 
@@ -405,6 +416,145 @@ TEST("a jpeg packet that fits is a patch")
 
 	CHECK(plan.ok());
 	CHECK(plan.in_place());
+}
+
+namespace
+{
+	constexpr std::string_view hdrgm_ns = "http://ns.adobe.com/hdr-gain-map/1.0/";
+	constexpr std::string_view container_ns = "http://ns.google.com/photos/1.0/container/";
+
+	libfiles::xmp::meta meta_of(const bytes& jpeg)
+	{
+		libfiles::xmp::meta meta;
+		meta.parse(packet_of(jpeg));
+		return meta;
+	}
+
+	std::string gain_map_length(const libfiles::xmp::meta& meta)
+	{
+		const auto container = libfiles::xmp::register_namespace(container_ns, "Container");
+		const auto item = libfiles::xmp::register_namespace("http://ns.google.com/photos/1.0/container/item/", "Item");
+		std::string value;
+		meta.get_property(container_ns, std::format("Directory[2]/{}Item/{}Length", container, item), &value);
+		return value;
+	}
+
+	// The entries of the multi-picture index a JPEG's header holds, and where the index lies.
+	std::pair<std::uint64_t, std::vector<libfiles::detail::mpf_entry>> mpf_entries(const bytes& jpeg)
+	{
+		const bytes signature{0xFF, 0xE2};
+		const auto mpf = to_bytes(std::string_view("MPF\0", 4));
+
+		for (auto at = std::search(jpeg.begin(), jpeg.end(), signature.begin(), signature.end()); at != jpeg.end();
+		     at = std::search(at + 2, jpeg.end(), signature.begin(), signature.end()))
+		{
+			if (!std::equal(mpf.begin(), mpf.end(), at + 4)) continue;
+			const auto length = static_cast<std::size_t>(at[2]) << 8 | at[3];
+			const auto index_at = static_cast<std::uint64_t>(at - jpeg.begin()) + 8;
+			const auto index = libfiles::detail::read_mpf_index(std::span(jpeg).subspan(index_at, length - 6));
+			if (index) return {index_at, index->entries};
+		}
+
+		return {};
+	}
+
+	std::size_t count_of(const bytes& jpeg, const std::string_view text)
+	{
+		std::size_t n = 0;
+		for (auto at = std::search(jpeg.begin(), jpeg.end(), text.begin(), text.end()); at != jpeg.end();
+		     at = std::search(at + 1, jpeg.end(), text.begin(), text.end()))
+		{
+			++n;
+		}
+		return n;
+	}
+}
+
+TEST("a jpeg update keeps its multi-picture index, and the gain map length its packet gives, true to the file")
+{
+	const auto gain_map = jpeg_of({{0xE1, xmp_app1(gain_map_description)}}, 0x22);
+
+	// The packet an edit writes after a re-encode is the source's, which gives the gain map's length in the
+	// old file; and this one grows past the room the packet had, before the index, as a new EXIF does.
+	libfiles::xmp::meta meta;
+	meta.parse(xmp_packet(ultra_hdr_primary_description(999)));
+	meta.set_localized_text(libfiles::xmp::ns::dc, "description", "", "x-default", std::string(6000, 'd'));
+	libfiles::metadata_update u{&meta};
+	u.legacy.description = std::string(3000, 'e');
+
+	const auto before_index = libfiles::attach_jpeg_gain_map(jpeg_of({{0xE1, xmp_app1(ultra_hdr_primary_description(
+																				 gain_map.size()))}}),
+	                                                         gain_map);
+
+	// And an index before the packet, whose offsets then move as the packet grows.
+	const auto layout = [&](const std::uint64_t primary_size)
+	{
+		return jpeg_of({{0xE2, libfiles::detail::make_mpf_payload(primary_size, gain_map.size(), 10)},
+		                {0xE1, xmp_app1(ultra_hdr_primary_description(gain_map.size()))}});
+	};
+	auto after_index = layout(layout(0).size());
+	after_index.insert(after_index.end(), gain_map.begin(), gain_map.end());
+	const auto found_after_index = libfiles::find_jpeg_gain_map(after_index);
+	CHECK(bytes(found_after_index.begin(), found_after_index.end()) == gain_map);
+
+	for (const auto& file : {before_index, after_index})
+	{
+		libfiles::write_plan plan;
+		const auto result = update(file, u, &plan);
+		CHECK(plan.ok());
+		CHECK(result.size() > file.size());
+
+		const auto found = libfiles::find_jpeg_gain_map(result);
+		CHECK(bytes(found.begin(), found.end()) == gain_map);
+
+		const auto [index_at, entries] = mpf_entries(result);
+		CHECK_EQ(entries.size(), 2u);
+		CHECK_EQ(entries[0].size, result.size() - gain_map.size());
+		CHECK_EQ(index_at + entries[1].offset, result.size() - gain_map.size());
+
+		const auto written = meta_of(result);
+		CHECK(written.exists(hdrgm_ns, "Version"));
+		CHECK_STR(gain_map_length(written), std::to_string(gain_map.size()));
+
+		// Written again as it now is, nothing moves.
+		libfiles::reader r(result);
+		CHECK(libfiles::plan_update(r, {&written}).in_place());
+	}
+}
+
+TEST("a jpeg update stops saying a gain map follows when nothing does")
+{
+	const auto gain_map = jpeg_of({{0xE1, xmp_app1(gain_map_description)},
+	                               {0xE2, iso_gain_map_app2({0, 0, 0, 0, 5, 5})}},
+	                              0x22);
+	const auto attached = libfiles::attach_jpeg_gain_map(jpeg_of({{0xE1, xmp_app1(ultra_hdr_primary_description(
+																			 gain_map.size()))}}),
+	                                                     gain_map);
+
+	// A lossless turn keeps the primary's segments and leaves the gain map behind.
+	const bytes turned(attached.begin(), attached.end() - static_cast<std::ptrdiff_t>(gain_map.size()));
+	CHECK(libfiles::find_jpeg_gain_map(turned).empty());
+
+	libfiles::xmp::meta meta;
+	meta.parse(xmp_packet(ultra_hdr_primary_description(gain_map.size())));
+	meta.set_property_int(libfiles::xmp::ns::xmp, "Rating", 4);
+
+	const auto result = update(turned, {&meta});
+	const auto written = meta_of(result);
+	CHECK(!written.exists(hdrgm_ns, "Version"));
+	CHECK(!written.exists(container_ns, "Directory"));
+	CHECK(written.exists(libfiles::xmp::ns::xmp, "Rating"));
+	CHECK_EQ(count_of(result, std::string_view("MPF\0", 4)), 0u);
+	CHECK_EQ(count_of(result, "urn:iso:std:iso:ts:21496:-1"), 0u);
+	CHECK(std::equal(result.end() - 20, result.end(), turned.end() - 20));
+
+	// Something after the primary the index does not locate might yet be one, so what says one follows stays.
+	auto trailing = turned;
+	trailing.insert(trailing.end(), {1, 2, 3, 4});
+	const auto kept = update(trailing, {&meta});
+	CHECK(meta_of(kept).exists(hdrgm_ns, "Version"));
+	CHECK_EQ(count_of(kept, std::string_view("MPF\0", 4)), 1u);
+	CHECK_EQ(count_of(kept, "urn:iso:std:iso:ts:21496:-1"), 1u);
 }
 
 TEST("a tiff file is updated by appending")
@@ -652,9 +802,7 @@ TEST("a shorter binary value is appended rather than left to read as the old len
 
 	// The 24 bytes of the description, as an undefined value of 20: the old entry would read 24.
 	const auto result = edited(stream, [](tiff_editor& e)
-	{
-		e.set(directory::ifd0, 0x010E, tiff_editor::type_undefined, 20, bytes(20, 'u'));
-	}, &in_place);
+	{ e.set(directory::ifd0, 0x010E, tiff_editor::type_undefined, 20, bytes(20, 'u')); }, &in_place);
 
 	CHECK(!in_place);
 	CHECK(result.size() > stream.size());
@@ -698,8 +846,8 @@ TEST("every photo format reads back the edits it keeps outside its packet")
 {
 	// EXIF and IPTC between them keep every property of a photo; the title and the place IPTC alone.
 	const std::set<std::string_view> exif_and_iptc = {
-		"city", "copyright", "country", "creators", "credit", "description", "digitized", "keywords", "location", "orientation",
-		"rating", "source", "state", "taken", "title", "year",
+		"city",     "copyright",   "country", "creators", "credit", "description", "digitized", "keywords",
+		"location", "orientation", "rating",  "source",   "state",  "taken",       "title",     "year",
 	};
 
 	check_round_trip("jpeg", make_jpeg(false), exif_and_iptc);

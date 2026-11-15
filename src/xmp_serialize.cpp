@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Serializes the XMP tree as RDF/XML in the XMP Toolkit's layouts: the default form with
 // every property an element, and the compact form file handlers embed, where simple properties are
@@ -19,7 +19,8 @@ namespace libfiles::xmp
 	{
 		constexpr std::string_view packet_header = "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>";
 		constexpr std::string_view packet_trailer = "<?xpacket end=\"w\"?>";
-		constexpr std::string_view xmpmeta_start = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"libfiles XMP 1.0\">";
+		constexpr std::string_view xmpmeta_start =
+			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"libfiles XMP 1.0\">";
 		constexpr std::string_view xmpmeta_end = "</x:xmpmeta>";
 		constexpr std::string_view rdf_start = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">";
 		constexpr std::string_view rdf_end = "</rdf:RDF>";
@@ -71,11 +72,11 @@ namespace libfiles::xmp
 		bool is_attribute_qualifier(const std::string_view name)
 		{
 			return name == "xml:lang" || name == "rdf:resource" || name == "rdf:ID" || name == "rdf:bagID" ||
-				name == "rdf:nodeID";
+			       name == "rdf:nodeID";
 		}
 
-		void declare_one_namespace(const writer& w, const std::string& prefix, const std::string& uri, std::string& used,
-		                           const int indent)
+		void declare_one_namespace(const writer& w, const std::string& prefix, const std::string& uri,
+		                           std::string& used, const int indent)
 		{
 			const auto bounded = ':' + prefix;
 			if (used.find(bounded) != std::string::npos) return;

@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: The XMP data model - parse, query, edit, iterate and serialize XMP packets. It behaves
 // as Adobe's XMP Toolkit (XMPCore) does for the surface image and media applications use: the same
@@ -103,8 +103,9 @@ namespace libfiles::xmp
 
 	inline constexpr option_bits composite_mask = value_is_struct | value_is_array;
 	inline constexpr option_bits array_form_mask = value_is_array | array_is_ordered | array_is_alternate |
-		array_is_alt_text;
+	                                               array_is_alt_text;
 
+	// clang-format off
 	constexpr bool is_array(const option_bits o) { return (o & value_is_array) != 0; }
 	constexpr bool is_struct(const option_bits o) { return (o & value_is_struct) != 0; }
 	constexpr bool is_simple(const option_bits o) { return (o & composite_mask) == 0; }
@@ -113,6 +114,7 @@ namespace libfiles::xmp
 	constexpr bool is_alt_text(const option_bits o) { return (o & array_is_alt_text) != 0; }
 	constexpr bool is_qualifier_node(const option_bits o) { return (o & is_qualifier) != 0; }
 	constexpr bool is_schema(const option_bits o) { return (o & schema_node) != 0; }
+	// clang-format on
 
 	// Misuse of the data model - a value for an array, an index of zero, an unregistered namespace -
 	// throws this, as the toolkit does. Parsing keeps whatever precedes a malformed packet's first fault
@@ -128,21 +130,21 @@ namespace libfiles::xmp
 	struct property_info
 	{
 		std::string schema; // The namespace URI of the top-level property.
-		std::string path; // Empty for the schema node itself, otherwise "dc:subject[1]" and so on.
-		std::string value; // Empty for arrays and structs.
+		std::string path;   // Empty for the schema node itself, otherwise "dc:subject[1]" and so on.
+		std::string value;  // Empty for arrays and structs.
 		option_bits options = 0;
 	};
 
 	struct serialize_options
 	{
 		bool omit_packet_wrapper = false; // No <?xpacket?> header, padding or trailer: a sidecar.
-		bool read_only_packet = false; // end="r" and no padding.
-		bool use_compact_format = false; // Simple unqualified properties become attributes.
+		bool read_only_packet = false;    // end="r" and no padding.
+		bool use_compact_format = false;  // Simple unqualified properties become attributes.
 		bool exact_packet_length = false; // Pad the whole packet to exactly `padding` bytes.
 		bool omit_all_formatting = false; // No newlines or indentation.
-		std::uint32_t padding = 0; // Bytes of padding, 0 for the 2048 default.
-		std::string_view newline = {}; // Defaults to LF.
-		std::string_view indent = {}; // Defaults to three spaces, or one for the compact form.
+		std::uint32_t padding = 0;        // Bytes of padding, 0 for the 2048 default.
+		std::string_view newline = {};    // Defaults to LF.
+		std::string_view indent = {};     // Defaults to three spaces, or one for the compact form.
 		int base_indent = 0;
 	};
 
@@ -184,8 +186,8 @@ namespace libfiles::xmp
 
 		// Arrays are one-based, as in XPath. A missing array counts zero items.
 		int count_array_items(std::string_view schema, std::string_view array) const;
-		bool get_array_item(std::string_view schema, std::string_view array, int index,
-		                    std::string* value = nullptr, option_bits* options = nullptr) const;
+		bool get_array_item(std::string_view schema, std::string_view array, int index, std::string* value = nullptr,
+		                    option_bits* options = nullptr) const;
 
 		// Picks an item of an alt-text array: the specific language, then the generic one, then
 		// x-default, then the first item.

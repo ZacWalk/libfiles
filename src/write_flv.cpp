@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Writing metadata to FLV files. The packet lives where the toolkit kept it, as the "liveXML"
 // string of an onXMPData script tag among the tags at time zero, after onMetaData. A packet that fits is
@@ -91,7 +91,8 @@ namespace libfiles::detail
 
 	bool is_flv(const std::span<const std::uint8_t> head) noexcept
 	{
-		return head.size() >= 9 && head[0] == 'F' && head[1] == 'L' && head[2] == 'V' && head[3] == 1 && load_be32(head.data() + 5) >= 9;
+		return head.size() >= 9 && head[0] == 'F' && head[1] == 'L' && head[2] == 'V' && head[3] == 1 &&
+		       load_be32(head.data() + 5) >= 9;
 	}
 
 	void read_flv_packet(reader& r, packet_reading& out)
@@ -158,8 +159,10 @@ namespace libfiles::detail
 		if (data.size() > 0xFFFFFF) throw format_error("the XMP packet is too large for an FLV tag");
 
 		const auto data_size = static_cast<std::uint32_t>(data.size());
+		// clang-format off
 		bytes unit = {script_tag, static_cast<std::uint8_t>(data_size >> 16), static_cast<std::uint8_t>(data_size >> 8),
 		              static_cast<std::uint8_t>(data_size), 0, 0, 0, 0, 0, 0, 0};
+		// clang-format on
 		unit.insert(unit.end(), data.begin(), data.end());
 		append_be32(unit, static_cast<std::uint32_t>(tag_header + data_size));
 
@@ -197,12 +200,15 @@ namespace libfiles::detail
 			if (v.type != flv::amf_number) return;
 
 			const auto value = std::bit_cast<double>(r.be64(v.at));
-			if (!std::isfinite(value) || value < 0 || value != std::floor(value) || value > static_cast<double>(old_size)) return;
+			if (!std::isfinite(value) || value < 0 || value != std::floor(value) ||
+			    value > static_cast<double>(old_size))
+				return;
 
 			const auto position = static_cast<std::uint64_t>(value);
 			auto updated = position;
 
-			if ((v.key == "filepositions" || v.key == "lastkeyframelocation") && position < old_size) updated = moved(position);
+			if ((v.key == "filepositions" || v.key == "lastkeyframelocation") && position < old_size)
+				updated = moved(position);
 			else if (v.key == "filesize" && position == old_size) updated = new_size;
 
 			if (updated != position) plan.replacements.push_back({v.at, 8, be_double(static_cast<double>(updated))});

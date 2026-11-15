@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: What the media scanners share and do not export: a bit reader for codec headers; the video
 // and audio codec headers several containers carry; the Windows structures AVI, ASF, WAV and Matroska
@@ -34,12 +34,13 @@ namespace libfiles::detail
 	class media_budget
 	{
 	public:
-		explicit media_budget(const std::size_t inflated) noexcept : _left(inflated)
-		{
-		}
+		explicit media_budget(const std::size_t inflated) noexcept : _left(inflated) {}
 
 		// The most the next inflation may produce: what is left, and never more than one element may hold.
-		std::size_t inflate_limit(const std::size_t element_limit) const noexcept { return std::min(_left, element_limit); }
+		std::size_t inflate_limit(const std::size_t element_limit) const noexcept
+		{
+			return std::min(_left, element_limit);
+		}
 
 		// Counts what an inflation produced against what is left.
 		void inflated(const std::size_t bytes) noexcept { _left -= std::min(_left, bytes); }
@@ -55,9 +56,7 @@ namespace libfiles::detail
 	class bit_reader
 	{
 	public:
-		explicit bit_reader(const std::span<const std::uint8_t> data) noexcept : _data(data)
-		{
-		}
+		explicit bit_reader(const std::span<const std::uint8_t> data) noexcept : _data(data) {}
 
 		// Up to 32 bits.
 		std::uint32_t u(const unsigned count) noexcept
@@ -118,7 +117,10 @@ namespace libfiles::detail
 		}
 
 		std::uint64_t position() const noexcept { return _position; }
-		std::uint64_t remaining() const noexcept { return _data.size() * 8 - std::min<std::uint64_t>(_position, _data.size() * 8); }
+		std::uint64_t remaining() const noexcept
+		{
+			return _data.size() * 8 - std::min<std::uint64_t>(_position, _data.size() * 8);
+		}
 		bool overrun() const noexcept { return _overrun; }
 
 	private:
@@ -373,7 +375,8 @@ namespace libfiles::detail
 	void scan_aiff_media(reader& r, scan_intent intent, media_budget& budget, media_scan_result& out);
 	void scan_asf_media(reader& r, scan_intent intent, media_scan_result& out);
 	// From the first frame after any leading ID3v2 tag, whose size is given.
-	void scan_mpeg_audio_media(reader& r, scan_intent intent, std::uint64_t tag_size, media_budget& budget, media_scan_result& out);
+	void scan_mpeg_audio_media(reader& r, scan_intent intent, std::uint64_t tag_size, media_budget& budget,
+	                           media_scan_result& out);
 	// From the "fLaC" signature at offset, after any leading ID3v2 tag.
 	void scan_flac_media(reader& r, scan_intent intent, std::uint64_t offset, media_scan_result& out);
 	void scan_ogg_media(reader& r, scan_intent intent, media_scan_result& out);

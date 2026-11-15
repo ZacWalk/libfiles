@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for metadata updates. Each writes a file built here, reads it back with the scanner,
 // and checks both the packet and that nothing else in the file moved.
@@ -62,7 +62,8 @@ namespace
 		p.raw(std::string_view("\x89PNG\r\n\x1a\n", 8));
 		png_chunk(p, "IHDR", png_ihdr(16, 8, 2));
 		png_chunk(p, "IDAT", bytes(40, 7));
-		if (with_trailing_text_xmp) png_chunk(p, "tEXt", builder().raw(std::string_view("XML:com.adobe.xmp\0", 18)).raw("<old/>").b);
+		if (with_trailing_text_xmp)
+			png_chunk(p, "tEXt", builder().raw(std::string_view("XML:com.adobe.xmp\0", 18)).raw("<old/>").b);
 		png_chunk(p, "IEND", {});
 		return p.b;
 	}
@@ -84,15 +85,18 @@ namespace
 		return finish_riff(w);
 	}
 
-	bool same_bytes(const bytes& a, const std::size_t a_from, const bytes& b, const std::size_t b_from, const std::size_t n)
+	bool same_bytes(const bytes& a, const std::size_t a_from, const bytes& b, const std::size_t b_from,
+	                const std::size_t n)
 	{
-		return a.size() >= a_from + n && b.size() >= b_from + n && std::memcmp(a.data() + a_from, b.data() + b_from, n) == 0;
+		return a.size() >= a_from + n && b.size() >= b_from + n &&
+		       std::memcmp(a.data() + a_from, b.data() + b_from, n) == 0;
 	}
 
 	// False when a WebP's VP8X declares a packet that no chunk within its RIFF size holds.
 	bool webp_holds_what_it_declares(const bytes& file)
 	{
-		const auto riff_end = std::min<std::size_t>(file.size(), 8 + std::size_t{libfiles::detail::load_le32(file.data() + 4)});
+		const auto riff_end = std::min<std::size_t>(file.size(),
+		                                            8 + std::size_t{libfiles::detail::load_le32(file.data() + 4)});
 		auto declared = false;
 		auto held = false;
 
@@ -303,7 +307,10 @@ TEST("interrupted png, gif and webp patches read whole")
 	riff_chunk(w, "VP8X", vp8x(0, 300, 200));
 	riff_chunk(w, "VP8 ", vp8_frame(300, 200));
 	const auto extended = finish_riff(w);
-	const auto holds_what_it_declares = [](const bytes& state) { CHECK(webp_holds_what_it_declares(state)); };
+	const auto holds_what_it_declares = [](const bytes& state)
+	{
+		CHECK(webp_holds_what_it_declares(state));
+	};
 	replay(extended, -100, 2, holds_what_it_declares);
 	replay(update(extended, rated(2)).file, 2, 4, holds_what_it_declares);
 }
@@ -319,7 +326,9 @@ TEST("png, gif and webp read back the edits they keep outside the packet")
 	builder extended;
 	riff_chunk(extended, "VP8X", vp8x(0x08, 300, 200));
 	riff_chunk(extended, "VP8 ", vp8_frame(300, 200));
-	riff_chunk(extended, "EXIF", builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(1).le16(0).le32(0).b);
+	riff_chunk(extended, "EXIF",
+	           builder().raw("II").le16(42).le32(8).le16(1).le16(0x0112).le16(3).le32(1).le16(1).le16(0).le32(0).b);
 	check_round_trip("webp with exif", finish_riff(extended),
-	                 {"copyright", "creators", "description", "digitized", "keywords", "location", "orientation", "rating", "taken", "year"});
+	                 {"copyright", "creators", "description", "digitized", "keywords", "location", "orientation",
+	                  "rating", "taken", "year"});
 }

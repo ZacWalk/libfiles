@@ -1,6 +1,6 @@
 // This file is part of libfiles.
 // Copyright 2026  Zac Walker
-// SPDX-License-Identifier: LGPL-2.1-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 // Purpose: Tests for the reader, the zlib pieces and the still-image scanners. Each scanner reads a
 // file built here byte by byte, so every field it reports is one the test put there.
@@ -24,9 +24,7 @@ namespace
 	class counting_stream final : public libfiles::stream
 	{
 	public:
-		explicit counting_stream(bytes data) : _data(std::move(data))
-		{
-		}
+		explicit counting_stream(bytes data) : _data(std::move(data)) {}
 
 		std::uint64_t size() override { return _data.size(); }
 
@@ -89,7 +87,8 @@ namespace
 		jpeg_segment(j, 0xE0, builder().raw(std::string_view("JFIF\0", 5)).zeros(9).b);
 		jpeg_segment(j, 0xE0, builder().raw(std::string_view("JFXX\0", 5)).u8(0x10).u8(0xFF).u8(0xD8).zeros(14).b);
 		jpeg_segment(j, 0xE1, builder().raw(std::string_view("Exif\0\0", 6)).raw(make_exif(6, 1)).b);
-		jpeg_segment(j, 0xE1, builder().raw(std::string_view("http://ns.adobe.com/xap/1.0/\0", 29)).raw("<x:xmpmeta/>").b);
+		jpeg_segment(j, 0xE1,
+		             builder().raw(std::string_view("http://ns.adobe.com/xap/1.0/\0", 29)).raw("<x:xmpmeta/>").b);
 
 		// The ICC profile in two segments, stored out of order.
 		jpeg_segment(j, 0xE2, builder().raw(std::string_view("ICC_PROFILE\0", 12)).u8(2).u8(2).raw("second").b);
@@ -104,8 +103,9 @@ namespace
 		jpeg_segment(j, 0xFE, to_bytes("a comment"));
 
 		// SOF0: 8 bits, 480 high, 640 wide, three components with 2x2 luma sampling.
-		jpeg_segment(j, 0xC0, builder().u8(8).be16(480).be16(640).u8(3)
-		                               .u8(1).u8(0x22).u8(0).u8(2).u8(0x11).u8(1).u8(3).u8(0x11).u8(1).b);
+		jpeg_segment(
+			j, 0xC0,
+			builder().u8(8).be16(480).be16(640).u8(3).u8(1).u8(0x22).u8(0).u8(2).u8(0x11).u8(1).u8(3).u8(0x11).u8(1).b);
 
 		if (!truncate_before_sos)
 		{
@@ -116,29 +116,28 @@ namespace
 		return j.b;
 	}
 
-	const bytes fixed_stream = {
-		0x78, 0xda, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0xc8, 0x40, 0x27, 0x01, 0x68, 0x03, 0x08, 0xb1
-	};
+	const bytes fixed_stream = {0x78, 0xda, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x57,
+	                            0xc8, 0x40, 0x27, 0x01, 0x68, 0x03, 0x08, 0xb1};
 
-	const bytes stored_stream = {
-		0x78, 0x01, 0x01, 0x0c, 0x00, 0xf3, 0xff, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x64, 0x20, 0x62, 0x6c, 0x6f, 0x63,
-		0x6b, 0x1f, 0x80, 0x04, 0xbd
-	};
+	const bytes stored_stream = {0x78, 0x01, 0x01, 0x0c, 0x00, 0xf3, 0xff, 0x73, 0x74, 0x6f, 0x72, 0x65,
+	                             0x64, 0x20, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x1f, 0x80, 0x04, 0xbd};
 
-	const bytes dynamic_stream = {
-		0x78, 0xda, 0x5d, 0x90, 0x41, 0x8b, 0x83, 0x30, 0x10, 0x85, 0xff, 0x4a, 0x60, 0x0f, 0x39, 0xe9, 0x54, 0x7b,
-		0x32, 0xa8, 0xb0, 0x20, 0xcb, 0x9e, 0xf7, 0x1f, 0xa4, 0xc9, 0xd8, 0x86, 0x26, 0x31, 0x98, 0x11, 0xd3, 0x7f,
-		0xdf, 0x58, 0xa5, 0x0b, 0xbd, 0xbd, 0xf7, 0x78, 0xf3, 0xf1, 0x98, 0x36, 0x89, 0xe4, 0x82, 0x43, 0x92, 0x2c,
-		0x39, 0xeb, 0xa3, 0x48, 0x1d, 0x97, 0x7a, 0xba, 0xa0, 0xc8, 0x7a, 0x8b, 0x81, 0xf7, 0xed, 0xac, 0x47, 0xf1,
-		0x37, 0xfc, 0x1c, 0x8d, 0xec, 0x3a, 0x7e, 0x23, 0x0a, 0x02, 0x60, 0x5d, 0xd7, 0x72, 0x3d, 0x97, 0xd3, 0x7c,
-		0x85, 0xaa, 0x69, 0x1a, 0x38, 0xd5, 0x50, 0xd7, 0x45, 0x6e, 0x14, 0xf1, 0xe1, 0x49, 0xa6, 0xc2, 0xc7, 0xaf,
-		0x03, 0x30, 0x60, 0x54, 0xb3, 0x09, 0x64, 0x26, 0xcf, 0x36, 0x2f, 0x2f, 0xd3, 0x42, 0x1d, 0xe7, 0x07, 0x55,
-		0xab, 0x37, 0x34, 0x2c, 0xb3, 0x7d, 0x21, 0xb5, 0x02, 0xb4, 0xe8, 0xd0, 0x53, 0x84, 0xaa, 0xac, 0xb6, 0x29,
-		0x5a, 0x09, 0x32, 0x64, 0x71, 0x67, 0x7e, 0x5b, 0xda, 0x85, 0x35, 0x1b, 0x46, 0x58, 0xe9, 0xaf, 0x1d, 0x4f,
-		0x85, 0xc6, 0x51, 0x2e, 0x96, 0x78, 0x3f, 0x3c, 0xbc, 0x74, 0x46, 0xb1, 0xdf, 0x65, 0x1c, 0x9d, 0xf4, 0x8c,
-		0x30, 0x12, 0x0b, 0x52, 0xdd, 0x91, 0x5a, 0xd8, 0x0f, 0xfb, 0x5d, 0xbc, 0x50, 0xf0, 0x8f, 0x87, 0x8f, 0xcd,
-		0x47, 0x92, 0xdf, 0x90, 0xd5, 0xfb, 0x69, 0xfd, 0x13, 0xb8, 0xa2, 0x6e, 0x20
-	};
+	const bytes dynamic_stream = {0x78, 0xda, 0x5d, 0x90, 0x41, 0x8b, 0x83, 0x30, 0x10, 0x85, 0xff, 0x4a, 0x60, 0x0f,
+	                              0x39, 0xe9, 0x54, 0x7b, 0x32, 0xa8, 0xb0, 0x20, 0xcb, 0x9e, 0xf7, 0x1f, 0xa4, 0xc9,
+	                              0xd8, 0x86, 0x26, 0x31, 0x98, 0x11, 0xd3, 0x7f, 0xdf, 0x58, 0xa5, 0x0b, 0xbd, 0xbd,
+	                              0xf7, 0x78, 0xf3, 0xf1, 0x98, 0x36, 0x89, 0xe4, 0x82, 0x43, 0x92, 0x2c, 0x39, 0xeb,
+	                              0xa3, 0x48, 0x1d, 0x97, 0x7a, 0xba, 0xa0, 0xc8, 0x7a, 0x8b, 0x81, 0xf7, 0xed, 0xac,
+	                              0x47, 0xf1, 0x37, 0xfc, 0x1c, 0x8d, 0xec, 0x3a, 0x7e, 0x23, 0x0a, 0x02, 0x60, 0x5d,
+	                              0xd7, 0x72, 0x3d, 0x97, 0xd3, 0x7c, 0x85, 0xaa, 0x69, 0x1a, 0x38, 0xd5, 0x50, 0xd7,
+	                              0x45, 0x6e, 0x14, 0xf1, 0xe1, 0x49, 0xa6, 0xc2, 0xc7, 0xaf, 0x03, 0x30, 0x60, 0x54,
+	                              0xb3, 0x09, 0x64, 0x26, 0xcf, 0x36, 0x2f, 0x2f, 0xd3, 0x42, 0x1d, 0xe7, 0x07, 0x55,
+	                              0xab, 0x37, 0x34, 0x2c, 0xb3, 0x7d, 0x21, 0xb5, 0x02, 0xb4, 0xe8, 0xd0, 0x53, 0x84,
+	                              0xaa, 0xac, 0xb6, 0x29, 0x5a, 0x09, 0x32, 0x64, 0x71, 0x67, 0x7e, 0x5b, 0xda, 0x85,
+	                              0x35, 0x1b, 0x46, 0x58, 0xe9, 0xaf, 0x1d, 0x4f, 0x85, 0xc6, 0x51, 0x2e, 0x96, 0x78,
+	                              0x3f, 0x3c, 0xbc, 0x74, 0x46, 0xb1, 0xdf, 0x65, 0x1c, 0x9d, 0xf4, 0x8c, 0x30, 0x12,
+	                              0x0b, 0x52, 0xdd, 0x91, 0x5a, 0xd8, 0x0f, 0xfb, 0x5d, 0xbc, 0x50, 0xf0, 0x8f, 0x87,
+	                              0x8f, 0xcd, 0x47, 0x92, 0xdf, 0x90, 0xd5, 0xfb, 0x69, 0xfd, 0x13, 0xb8, 0xa2, 0x6e,
+	                              0x20};
 
 	constexpr std::string_view dynamic_source =
 		"<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
@@ -146,7 +145,8 @@ namespace
 		"<rdf:li xml:lang='x-default'>Dynamic Huffman test packet</rdf:li></rdf:Alt></dc:title>"
 		"</rdf:Description></rdf:RDF></x:xmpmeta>";
 
-	libfiles::scan_result scan_bytes(const bytes& file, const libfiles::scan_intent intent = libfiles::scan_intent::index)
+	libfiles::scan_result scan_bytes(const bytes& file,
+	                                 const libfiles::scan_intent intent = libfiles::scan_intent::index)
 	{
 		libfiles::reader r(file);
 		return libfiles::scan(r, intent);
@@ -285,7 +285,10 @@ TEST("crc32 matches the published check value")
 TEST("formats are told apart by their first bytes")
 {
 	using libfiles::image_format;
-	const auto detect = [](const bytes& b) { return libfiles::detect_image_format(b); };
+	const auto detect = [](const bytes& b)
+	{
+		return libfiles::detect_image_format(b);
+	};
 
 	CHECK(detect(to_bytes("8BPS")) == image_format::psd);
 	CHECK(detect(to_bytes("GIF89a")) == image_format::gif);
@@ -299,8 +302,10 @@ TEST("formats are told apart by their first bytes")
 	CHECK(detect(bytes{'I', 'I', 42, 0}) == image_format::tiff);
 	CHECK(detect(bytes{'M', 'M', 0, 43}) == image_format::tiff);
 	CHECK(detect(bytes{'I', 'I', 41, 0}) == image_format::unknown);
-	CHECK(detect(lit("\0\0\0\x18" "ftypheic")) == image_format::heif);
-	CHECK(detect(lit("\0\0\0\x18" "ftypmp42")) == image_format::unknown);
+	CHECK(detect(lit("\0\0\0\x18"
+	                 "ftypheic")) == image_format::heif);
+	CHECK(detect(lit("\0\0\0\x18"
+	                 "ftypmp42")) == image_format::unknown);
 	CHECK(detect(bytes{0xFF, 0xD8}) == image_format::unknown);
 }
 
@@ -336,7 +341,8 @@ TEST("jpeg inspect scan reports its structure")
 	CHECK(has_row(result.structure, "Chroma subsampling"));
 	CHECK(!has_row(result.structure, "Huffman tables (0)"));
 
-	const auto metadata = std::ranges::find(result.structure, std::string_view("Metadata carried"), &libfiles::structure_row::key);
+	const auto metadata = std::ranges::find(result.structure, std::string_view("Metadata carried"),
+	                                        &libfiles::structure_row::key);
 	CHECK(metadata != result.structure.end() && metadata->value == "Exif XMP IPTC ICC");
 }
 
@@ -456,6 +462,48 @@ TEST("png that libpng would refuse is not scanned")
 	CHECK_EQ(result.width, 0u);
 }
 
+TEST("png with an animation control chunk scans as an animation")
+{
+	const auto png = [](const bool animated)
+	{
+		builder p;
+		p.raw(std::string_view("\x89PNG\r\n\x1a\n", 8));
+		png_chunk(p, "IHDR", png_ihdr(4, 4, 2));
+		if (animated) png_chunk(p, "acTL", builder().be32(2).be32(0).b);
+		png_chunk(p, "IDAT", bytes(8, 0));
+		png_chunk(p, "IEND", {});
+		return scan_bytes(p.b);
+	};
+
+	const auto animated = png(true);
+	CHECK(animated.success);
+	CHECK(animated.animated);
+	CHECK(!png(false).animated);
+}
+
+TEST("png reports the primaries its cICP chunk names, and none without one")
+{
+	const auto png = [](const bool with_cicp)
+	{
+		builder p;
+		p.raw(std::string_view("\x89PNG\r\n\x1a\n", 8));
+		png_chunk(p, "IHDR", png_ihdr(4, 4, 2));
+		// Display P3's primaries, PQ, an RGB matrix and full range.
+		if (with_cicp) png_chunk(p, "cICP", builder().u8(12).u8(16).u8(0).u8(1).b);
+		png_chunk(p, "IDAT", bytes(8, 0));
+		png_chunk(p, "IEND", {});
+		return scan_bytes(p.b);
+	};
+
+	const auto described = png(true);
+	CHECK(described.success);
+	CHECK(described.hdr);
+	CHECK_EQ(described.colour_primaries, 12);
+	CHECK_EQ(described.colour_transfer, 16);
+	CHECK_EQ(png(false).colour_primaries, 2);
+	CHECK_EQ(png(false).colour_transfer, 2);
+}
+
 TEST("png metadata search ends at a damaged metadata chunk")
 {
 	builder p;
@@ -471,6 +519,79 @@ TEST("png metadata search ends at a damaged metadata chunk")
 
 	CHECK(result.success);
 	CHECK_STR(to_string(result.metadata.xmp), "<first/>");
+}
+
+namespace
+{
+	// The window a PNG colour profile is first read through: scan_png's max_metadata_chunk.
+	constexpr std::size_t png_profile_window = 16u * 1024u * 1024u;
+
+	// An iCCP chunk whose stream holds the profile in one final stored block, after empty stored blocks
+	// that inflate to nothing, and followed by bytes no inflate reaches.
+	bytes padded_icc_chunk(const bytes& profile, const std::size_t empty_blocks, const std::size_t tail)
+	{
+		bytes chunk = lit("icc\0\0\x78\x01");
+		chunk.reserve(chunk.size() + 5 * empty_blocks + profile.size() + 9 + tail);
+		const std::uint8_t empty_block[] = {0x00, 0x00, 0x00, 0xff, 0xff};
+		for (std::size_t i = 0; i < empty_blocks; ++i)
+			chunk.insert(chunk.end(), std::begin(empty_block), std::end(empty_block));
+
+		const auto length = static_cast<std::uint16_t>(profile.size());
+		const auto final_block =
+			builder().u8(0x01).le16(length).le16(static_cast<std::uint16_t>(~length)).raw(profile).be32(0).b;
+		chunk.insert(chunk.end(), final_block.begin(), final_block.end());
+		chunk.resize(chunk.size() + tail, 0xff);
+		return chunk;
+	}
+
+	bytes png_with_chunk(const std::string_view type, const bytes& data)
+	{
+		builder p;
+		p.raw(std::string_view("\x89PNG\r\n\x1a\n", 8));
+		png_chunk(p, "IHDR", png_ihdr(4, 4, 2));
+		png_chunk(p, type, data);
+		png_chunk(p, "IDAT", bytes(8, 0));
+		png_chunk(p, "IEND", {});
+		return p.b;
+	}
+}
+
+TEST("png colour profile is read without the rest of a chunk that outlasts it")
+{
+	// libpng reads no more of an iCCP chunk than the profile takes, so neither does the scan: a chunk
+	// claiming far more than any profile needs is not read, or held, whole.
+	const auto profile = rgb_icc_profile();
+	const auto chunk = padded_icc_chunk(profile, 0, png_profile_window + 1024u * 1024u);
+
+	counting_stream s(png_with_chunk("iCCP", chunk));
+	libfiles::reader r(s);
+	const auto result = libfiles::scan(r);
+
+	CHECK(result.success);
+	CHECK(result.metadata.icc == profile);
+	CHECK(r.source_bytes() < chunk.size());
+}
+
+TEST("png colour profile padded past the first window is still read, as libpng reads it")
+{
+	const auto profile = rgb_icc_profile();
+	const auto result = scan_bytes(png_with_chunk("iCCP", padded_icc_chunk(profile, png_profile_window / 5 + 1024, 0)));
+
+	CHECK(result.success);
+	CHECK(result.metadata.icc == profile);
+}
+
+TEST("png text before the image data that libpng would not read is not read")
+{
+	// libpng skips a text chunk it cannot read into one buffer within its allocation limit, and the walk
+	// stops at one larger than its own; such a packet is no packet, and is never held whole.
+	auto text = lit("XML:com.adobe.xmp\0");
+	text.resize(text.size() + png_profile_window + 64, 'x');
+
+	const auto result = scan_bytes(png_with_chunk("tEXt", text));
+
+	CHECK(result.success);
+	CHECK(result.metadata.xmp.empty());
 }
 
 TEST("webp scan reads simple lossy and lossless files")
@@ -553,7 +674,16 @@ TEST("gif scan reads the screen and both forms of XMP extension")
 		return g.b;
 	};
 
-	const auto raw = gif(builder().u8(0x21).u8(0xFF).u8(11).raw("XMP DataXMP").raw("<x:xmpmeta></x:xmpmeta>tail").u8(1).u8(0xFF).zeros(4).b);
+	const auto raw = gif(builder()
+	                         .u8(0x21)
+	                         .u8(0xFF)
+	                         .u8(11)
+	                         .raw("XMP DataXMP")
+	                         .raw("<x:xmpmeta></x:xmpmeta>tail")
+	                         .u8(1)
+	                         .u8(0xFF)
+	                         .zeros(4)
+	                         .b);
 	const auto a = scan_bytes(raw);
 	CHECK(a.success);
 	CHECK_EQ(a.width, 120u);
@@ -561,10 +691,61 @@ TEST("gif scan reads the screen and both forms of XMP extension")
 	CHECK_STR(a.pixel_format, "pal8");
 	CHECK_STR(to_string(a.metadata.xmp), "<x:xmpmeta></x:xmpmeta>");
 
-	const auto blocks = gif(builder().u8(0x21).u8(0xFF).u8(11).raw("XMP DataXMP").u8(3).raw("abc").u8(2).raw("de").u8(0).b);
+	const auto blocks = gif(
+		builder().u8(0x21).u8(0xFF).u8(11).raw("XMP DataXMP").u8(3).raw("abc").u8(2).raw("de").u8(0).b);
 	CHECK_STR(to_string(scan_bytes(blocks).metadata.xmp), "abcde");
 
 	CHECK(!scan_bytes(to_bytes("GIF87b0123456789")).error.empty());
+	CHECK(!a.animated);
+}
+
+TEST("gif holding a second image scans as an animation")
+{
+	const auto gif = [](const int images)
+	{
+		builder g;
+		g.raw("GIF89a").le16(16).le16(8).u8(0x80).u8(0).u8(0).zeros(6);
+
+		for (auto i = 0; i < images; ++i)
+		{
+			// Each frame's graphic control extension - a tenth of a second - then its image: the descriptor, the
+			// LZW code size, one sub-block and the end of its data.
+			g.u8(0x21).u8(0xF9).u8(4).u8(0).le16(10).u8(0).u8(0);
+			g.u8(0x2C).zeros(8).u8(0).u8(2).u8(1).u8(0).u8(0);
+		}
+
+		g.u8(0x3B);
+		return g.b;
+	};
+
+	const auto still = scan_bytes(gif(1));
+	CHECK(still.success);
+	CHECK(!still.animated);
+
+	const auto animation = scan_bytes(gif(3));
+	CHECK(animation.success);
+	CHECK(animation.animated);
+	CHECK_EQ(animation.width, 16u);
+	CHECK_EQ(animation.height, 8u);
+
+	// A raw XMP packet ahead of the frames, as Photoshop writes an animation: its magic trailer steps a GIF reader over
+	// it, and the scan steps over it the same way, to the frames after it.
+	builder xmp_first;
+	xmp_first.raw("GIF89a").le16(16).le16(8).u8(0x80).u8(0).u8(0).zeros(6);
+	xmp_first.u8(0x21).u8(0xFF).u8(11).raw("XMP DataXMP").raw("<x:xmpmeta></x:xmpmeta>").u8(0x01);
+	for (auto b = 0xFF; b > 0; --b) xmp_first.u8(static_cast<std::uint8_t>(b));
+	xmp_first.u8(0).u8(0);
+	for (auto i = 0; i < 2; ++i) xmp_first.u8(0x2C).zeros(8).u8(0).u8(2).u8(1).u8(0).u8(0);
+	xmp_first.u8(0x3B);
+
+	const auto described = scan_bytes(xmp_first.b);
+	CHECK(described.animated);
+	CHECK_STR(to_string(described.metadata.xmp), "<x:xmpmeta></x:xmpmeta>");
+
+	// Cut inside its second image, it is still known for one.
+	const auto two = gif(2);
+	const bytes cut(two.begin(), two.end() - 4);
+	CHECK(scan_bytes(cut).animated);
 }
 
 namespace
@@ -740,7 +921,8 @@ TEST("photoshop resources are read by one rule, the name padded to an even size 
 	builder even;
 	even.raw("8BIM").be16(0x0424).u8(2).raw("ab").u8(0).be32(0);
 	const auto even_resource = read_photoshop_resource(even.b);
-	CHECK(even_resource && even_resource->name_size == 4u && even_resource->data_offset == 14u && even_resource->size == 14u);
+	CHECK(even_resource && even_resource->name_size == 4u && even_resource->data_offset == 14u &&
+	      even_resource->size == 14u);
 
 	builder longest;
 	longest.raw("8BIM").be16(0x0bb7).u8(255).raw(std::string(255, 'n')).be32(0);
