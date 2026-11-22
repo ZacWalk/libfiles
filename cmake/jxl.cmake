@@ -8,7 +8,7 @@
 #
 # Diffractor built them unoptimised under MSVC for years, for a miscompile that decoded a JPEG XL to an
 # empty image. With libjxl 0.12.0, Highway 1.4.0 and MSVC 14.51 it does not happen - under Diffractor's
-# own release flags, /O2 /Os /Oy /GL, its JPEG XL record holds - so they are optimised like the rest, and
+# own release flags, /O2 /Oy /GL, its JPEG XL record holds - so they are optimised like the rest, and
 # decode some fifty times faster.
 
 include_guard(GLOBAL)

@@ -319,6 +319,7 @@ namespace test_build
 		std::size_t extents = 1;
 		// ipco indices, from 1, and whether each is essential.
 		std::vector<std::pair<unsigned, bool>> properties;
+		std::optional<std::uint32_t> idat_offset;
 	};
 
 	struct heif_reference
@@ -390,7 +391,7 @@ namespace test_build
 			{
 				const auto begin = static_cast<std::uint32_t>(size * e / item.extents);
 				const auto end = static_cast<std::uint32_t>(size * (e + 1) / item.extents);
-				iloc.be32((s.iloc_bases ? 0 : base) + at + begin).be32(end - begin);
+				iloc.be32((s.iloc_bases ? 0 : base) + item.idat_offset.value_or(at) + begin).be32(end - begin);
 			}
 
 			if (item.in_idat) idat.insert(idat.end(), item.data.begin(), item.data.end());

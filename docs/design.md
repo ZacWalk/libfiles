@@ -124,6 +124,15 @@ library by, and its tests hold libfiles to them.
 | album, album artist, genre, show, synopsis, track, disc, season, episode | `xmpDM:` of each name | | |
 | comment | `xmpDM:logComment`, else `exif:UserComment` | UserComment, else XPComment | |
 | raw file, panorama | `crs:RawFileName`; `GPano:ProjectionType`, or a panorama property alone | | |
+| people, faces | Each `mwg-rs:RegionList` item whose `mwg-rs:Type` is `Face`, with `mwg-rs:AppliedToDimensions`; else each Microsoft `MPRI:Regions` item; and `Iptc4xmpExt:PersonInImage` - stated by any of the three, even empty | | |
+
+A face is its name, which may be empty, and its area: a Metadata Working Group
+area's centre and size, or a Microsoft rectangle's left, top, width and height,
+both read as fractions of the picture as it is stored, measured from its top
+left. An area in pixels is read against the dimensions given beside it, and one
+of no size is none. The people are each face's name, then each
+`PersonInImage`, each once whatever its case. Microsoft's regions are read only
+from a packet holding no Metadata Working Group face.
 
 `created` is the first of DateTimeOriginal, `exif:DateTimeOriginal`, Date
 Created and `photoshop:DateCreated`, else the date digitized; `digitized` the
@@ -461,10 +470,11 @@ its length is a byte or two.
   they come to - patched where the properties hold them, else in a rebuilt
   `iprp` - and the EXIF and a packet that states one take that orientation. The
   tone map item itself is left unturned, as libavif writes and reads it: its
-  inputs are turned before it applies one to the other. Items whose data keeps its length, each in one piece, are
-  patched where they lie. Anything else is rewritten in one pass: data in an
-  `mdat` is replaced where it lies, and data that lies anywhere else, or is new,
-  goes at the start of the first `mdat`, or in an `mdat` of its own after the
+  inputs are turned before it applies one to the other. Items whose data keeps
+  its length in one unshared piece are patched where they lie. Anything else is
+  rewritten in one pass: unshared data in an `mdat` is replaced where it lies,
+  and shared data, data elsewhere, or new data goes at the start of the first
+  `mdat`, or in an `mdat` of its own after the
   meta box when the file has none; the meta box is rebuilt with the item, its
   reference and its location; an `mdat` that changes length is given its new
   size; and every item location moves with the bytes it locates, as an image

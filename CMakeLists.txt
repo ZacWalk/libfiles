@@ -353,8 +353,8 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 
     add_test(NAME libfiles COMMAND libfiles_tests)
-    set_tests_properties(libfiles PROPERTIES LABELS libfiles)
+    set_tests_properties(libfiles PROPERTIES LABELS "libfiles;headless")
     add_test(NAME libfiles-dependency-arguments
         COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/dependency_arguments.cmake")
-    set_tests_properties(libfiles-dependency-arguments PROPERTIES LABELS libfiles)
+    set_tests_properties(libfiles-dependency-arguments PROPERTIES LABELS "libfiles;headless")
 endif()

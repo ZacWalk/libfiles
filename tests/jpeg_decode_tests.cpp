@@ -450,6 +450,32 @@ TEST("a jpeg decodes to bgrx as libjpeg-turbo writes it, at every reduction and 
 	}
 }
 
+TEST("a jpeg fitted within a target is reduced as far as its fitted size allows")
+{
+	jpeg_spec s;
+	s.width = 301;
+	s.height = 157;
+	const auto file = encode(s);
+
+	// Fitted within 150 by 150 the picture is 150 by 78, which half its size covers; covering 150 by 150 takes it
+	// whole. A target with a zero edge reduces as it would unfitted.
+	for (const auto& [fit, target_w, target_h, scale] :
+	     {std::tuple{false, 150u, 150u, 1u}, std::tuple{true, 150u, 150u, 2u}, std::tuple{true, 400u, 400u, 1u},
+	      std::tuple{true, 75u, 0u, 4u}})
+	{
+		jpeg_sink sink;
+		libfiles::decode_options o;
+		o.target_width = target_w;
+		o.target_height = target_h;
+		o.fit_within_target = fit;
+		const auto result = decode(file, sink, o);
+
+		CHECK(result.success);
+		CHECK_EQ(result.frame.scale_denominator, scale);
+		CHECK_EQ(result.frame.width, (301u + scale - 1) / scale);
+	}
+}
+
 TEST("a jpeg decodes to nv12 from libjpeg-turbo's own planes, averaging chroma it holds at full size")
 {
 	for (const auto& [h, v] : {std::pair{2, 2}, std::pair{2, 1}, std::pair{1, 1}})

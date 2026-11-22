@@ -584,8 +584,11 @@ namespace libfiles::detail
 			frame.source_width = d.image_width;
 			frame.source_height = d.image_height;
 			frame.orientation = summarize_exif(exif).orientation.value_or(1);
-			frame.scale_denominator = scale_denominator_for(d.image_width, d.image_height, options.target_width,
-			                                                options.target_height);
+			const auto target = options.fit_within_target && options.target_width && options.target_height
+			                        ? scaled_size_for(d.image_width, d.image_height, options.target_width,
+			                                          options.target_height)
+			                        : image_size{options.target_width, options.target_height};
+			frame.scale_denominator = scale_denominator_for(d.image_width, d.image_height, target.width, target.height);
 			frame.working_bytes = buffers_whole_image(d) ? coefficient_bytes(d) : 0;
 
 			const auto scale = frame.scale_denominator;

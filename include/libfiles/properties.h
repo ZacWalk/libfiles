@@ -122,8 +122,30 @@ namespace libfiles
 		copyright_url,
 		label,
 		raw_file_name,
-		// The last: properties.cpp's last_property names it.
 		panorama,
+		// The people a packet names and the faces it marks. The last: properties.cpp's last_property names it.
+		people,
+	};
+
+	// Where a region lies on the picture as it is stored - before its orientation turns it - as fractions of
+	// the picture's width and height, measured from its top left corner.
+	struct region_area
+	{
+		double left = 0.0;
+		double top = 0.0;
+		double width = 0.0;
+		double height = 0.0;
+
+		friend bool operator==(const region_area&, const region_area&) = default;
+	};
+
+	// A face a packet marks: whom it names, if anyone, and where the face is, where the packet says.
+	struct face_region
+	{
+		std::string name;
+		std::optional<region_area> area;
+
+		friend bool operator==(const face_region&, const face_region&) = default;
 	};
 
 	// What an organizer files a picture or a recording by. Text is UTF-8, as the file holds it; empty text,
@@ -205,6 +227,15 @@ namespace libfiles
 		// The raw file a developed photo was made from: crs:RawFileName.
 		std::string raw_file_name;
 		panorama_projection panorama = panorama_projection::none;
+		// The faces a packet marks, in the order it lists them: the Metadata Working Group's face regions, or
+		// Microsoft's where the packet holds none of those.
+		std::vector<face_region> faces;
+		// The pixels mwg-rs:AppliedToDimensions says the regions were measured on; zero where it gives none.
+		int faces_width = 0;
+		int faces_height = 0;
+		// Whom the packet names: each face's name, then each Iptc4xmpExt:PersonInImage, each once whatever its
+		// case, the first spelling kept.
+		std::vector<std::string> people;
 		// Every date the blocks give, in the order they were read, each with its tag.
 		std::vector<dated> dates;
 

@@ -5,8 +5,9 @@
 // Purpose: The one table of where each block keeps each property - EXIF's tags, IPTC's datasets and the
 // XMP properties the Metadata Working Group, Adobe's media schema and Google's photo sphere schema name - read
 // into libfiles' properties with what each block states, and the rule blocks are reconciled by: each read over
-// those before it. The table and the rule are Diffractor's, as are the readers of the values in them
-// (photo_internal.h), so a library files its photos where it always has.
+// those before it. The faces a packet's region schemas mark, and the people it names, are read here too. The
+// table and the rule are Diffractor's, as are the readers of the values in them (photo_internal.h), so a library
+// files its photos where it always has.
 
 #include "libfiles/properties.h"
 
@@ -17,10 +18,15 @@
 
 #include <algorithm>
 #include <bit>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <exception>
+#include <format>
 #include <initializer_list>
+#include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace libfiles
@@ -30,7 +36,7 @@ namespace libfiles
 		namespace ns = xmp::ns;
 
 		// The last property, which the stated and joined masks hold a bit for: a property added after it moves it.
-		constexpr auto last_property = property::panorama;
+		constexpr auto last_property = property::people;
 		static_assert(static_cast<unsigned>(last_property) < 64, "properties::stated holds a bit for each property");
 
 		char lower(const char c)
@@ -207,6 +213,12 @@ namespace libfiles
 			case property::label: into.label = from.label; break;
 			case property::raw_file_name: into.raw_file_name = from.raw_file_name; break;
 			case property::panorama: into.panorama = from.panorama; break;
+			case property::people:
+				into.faces = from.faces;
+				into.faces_width = from.faces_width;
+				into.faces_height = from.faces_height;
+				into.people = from.people;
+				break;
 			}
 		}
 
@@ -383,6 +395,215 @@ namespace libfiles
 			}
 
 			return panorama_projection::none;
+		}
+
+		// ---- Faces -------------------------------------------------------------------------------------
+
+		// The schemas faces are kept in. None is in the namespace table from the start; parsing a packet that
+		// uses one registers it, so a packet that holds faces has its prefix registered.
+		constexpr std::string_view mwg_regions = "http://www.metadataworkinggroup.com/schemas/regions/";
+		constexpr std::string_view st_area = "http://ns.adobe.com/xmp/sType/Area#";
+		constexpr std::string_view microsoft_regions = "http://ns.microsoft.com/photo/1.2/";
+		constexpr std::string_view microsoft_region_info = "http://ns.microsoft.com/photo/1.2/t/RegionInfo#";
+		constexpr std::string_view microsoft_region = "http://ns.microsoft.com/photo/1.2/t/Region#";
+
+		// The prefix a path names a schema by, with its colon; empty for a schema no packet has used.
+		std::string prefix_of(const std::string_view uri)
+		{
+			std::string prefix;
+			if (!xmp::namespace_prefix(uri, &prefix)) return {};
+			return prefix;
+		}
+
+		// A real number as XMP writes one, whatever the locale: digits, a point and digits, and nothing else.
+		std::optional<double> real_in(std::string_view text)
+		{
+			text = trimmed(text);
+			if (!text.empty() && text.front() == '+') text.remove_prefix(1);
+
+			auto value = 0.0;
+			const auto* const end = text.data() + text.size();
+			const auto [stop, error] = std::from_chars(text.data(), end, value);
+			if (error != std::errc{} || stop != end || !std::isfinite(value)) return {};
+			return value;
+		}
+
+		std::optional<double> real_at(const xmp::meta& m, const std::string_view schema, const std::string& path)
+		{
+			const auto text = held(m, schema, path);
+			return text ? real_in(*text) : std::nullopt;
+		}
+
+		// An area of a positive size, or none.
+		std::optional<region_area> area_of(const double left, const double top, const double width, const double height)
+		{
+			if (!(width > 0.0) || !(height > 0.0)) return {};
+			return region_area{left, top, width, height};
+		}
+
+		// The faces the Metadata Working Group's regions mark - each mwg-rs:RegionList item whose mwg-rs:Type is
+		// Face - and the pixels mwg-rs:AppliedToDimensions measured them on. Absent for a packet without
+		// mwg-rs:Regions.
+		std::optional<std::vector<face_region>> mwg_faces(const xmp::meta& m, int& width, int& height)
+		{
+			const auto rs = prefix_of(mwg_regions);
+			if (rs.empty() || !has_form(m, mwg_regions, "Regions", xmp::is_struct)) return {};
+
+			std::string dim;
+			if (xmp::namespace_prefix(ns::xmp_dimensions, &dim))
+			{
+				const auto applied = "Regions/" + rs + "AppliedToDimensions/" + dim;
+				const auto w = real_at(m, mwg_regions, applied + "w");
+				const auto h = real_at(m, mwg_regions, applied + "h");
+
+				if (w && h && *w >= 1.0 && *h >= 1.0 && *w < 1e9 && *h < 1e9)
+				{
+					width = static_cast<int>(std::lround(*w));
+					height = static_cast<int>(std::lround(*h));
+				}
+			}
+
+			const auto area = prefix_of(st_area);
+			const auto list = "Regions/" + rs + "RegionList";
+			const auto count = m.count_array_items(mwg_regions, list);
+			std::vector<face_region> faces;
+
+			for (auto i = 1; i <= count; ++i)
+			{
+				const auto item = std::format("{}[{}]/{}", list, i, rs);
+				const auto type = held(m, mwg_regions, item + "Type");
+				if (!type || !ascii_equal(trimmed(*type), "Face")) continue;
+
+				face_region face;
+				if (const auto name = held(m, mwg_regions, item + "Name")) face.name = trimmed(without_nuls(*name));
+
+				if (!area.empty())
+				{
+					// The guidelines measure an area from its centre, as fractions of the picture; a writer that
+					// gave pixels instead is read against the dimensions it gave beside them.
+					const auto at = std::format("{}Area/{}", item, area);
+					const auto x = real_at(m, mwg_regions, at + "x");
+					const auto y = real_at(m, mwg_regions, at + "y");
+					const auto w = real_at(m, mwg_regions, at + "w");
+					const auto h = real_at(m, mwg_regions, at + "h");
+					const auto unit = held(m, mwg_regions, at + "unit");
+					const auto pixels = unit && ascii_equal(trimmed(*unit), "pixel");
+
+					if (x && y && w && h && (!pixels || (width > 0 && height > 0)))
+					{
+						const auto sx = pixels ? 1.0 / width : 1.0;
+						const auto sy = pixels ? 1.0 / height : 1.0;
+						face.area = area_of((*x - *w / 2.0) * sx, (*y - *h / 2.0) * sy, *w * sx, *h * sy);
+					}
+				}
+
+				faces.push_back(std::move(face));
+			}
+
+			return faces;
+		}
+
+		// The faces Microsoft's regions mark, which Windows Photo Gallery wrote: each MPRI:Regions item, with its
+		// MPReg:PersonDisplayName and its MPReg:Rectangle - the left, the top, the width and the height. Absent
+		// for a packet without MP:RegionInfo.
+		std::optional<std::vector<face_region>> microsoft_faces(const xmp::meta& m)
+		{
+			if (prefix_of(microsoft_regions).empty() || !has_form(m, microsoft_regions, "RegionInfo", xmp::is_struct))
+				return {};
+
+			const auto info = prefix_of(microsoft_region_info);
+			const auto region = prefix_of(microsoft_region);
+			std::vector<face_region> faces;
+			if (info.empty() || region.empty()) return faces;
+
+			const auto list = "RegionInfo/" + info + "Regions";
+			const auto count = m.count_array_items(microsoft_regions, list);
+
+			for (auto i = 1; i <= count; ++i)
+			{
+				const auto item = std::format("{}[{}]/{}", list, i, region);
+
+				face_region face;
+				if (const auto name = held(m, microsoft_regions, item + "PersonDisplayName"))
+					face.name = trimmed(without_nuls(*name));
+
+				if (const auto rectangle = held(m, microsoft_regions, item + "Rectangle"))
+				{
+					std::vector<double> values;
+					std::string_view text = *rectangle;
+
+					while (values.size() < 5)
+					{
+						const auto comma = text.find(',');
+						const auto value = real_in(text.substr(0, comma));
+						if (!value) break;
+						values.push_back(*value);
+						if (comma == std::string_view::npos) break;
+						text.remove_prefix(comma + 1);
+					}
+
+					if (values.size() == 4) face.area = area_of(values[0], values[1], values[2], values[3]);
+				}
+
+				faces.push_back(std::move(face));
+			}
+
+			return faces;
+		}
+
+		// The faces a packet marks and whom it names, stated where it holds either region schema or
+		// Iptc4xmpExt:PersonInImage, even empty. Microsoft's regions are read only from a packet holding no
+		// Metadata Working Group face, the schema every organizer since prefers.
+		void read_people(const xmp::meta& m, properties& p)
+		{
+			auto width = 0;
+			auto height = 0;
+			auto faces = mwg_faces(m, width, height);
+			const auto has_mwg = faces.has_value();
+			const auto mwg_has_faces = has_mwg && !faces->empty();
+
+			if (!mwg_has_faces)
+			{
+				if (auto microsoft = microsoft_faces(m))
+				{
+					faces = std::move(microsoft);
+					width = 0;
+					height = 0;
+				}
+			}
+
+			const auto in_image = items(m, ns::iptc_ext, "PersonInImage");
+			if (!faces && !in_image) return;
+
+			std::vector<std::string> names;
+			if (faces)
+			{
+				for (const auto& face : *faces)
+				{
+					if (!face.name.empty()) names.push_back(face.name);
+				}
+			}
+
+			if (in_image)
+			{
+				for (const auto& name : *in_image)
+				{
+					const auto whole = without_nuls(name);
+					if (const auto t = trimmed(whole); !t.empty()) names.emplace_back(t);
+				}
+			}
+
+			for (const auto& name : names)
+			{
+				const auto seen = std::ranges::any_of(p.people, [&name](const std::string_view k)
+				{ return ascii_equal(k, name); });
+				if (!seen) p.people.push_back(name);
+			}
+
+			if (faces) p.faces = std::move(*faces);
+			p.faces_width = width;
+			p.faces_height = height;
+			p.mark_stated(property::people);
 		}
 	}
 
@@ -706,6 +927,8 @@ namespace libfiles
 			p.panorama = panorama;
 			p.mark_stated(property::panorama);
 		}
+
+		read_people(m, p);
 
 		settle(p);
 		return p;

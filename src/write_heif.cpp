@@ -582,16 +582,21 @@ namespace libfiles::detail
 			bytes data;
 		};
 
+		std::optional<std::uint64_t> extent_start(const heif::layout& l, const heif::location& loc,
+		                                          const heif::extent& extent)
+		{
+			if (loc.data_reference != 0 || loc.method > 1 || (loc.method == 1 && !l.idat_data)) return {};
+			const auto origin = loc.method == 1 ? *l.idat_data : 0;
+			constexpr auto max = std::numeric_limits<std::uint64_t>::max();
+			if (loc.base > max - origin || extent.offset > max - origin - loc.base) return {};
+			return origin + loc.base + extent.offset;
+		}
+
 		// Where an item's data lies in the file when it lies there in one piece.
 		std::optional<std::uint64_t> single_place(const heif::layout& l, const heif::location* loc)
 		{
-			if (!loc || loc->data_reference != 0 || loc->extents.size() != 1) return {};
-
-			const auto& e = loc->extents.front();
-			if (e.length == 0) return {};
-			if (loc->method == 0) return loc->base + e.offset;
-			if (loc->method == 1 && l.idat_data) return *l.idat_data + loc->base + e.offset;
-			return {};
+			if (!loc || loc->extents.size() != 1 || loc->extents.front().length == 0) return {};
+			return extent_start(l, *loc, loc->extents.front());
 		}
 
 		// Whether another item's data in the file shares a byte of the range, so rewriting it would change that item.
@@ -600,12 +605,13 @@ namespace libfiles::detail
 		{
 			for (const auto& other : l.locations)
 			{
-				if (other.item == id || other.method != 0 || other.data_reference != 0) continue;
+				if (other.item == id) continue;
 
 				for (const auto& e : other.extents)
 				{
-					const auto start = other.base + e.offset;
-					if (start < at + length && at < start + std::max<std::uint64_t>(e.length, 1)) return true;
+					const auto start = extent_start(l, other, e);
+					if (!start) continue;
+					if (*start >= at ? *start - at < length : at - *start < e.length) return true;
 				}
 			}
 
@@ -621,7 +627,7 @@ namespace libfiles::detail
 				const auto* const loc = c.id ? l.location_of(*c.id) : nullptr;
 				const auto at = single_place(l, loc);
 				if (!at || loc->extents.front().length != c.data.size()) return false;
-				if (loc->method == 0 && shares_data(l, *c.id, *at, c.data.size())) return false;
+				if (shares_data(l, *c.id, *at, c.data.size())) return false;
 			}
 
 			for (const auto& c : changes) push_changed(r, plan, *single_place(l, l.location_of(*c.id)), c.data);

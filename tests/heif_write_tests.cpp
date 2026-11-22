@@ -314,6 +314,27 @@ TEST("a heif's exif and packet that fit are patched where they lie, each old or 
 	}
 }
 
+TEST("a heif metadata update keeps another item that shares its idat bytes")
+{
+	auto s = simple_heic();
+	const auto packet = padded_packet(rated(1));
+	s.items.push_back(mime_item(2, "application/rdf+xml", packet));
+	s.items.back().in_idat = true;
+	s.references.push_back({"cdsc", 2, {1}});
+	s.items.push_back(mime_item(3, "application/octet-stream", packet));
+	s.items.back().in_idat = true;
+	s.items.back().idat_offset = 0;
+
+	const auto original = make_heif(s);
+	const auto before = items_of(original);
+	CHECK(before.at(2) == before.at(3));
+	const auto edited = update(original, rated(5));
+	CHECK_STR(edited.plan.error, "");
+	CHECK(!edited.plan.in_place());
+	CHECK_EQ(rating_of(edited.file), 5);
+	CHECK(items_of(edited.file).at(3) == before.at(3));
+}
+
 TEST("a heif reads back the edits it keeps outside the packet, and keeps its orientation in its image's turn")
 {
 	// Nothing but the packet in a HEIF without EXIF; it does not gain one.

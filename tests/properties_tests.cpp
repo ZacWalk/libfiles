@@ -133,11 +133,41 @@ namespace
 		p.label = "label";
 		p.raw_file_name = "raw";
 		p.panorama = libfiles::panorama_projection::cylindrical;
+		p.faces = {{"face", libfiles::region_area{0.1, 0.2, 0.3, 0.4}}};
+		p.faces_width = 640;
+		p.faces_height = 480;
+		p.people = {"face", "person"};
 		p.dates = {{date_source::exif_original, at(day(2001, 2, 3), 4, 5, 6)}};
 		p.created = at(day(2001, 2, 3), 4, 5, 6);
 
-		for (auto i = 0u; i <= static_cast<unsigned>(property::panorama); ++i) p.mark_stated(static_cast<property>(i));
+		for (auto i = 0u; i <= static_cast<unsigned>(property::people); ++i) p.mark_stated(static_cast<property>(i));
 		return p;
+	}
+
+	// A packet as a file holds it: one description, in the namespaces the face schemas are written in.
+	libfiles::xmp::meta packet_of(const std::string_view body)
+	{
+		libfiles::xmp::meta m;
+		m.parse(
+			std::string(
+				R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+				R"(<rdf:Description rdf:about="")"
+				R"( xmlns:mwg-rs="http://www.metadataworkinggroup.com/schemas/regions/")"
+				R"( xmlns:stArea="http://ns.adobe.com/xmp/sType/Area#")"
+				R"( xmlns:stDim="http://ns.adobe.com/xap/1.0/sType/Dimensions#")"
+				R"( xmlns:MP="http://ns.microsoft.com/photo/1.2/")"
+				R"( xmlns:MPRI="http://ns.microsoft.com/photo/1.2/t/RegionInfo#")"
+				R"( xmlns:MPReg="http://ns.microsoft.com/photo/1.2/t/Region#")"
+				R"( xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/">)") +
+			std::string(body) + "</rdf:Description></rdf:RDF></x:xmpmeta>");
+		return m;
+	}
+
+	bool near_area(const std::optional<libfiles::region_area>& a, const double left, const double top,
+	               const double width, const double height)
+	{
+		return a && std::abs(a->left - left) < 1e-9 && std::abs(a->top - top) < 1e-9 &&
+		       std::abs(a->width - width) < 1e-9 && std::abs(a->height - height) < 1e-9;
 	}
 }
 
@@ -481,6 +511,74 @@ TEST("A packet's numbers read as far as sscanf reads them, and a rating past the
 	CHECK(small.states(property::focal_length_35mm) && small.focal_length_35mm == 0);
 	CHECK(small.rating == -1);
 	CHECK(small.track == 0 && small.track_count == 12);
+}
+
+TEST("A packet's face regions name people and mark where each face is on the picture as it is stored")
+{
+	// Lightroom's form: each area's centre and size as fractions, or as pixels against the dimensions given
+	// beside them; a pet's region among the faces; and the people PersonInImage names joining those the regions
+	// name, each once whatever its case.
+	const auto p = libfiles::properties_from_xmp(packet_of(
+		R"(<mwg-rs:Regions rdf:parseType="Resource">)"
+		R"(<mwg-rs:AppliedToDimensions stDim:w="4000" stDim:h="3000" stDim:unit="pixel"/>)"
+		R"(<mwg-rs:RegionList><rdf:Bag>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Name> Jane Doe </mwg-rs:Name><mwg-rs:Type>Face</mwg-rs:Type>)"
+		R"(<mwg-rs:Area stArea:x="0.5" stArea:y="0.25" stArea:w="0.2" stArea:h="0.1" stArea:unit="normalized"/>)"
+		R"(</rdf:li>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Name>Rex</mwg-rs:Name><mwg-rs:Type>Pet</mwg-rs:Type>)"
+		R"(<mwg-rs:Area stArea:x="0.1" stArea:y="0.1" stArea:w="0.1" stArea:h="0.1" stArea:unit="normalized"/>)"
+		R"(</rdf:li>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Type>Face</mwg-rs:Type>)"
+		R"(<mwg-rs:Area stArea:x="2000" stArea:y="1500" stArea:w="400" stArea:h="300" stArea:unit="pixel"/>)"
+		R"(</rdf:li>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Name>John Smith</mwg-rs:Name><mwg-rs:Type>Face</mwg-rs:Type>)"
+		R"(<mwg-rs:Area stArea:x="0.5" stArea:y="0.5" stArea:w="0" stArea:h="0.1"/></rdf:li>)"
+		R"(</rdf:Bag></mwg-rs:RegionList></mwg-rs:Regions>)"
+		R"(<Iptc4xmpExt:PersonInImage><rdf:Bag><rdf:li>jane doe</rdf:li><rdf:li> Ann Lee</rdf:li></rdf:Bag>)"
+		R"(</Iptc4xmpExt:PersonInImage>)"));
+
+	CHECK(p.states(property::people));
+	CHECK(p.people == (std::vector<std::string>{"Jane Doe", "John Smith", "Ann Lee"}));
+	CHECK(p.faces.size() == 3);
+	CHECK_STR(p.faces[0].name, "Jane Doe");
+	CHECK(near_area(p.faces[0].area, 0.4, 0.2, 0.2, 0.1));
+	CHECK(p.faces[1].name.empty() && near_area(p.faces[1].area, 0.45, 0.45, 0.1, 0.1));
+	CHECK(p.faces[2].name == "John Smith" && !p.faces[2].area);
+	CHECK(p.faces_width == 4000 && p.faces_height == 3000);
+
+	// Windows Photo Gallery's form, read where no Metadata Working Group face is: the left, the top, the width
+	// and the height, with no dimensions beside them.
+	const auto microsoft = libfiles::properties_from_xmp(packet_of(
+		R"(<mwg-rs:Regions rdf:parseType="Resource"><mwg-rs:RegionList><rdf:Bag>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Name>Rex</mwg-rs:Name><mwg-rs:Type>Pet</mwg-rs:Type></rdf:li>)"
+		R"(</rdf:Bag></mwg-rs:RegionList></mwg-rs:Regions>)"
+		R"(<MP:RegionInfo rdf:parseType="Resource"><MPRI:Regions><rdf:Bag>)"
+		R"(<rdf:li MPReg:PersonDisplayName="Jane Doe" MPReg:Rectangle="0.25, 0.5, 0.125, 0.25"/>)"
+		R"(<rdf:li MPReg:Rectangle="0.1,0.1,0.1"/>)"
+		R"(</rdf:Bag></MPRI:Regions></MP:RegionInfo>)"));
+	CHECK(microsoft.people == (std::vector<std::string>{"Jane Doe"}));
+	CHECK(microsoft.faces.size() == 2);
+	CHECK(near_area(microsoft.faces[0].area, 0.25, 0.5, 0.125, 0.25));
+	CHECK(microsoft.faces[1].name.empty() && !microsoft.faces[1].area);
+	CHECK(microsoft.faces_width == 0 && microsoft.faces_height == 0);
+
+	// A packet holding both says who is in the picture by the Metadata Working Group's regions alone.
+	const auto both = libfiles::properties_from_xmp(packet_of(
+		R"(<mwg-rs:Regions rdf:parseType="Resource"><mwg-rs:RegionList><rdf:Bag>)"
+		R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Name>New Name</mwg-rs:Name><mwg-rs:Type>Face</mwg-rs:Type></rdf:li>)"
+		R"(</rdf:Bag></mwg-rs:RegionList></mwg-rs:Regions>)"
+		R"(<MP:RegionInfo rdf:parseType="Resource"><MPRI:Regions><rdf:Bag>)"
+		R"(<rdf:li MPReg:PersonDisplayName="Old Name" MPReg:Rectangle="0.25, 0.5, 0.125, 0.25"/>)"
+		R"(</rdf:Bag></MPRI:Regions></MP:RegionInfo>)"));
+	CHECK(both.people == (std::vector<std::string>{"New Name"}));
+	CHECK(both.faces.size() == 1 && !both.faces[0].area);
+
+	// Regions present but empty state that nobody is named; a packet without them states nothing.
+	const auto cleared = libfiles::properties_from_xmp(
+		packet_of(R"(<mwg-rs:Regions rdf:parseType="Resource"><mwg-rs:RegionList><rdf:Bag/></mwg-rs:RegionList>)"
+	              R"(</mwg-rs:Regions>)"));
+	CHECK(cleared.states(property::people) && cleared.people.empty() && cleared.faces.empty());
+	CHECK(!libfiles::properties_from_xmp(packet_of("")).states(property::people));
 }
 
 TEST("A block read over others replaces what it states, joins what it joins, and keeps every date")

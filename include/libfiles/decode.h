@@ -238,6 +238,11 @@ namespace libfiles
 		// scaled_size_for gives. 0 by 0 decodes at full size.
 		std::uint32_t target_width = 0;
 		std::uint32_t target_height = 0;
+		// The target is a box the image will be fitted within, aspect kept, rather than a size it must cover in
+		// both dimensions: a JPEG is reduced by the largest of 8, 4 and 2 that leaves it at least the size
+		// scaled_size_for fits it to, so a 4000 by 3000 photograph for a 1600 by 1600 box decodes at 2000 by
+		// 1500 rather than in full. A WebP is fitted so either way. A target with a zero edge is unchanged.
+		bool fit_within_target = false;
 		// The caller takes nv12 where the file holds YCbCr that can be written as nv12 without
 		// conversion, and the frame is at least 2 by 2: a JPEG's YCbCr, and an opaque, still, lossy
 		// WebP that is not being scaled.
